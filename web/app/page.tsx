@@ -1,13 +1,42 @@
 import Link from "next/link";
-import { AgentBadge, ReviewBadge, RunStatusBadge } from "@/components/badges";
-import { ExternalIcon } from "@/components/icons";
-import { Badge, Card, ExampleDataBanner, Stat } from "@/components/ui";
-import { agents, runs, team, weekStats } from "@/lib/mock-data";
-import { AGENT_LABEL } from "@/lib/types";
 import { Suspense } from "react";
-import { LiveAuthBadge } from "@/components/live-config";
+import { AgentBadge, AuthBadge } from "@/components/badges";
+import { Badge, Card, Stat } from "@/components/ui";
+import { AuthGate, ComingSoon } from "@/components/auth-gate";
+import { canUseSharedConfig, type SessionUser } from "@/lib/auth/sessions";
+import { getDb } from "@/lib/db";
+import { agentModes } from "@/lib/env-file";
+import { listRunsWithTime } from "@/lib/runs-db";
+import { STEP_LABEL, stepAt } from "@/lib/runs";
+import { AGENT_LABEL, type AgentId } from "@/lib/types";
+
+const WEEK = 7 * 24 * 60 * 60 * 1000;
+const AGENTS: AgentId[] = ["claude-code", "codex"];
+
+function ago(ms: number): string {
+  const m = Math.round(ms / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 24 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
+}
 
 export default function Dashboard() {
+  return (
+    <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}>
+      <AuthGate>{(u) => <DashboardBody user={u} />}</AuthGate>
+    </Suspense>
+  );
+}
+
+async function DashboardBody({ user }: { user: SessionUser }) {
+  const shared = canUseSharedConfig(user);
+  const { now, runs } = shared ? listRunsWithTime(user.tenantId) : { now: 0, runs: [] };
+  const week = runs.filter((r) => now - r.startedAt < WEEK);
+  const modes = shared ? await agentModes() : null;
+  const team = getDb().prepare("SELECT name, email, username, role FROM users WHERE tenant_id = ? ORDER BY created_at").all(user.tenantId) as
+    Array<{ name: string; email: string; username: string | null; role: string }>;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -15,100 +44,72 @@ export default function Dashboard() {
           <h1 className="text-2xl font-semibold tracking-tight">Factory output</h1>
           <p className="text-sm text-zinc-400">Approved issues → agent PRs → human review. Nothing auto-merges.</p>
         </div>
-        <Link href="/runs/new" className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400">New test run</Link>
-      </div>
-      <ExampleDataBanner />
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Stat label="Runs this week" value={weekStats.runsThisWeek} hint="across all repos" />
-        <Stat label="PRs opened" value={weekStats.prsOpened} hint="this week" />
-        <Stat label="Awaiting review" value={weekStats.awaitingReview} hint="needs a human" />
+        {shared && <Link href="/runs/new" className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400">New test run</Link>}
       </div>
 
-      <Card title="Recent runs" subtitle="What the factory built and where it is in review">
-        <ul className="divide-y divide-zinc-800 md:hidden">
-          {runs.map((r) => (
-            <li key={r.id} className="space-y-2 py-3">
-              <p className="font-medium">#{r.issue} {r.title}</p>
-              <p className="text-sm text-zinc-400">{r.summary}</p>
-              <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
-                <AgentBadge agent={r.agent} /><ReviewBadge status={r.review} /><span>{r.repo}</span><span>· {r.when}</span>
-              </div>
-            </li>
-          ))}
-        </ul>
-        <div className="-mx-5 hidden overflow-x-auto md:block">
-          <table className="w-full text-left text-sm">
-            <thead className="text-xs uppercase tracking-wide text-zinc-500">
-              <tr>
-                <th className="px-5 pb-3 font-medium">What got built</th>
-                <th className="px-3 pb-3 font-medium">Repo</th>
-                <th className="px-3 pb-3 font-medium">Agent</th>
-                <th className="px-3 pb-3 font-medium">Run</th>
-                <th className="px-3 pb-3 font-medium">Review</th>
-                <th className="px-3 pb-3 font-medium">PR</th>
-                <th className="px-5 pb-3 text-right font-medium">When</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800">
-              {runs.map((r) => (
-                <tr key={r.id} className="align-top hover:bg-zinc-800/30">
-                  <td className="max-w-md px-5 py-3">
-                    <p className="font-medium text-zinc-100"><span className="text-zinc-500">#{r.issue}</span> {r.title}</p>
-                    <p className="mt-0.5 text-xs text-zinc-400">{r.summary}</p>
-                  </td>
-                  <td className="px-3 py-3 font-mono text-xs text-zinc-300">{r.repo}</td>
-                  <td className="px-3 py-3"><AgentBadge agent={r.agent} /></td>
-                  <td className="px-3 py-3"><RunStatusBadge status={r.runStatus} /><p className="mt-1 text-xs text-zinc-500">{r.durationMin} min</p></td>
-                  <td className="px-3 py-3"><ReviewBadge status={r.review} /></td>
-                  <td className="px-3 py-3">
-                    {r.pr ? (
-                      <a href="#" title="PR link placeholder" className="inline-flex items-center gap-1 text-sky-400 hover:underline">#{r.pr}<ExternalIcon className="h-3 w-3" /></a>
-                    ) : <span className="text-zinc-600">—</span>}
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-right text-xs text-zinc-500">{r.when}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+      {!shared ? <ComingSoon /> : (
+        <>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Stat label="Runs this week" value={week.length} hint="simulated test runs" />
+            <Stat label="PRs opened" value="—" hint="no real runs yet" />
+            <Stat label="Awaiting review" value="—" hint="no real runs yet" />
+          </div>
+
+          <Card title="Recent runs" subtitle="Simulated test runs so far; real agent runs will appear here">
+            {runs.length === 0 ? (
+              <p className="py-6 text-center text-sm text-zinc-500">No runs yet. <Link href="/runs/new" className="text-emerald-400 hover:underline">Start a test run</Link>.</p>
+            ) : (
+              <ul className="divide-y divide-zinc-800">
+                {runs.slice(0, 15).map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3 text-sm">
+                    <span className="font-medium"><span className="text-zinc-500">#{r.issue}</span> {r.title}</span>
+                    <span className="font-mono text-xs text-zinc-400">{r.repo}</span>
+                    <AgentBadge agent={r.agent} />
+                    <Badge tone="gray" dot>{STEP_LABEL[stepAt(r, now)]}</Badge>
+                    <Badge tone="amber">Simulated</Badge>
+                    <span className="ml-auto text-xs text-zinc-500">{ago(now - r.startedAt)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card title="Agent activity" subtitle="Claude Code and Codex drivers">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {agents.map((a) => (
-              <div key={a.agent} className="rounded-lg border border-zinc-800 p-4">
-                <div className="flex items-center justify-between">
-                  <p className="font-medium">{AGENT_LABEL[a.agent]}</p>
-                  <Suspense fallback={null}><LiveAuthBadge agent={a.agent} /></Suspense>
-                </div>
-                <dl className="mt-3 grid grid-cols-2 gap-y-2 text-sm">
-                  <dt className="text-zinc-500">Active jobs</dt><dd className="text-right tabular-nums">{a.activeJobs}</dd>
-                  <dt className="text-zinc-500">Runs (week)</dt><dd className="text-right tabular-nums">{a.runsThisWeek}</dd>
-                  <dt className="text-zinc-500">Success rate</dt><dd className="text-right tabular-nums">{Math.round(a.successRate * 100)}%</dd>
-                  <dt className="text-zinc-500">Last run</dt><dd className="text-right">{a.lastRun}</dd>
-                </dl>
-                <div className="mt-3 h-1.5 rounded-full bg-zinc-800">
-                  <div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${a.successRate * 100}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
+        {shared && modes && (
+          <Card title="Agents" subtitle="Sign-in mode from the server environment file">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {AGENTS.map((a) => {
+                const mine = runs.filter((r) => r.agent === a);
+                return (
+                  <div key={a} className="rounded-lg border border-zinc-800 p-4">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium">{AGENT_LABEL[a]}</p>
+                      <AuthBadge mode={modes[a]} />
+                    </div>
+                    <dl className="mt-3 grid grid-cols-2 gap-y-2 text-sm">
+                      <dt className="text-zinc-500">Test runs (week)</dt><dd className="text-right tabular-nums">{week.filter((r) => r.agent === a).length}</dd>
+                      <dt className="text-zinc-500">Last run</dt><dd className="text-right">{mine[0] ? ago(now - mine[0].startedAt) : "—"}</dd>
+                    </dl>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        )}
 
-        <Card title="Team" subtitle="Who approves issues and reviews agent PRs">
+        <Card title="Team" subtitle={`Members of ${user.tenantName}`}>
           <ul className="divide-y divide-zinc-800">
             {team.map((m) => (
-              <li key={m.name} className="flex items-center gap-3 py-2.5">
+              <li key={m.email} className="flex items-center gap-3 py-2.5">
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 text-xs font-semibold">
-                  {m.name.split(" ").map((p) => p[0]).join("")}
+                  {(m.name || m.username || m.email).split(/\s+/).map((p) => p[0]?.toUpperCase()).join("").slice(0, 2)}
                 </span>
                 <div className="flex-1">
-                  <p className="text-sm font-medium">{m.name}</p>
-                  <p className="text-xs text-zinc-500">{m.role} · {m.openReviews} open reviews</p>
+                  <p className="text-sm font-medium">{m.name || m.username || m.email}</p>
+                  <p className="text-xs text-zinc-500">{m.role}</p>
                 </div>
-                <Badge tone={m.status === "online" ? "green" : m.status === "reviewing" ? "blue" : "gray"} dot>{m.status}</Badge>
               </li>
             ))}
           </ul>

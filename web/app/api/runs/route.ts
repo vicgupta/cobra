@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import { stepAt, type SimulatedRun } from "@/lib/runs";
-import { readJson, writeJson } from "@/lib/store";
+import { insertRun, listRuns } from "@/lib/runs-db";
+import { apiGuard } from "@/lib/auth/server";
 
 // Simulated runs only: nothing here executes Claude Code or Codex.
-const FILE = "runs.json";
-
-export async function GET() {
-  const runs = await readJson<SimulatedRun[]>(FILE, []);
+export async function GET(req: Request) {
+  const g = await apiGuard(req, { sharedConfig: true });
+  if (g.error) return g.error;
   const now = Date.now();
-  return NextResponse.json(runs.map((r) => ({ ...r, step: stepAt(r, now) })));
+  return NextResponse.json(listRuns(g.user.tenantId).map((r) => ({ ...r, step: stepAt(r, now) })));
 }
 
 export async function POST(req: Request) {
+  const g = await apiGuard(req, { sharedConfig: true });
+  if (g.error) return g.error;
   const b = (await req.json().catch(() => null)) as Partial<SimulatedRun> | null;
   if (!b) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   const issue = Number(b.issue);
@@ -29,7 +31,6 @@ export async function POST(req: Request) {
     startedAt: Date.now(),
     simulated: true,
   };
-  const runs = await readJson<SimulatedRun[]>(FILE, []);
-  await writeJson(FILE, [run, ...runs].slice(0, 50));
+  insertRun(g.user.tenantId, g.user.id, run);
   return NextResponse.json({ ...run, step: "queued" }, { status: 201 });
 }

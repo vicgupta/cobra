@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { CobraLogo } from "./icons";
 
@@ -10,8 +11,9 @@ const links = [
   { href: "/settings", label: "Settings" },
 ] as const;
 
-export function Nav() {
+export function Nav({ userMenu }: { userMenu?: ReactNode }) {
   const pathname = usePathname();
+  const authPage = pathname === "/login" || pathname === "/signup";
   return (
     <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8">
@@ -20,7 +22,7 @@ export function Nav() {
           <span>Cobra</span>
           <span className="hidden text-xs font-normal text-zinc-500 sm:inline">software factory</span>
         </Link>
-        <nav className="flex gap-1 text-sm">
+        {!authPage && <nav className="flex gap-1 text-sm">
           {links.map((l) => {
             const active = l.href === "/" ? pathname === "/" : pathname.startsWith(l.href);
             return (
@@ -35,7 +37,8 @@ export function Nav() {
               </Link>
             );
           })}
-        </nav>
+        </nav>}
+        {!authPage && userMenu}
       </div>
     </header>
   );

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { AGENT_ENV, mask, resolveAuthMode, type MaskedSettings } from "@/lib/settings";
 import { envFilePath, readManaged, writeManaged, type ManagedKey } from "@/lib/env-file";
 import type { AgentId } from "@/lib/types";
+import { apiGuard } from "@/lib/auth/server";
 
 const AGENTS: AgentId[] = ["claude-code", "codex"];
 
@@ -22,7 +23,9 @@ async function masked(): Promise<MaskedSettings & { envFile: string }> {
   return out;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const g = await apiGuard(req, { sharedConfig: true });
+  if (g.error) return g.error;
   return NextResponse.json(await masked());
 }
 
@@ -31,6 +34,8 @@ export async function GET() {
  * Omitted / undefined field = keep current value, "" or null = clear, string = set.
  */
 export async function POST(req: Request) {
+  const g = await apiGuard(req, { sharedConfig: true });
+  if (g.error) return g.error;
   let body: unknown;
   try {
     body = await req.json();
