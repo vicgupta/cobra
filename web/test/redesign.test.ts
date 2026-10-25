@@ -206,7 +206,7 @@ test("local runner: clones a team repo, runs the engine CLI, streams logs, pushe
   const l2: string[] = [];
   const o2 = await scratch({ runId: "run_t3", driver: "claude-code", with: { repo: "owner/app", prompt: "p" }, secrets: {}, signal: new AbortController().signal, log: (c) => l2.push(c) });
   assert.equal(o2.pushed, false);
-  assert.match(l2.join(""), /GITHUB_TOKEN is not set/);
+  assert.match(l2.join(""), /no GitHub token \(repo PAT or GITHUB_TOKEN\) is set/);
   // timeout
   const slow = path.join(tmp, "slow"); writeFileSync(slow, "#!/bin/sh\nsleep 5\n"); chmodSync(slow, 0o755);
   const t = localRunner({ root: path.join(tmp, "ws"), resolveSecret: () => undefined, checkRepo: () => null, codexBin: slow });

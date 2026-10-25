@@ -80,8 +80,9 @@ test("repo PAT: GitHub calls use the repo's PAT, else fall back to GITHUB_TOKEN"
   const step = (repo: string) => h({ runId: "r", step: {} as never, with: { repo, action: "create-issue", title: "t" }, secrets: { GITHUB_TOKEN: SERVER }, signal: new AbortController().signal } as never);
   await step("acme/with-pat"); await step("acme/no-pat");
   assert.deepEqual(seen, [["acme/with-pat", PAT], ["acme/no-pat", SERVER], ["acme/with-pat", PAT], ["acme/no-pat", SERVER], ["acme/with-pat", PAT], ["acme/no-pat", SERVER]]);
-  // Undecryptable (wrong key) also falls back instead of leaking or crashing.
-  assert.equal(tokenFor(db, lead.tenantId, randomBytes(32).toString("base64"), SERVER)("acme/with-pat"), SERVER);
+  // Set but undecryptable (wrong key): no token, never a silent GITHUB_TOKEN fallback (Job 20).
+  assert.equal(tokenFor(db, lead.tenantId, randomBytes(32).toString("base64"), SERVER)("acme/with-pat"), undefined);
+  assert.equal(tokenFor(db, lead.tenantId, KEY, SERVER)(" ACME/With-Pat "), PAT, "case and whitespace insensitive");
 });
 
 test("repo PAT: redaction covers the token and its git auth-header form", () => {

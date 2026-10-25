@@ -24,10 +24,10 @@ const secret = (name: string) => envFile()[name] || process.env[name] || undefin
 export const runDeps = (tenantId: number): RunDeps => {
   const db = getDb();
   const checkRepo = (repo: string) => checkTeamRepo(db, tenantId, repo);
-  // A repo's own PAT (Job 19) wins over GITHUB_TOKEN; undefined means "use the step's GITHUB_TOKEN".
-  const repoToken = (repo: string) => repoTokenFor(tenantId)(repo) || undefined;
+  // One resolver for every GitHub touch (Job 20): the repo's PAT, else GITHUB_TOKEN.
+  const token = githubTokenFor(tenantId);
   return {
-    handlers: builtinHandlers({ checkRepo, tokenFor: repoToken, agentRunner: localRunner({ resolveSecret: secret, checkRepo, repoToken, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch }) }),
+    handlers: builtinHandlers({ checkRepo, tokenFor: token, agentRunner: localRunner({ resolveSecret: secret, checkRepo, githubToken: token, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch }) }),
     resolveSecret: secret,
     // Every env-file value and every team PAT (plus its git header form) is redacted from run logs and errors.
     redact: () => [...Object.values(envFile()), ...teamPatSecrets(db, tenantId, secret("COBRA_SECRET_KEY"))],
@@ -42,9 +42,10 @@ export { getDb };
 /** COBRA_SECRET_KEY (encrypts per-repo PATs); never returned. */
 export const secretKey = () => secret("COBRA_SECRET_KEY");
 
-/** Per repo: the team's PAT for it when set, else GITHUB_TOKEN (both read at call time, never returned). */
-const repoTokenFor = (tenantId: number) => (repo: string) => tokenFor(getDb(), tenantId, secretKey(), undefined)(repo);
-const teamToken = (tenantId: number) => (repo: string) => repoTokenFor(tenantId)(repo) || secret("GITHUB_TOKEN");
+/** THE per-repo GitHub token resolver (Job 20), used by every path: the team's PAT for the repo when set,
+ *  else GITHUB_TOKEN. Both read at call time, never returned to clients. */
+export const githubTokenFor = (tenantId: number) => (repo: string) => tokenFor(getDb(), tenantId, secretKey(), secret("GITHUB_TOKEN"))(repo);
+const teamToken = githubTokenFor;
 
 /** GitHub contents client for storage: github (repo PAT, else GITHUB_TOKEN). */
 export const githubStore = (tenantId: number) => githubFiles(teamToken(tenantId));

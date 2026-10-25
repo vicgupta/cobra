@@ -86,8 +86,17 @@ export function repoPat(db: DB, tenantId: number, repo: string, secretKey: strin
 }
 
 /** Token for a GitHub call on this repo: its PAT when set, else the server GITHUB_TOKEN. */
+/** Token for a GitHub call on this repo: its PAT when set, else the server GITHUB_TOKEN (fallback).
+ *  A PAT that is set but can't be decrypted gives no token (never a silent GITHUB_TOKEN fallback). */
 export const tokenFor = (db: DB, tenantId: number, secretKey: string | undefined, fallback: string | undefined) =>
-  (repo: string): string | undefined => repoPat(db, tenantId, repo, secretKey) ?? fallback;
+  (repo: string): string | undefined => {
+    const row = db.prepare("SELECT pat_enc AS e FROM team_repos WHERE tenant_id = ? AND lower(repo) = lower(?)").get(tenantId, repo.trim()) as { e: string | null } | undefined;
+    if (!row?.e) return fallback;
+    try { return decryptSecret(row.e, secretKey); } catch {
+      console.error(`[cobra] the stored token for ${repo} can't be decrypted (COBRA_SECRET_KEY changed?); not falling back to GITHUB_TOKEN`);
+      return undefined;
+    }
+  };
 
 /** Every decrypted PAT of the team, plus the forms git sees (for redaction). */
 export function teamPatSecrets(db: DB, tenantId: number, secretKey: string | undefined): string[] {

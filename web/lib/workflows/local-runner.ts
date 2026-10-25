@@ -16,8 +16,9 @@ export type LocalRunnerOptions = {
   resolveSecret: (name: string) => string | undefined;
   checkRepo: RepoCheck;
   defaultBranch?: (repo: string) => string | null | undefined;
-  /** The repo's own PAT when set (else GITHUB_TOKEN is used). */
-  repoToken?: (repo: string) => string | undefined;
+  /** The single per-repo GitHub token resolver (Job 20): the repo's PAT when set, else GITHUB_TOKEN.
+   *  When omitted (tests), GITHUB_TOKEN from resolveSecret is used. */
+  githubToken?: (repo: string) => string | undefined;
   claudeBin?: string;
   codexBin?: string;
   /** Value for codex --sandbox; empty means --dangerously-bypass-approvals-and-sandbox (default; see COBRA_CODEX_SANDBOX). */
@@ -55,7 +56,7 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     const base: Env = { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: process.env.HOME ?? "/tmp", LANG: "C.UTF-8", GIT_TERMINAL_PROMPT: "0" };
     const git = opts.gitBin ?? "git";
     const repo = typeof w.repo === "string" ? w.repo.trim() : "";
-    const token = (repo && opts.repoToken?.(repo)) || opts.resolveSecret("GITHUB_TOKEN");
+    const token = repo ? (opts.githubToken ? opts.githubToken(repo) : opts.resolveSecret("GITHUB_TOKEN")) : undefined;
     // The token reaches git only through env-based config (never argv or the remote URL).
     const gitEnv: Env = token
       ? { ...base, GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader", GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}` }
@@ -68,7 +69,7 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     const branch = `cobra/${runId}`;
     let cloned = false;
     note(`workspace ${dir}`);
-    if (repo && !token) note(`GITHUB_TOKEN is not set, so ${repo} is not cloned; running in an empty scratch repo`);
+    if (repo && !token) note(`no GitHub token (repo PAT or GITHUB_TOKEN) is set, so ${repo} is not cloned; running in an empty scratch repo`);
     else if (repo) {
       const denied = opts.checkRepo(repo);
       if (denied) throw new Error(denied);
@@ -82,7 +83,10 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
 
     const prompt = String(w.prompt ?? "").trim();
     if (!prompt) throw new Error("the run has no prompt");
-    const env: Env = { ...base };
+    // The agent gets exactly one GitHub token, the same one used for the clone: the repo's PAT when set,
+    // else GITHUB_TOKEN; none without a cloned repo. git inside the workspace authenticates via gitEnv.
+    const env: Env = cloned && token ? { ...gitEnv, GH_TOKEN: token, GITHUB_TOKEN: token } : { ...base };
+    const ghNote = cloned && token ? `\n\n[Cobra] GitHub access for ${repo} is in $GH_TOKEN (also $GITHUB_TOKEN). If the gh CLI is not installed, call the GitHub REST API (https://api.github.com) with curl and "Authorization: Bearer $GH_TOKEN". Never print the token.` : "";
     const lastFile = path.join(dir, ".git", "cobra-last-message.txt");
     let cmd: string, args: string[];
     if (driver === "codex") {
@@ -92,14 +96,14 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       // confined to its own throwaway clone. COBRA_CODEX_SANDBOX=workspace-write (etc.) opts back in.
       const sandbox = (opts.codexSandbox ?? process.env.COBRA_CODEX_SANDBOX ?? "").trim();
       const mode = sandbox ? ["--sandbox", sandbox] : ["--dangerously-bypass-approvals-and-sandbox"];
-      args = ["exec", "--skip-git-repo-check", ...mode, "--output-last-message", lastFile, prompt];
+      args = ["exec", "--skip-git-repo-check", ...mode, "--output-last-message", lastFile, prompt + ghNote];
     } else {
       const oauth = opts.resolveSecret("CLAUDE_CODE_OAUTH_TOKEN");
       if (oauth) env.CLAUDE_CODE_OAUTH_TOKEN = oauth;
       const key = opts.resolveSecret("ANTHROPIC_API_KEY");
       if (!oauth && key) env.ANTHROPIC_API_KEY = key;
       cmd = opts.claudeBin ?? "claude";
-      args = ["-p", prompt, "--dangerously-skip-permissions", "--output-format", "text"];
+      args = ["-p", prompt + ghNote, "--dangerously-skip-permissions", "--output-format", "text"];
     }
     note(`running ${driver} headless`);
     const limit = timeoutMs ?? opts.defaultTimeoutMs ?? 10 * 60_000;
