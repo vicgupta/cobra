@@ -5,8 +5,8 @@ import { createSession } from "@/lib/auth/sessions";
 import { clearFailures, isLimited, recordFailure } from "@/lib/auth/rate-limit";
 import { sameOrigin } from "@/lib/auth/server";
 import { setSessionCookie } from "@/lib/auth/cookie";
+import { clientIp as ip } from "@/lib/client-ip";
 
-const ip = (req: Request) => req.headers.get("x-real-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "local";
 
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return NextResponse.json({ error: "Bad origin" }, { status: 403 });

@@ -2,7 +2,7 @@
 // Every page and route also validates the session server-side.
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = ["/login", "/api/auth/login"];
+const PUBLIC = ["/login", "/api/auth/login", "/forgot-password", "/api/auth/forgot-password", "/reset-password", "/api/auth/reset-password"];
 // Public sign-up was removed; answer 404 for everyone instead of a login redirect.
 const REMOVED = ["/signup", "/api/auth/signup"];
 

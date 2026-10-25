@@ -43,7 +43,10 @@ export function AuthForm() {
           {busy ? "…" : "Sign in"}
         </button>
       </form>
-      <p className="mt-4 text-center text-xs text-zinc-500">Accounts are created by an admin.</p>
+      <p className="mt-4 text-center text-sm">
+        <a href="/forgot-password" className="text-emerald-400 hover:underline">Forgot password?</a>
+      </p>
+      <p className="mt-2 text-center text-xs text-zinc-500">Accounts are created by an admin.</p>
     </div>
   );
 }

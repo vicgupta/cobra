@@ -66,6 +66,18 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     DROP TABLE users;
     ALTER TABLE users_new RENAME TO users;
   `),
+  // 4: password reset by email. Only the sha256 of the emailed token is stored.
+  (db) => db.exec(`
+    CREATE TABLE password_resets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX password_resets_user ON password_resets(user_id);
+  `),
 ];
 
 export function migrate(db: DB): void {
