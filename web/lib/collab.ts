@@ -104,7 +104,7 @@ type Started = { runId: string; followUp: Promise<void> };
 export function agentIssue(db: DB, gh: GitHub, u: Actor, repo: string, body: unknown, deps: RunDeps): Started {
   repo = repoGate(db, u, repo);
   const b = (body ?? {}) as Record<string, unknown>;
-  const ask = text(b.prompt, "prompt", 8000);
+  const ask = text(b.prompt, "prompt", 20000);
   const title = text(b.title, "title", 256, false);
   const pick = pickAgent(db, u, b, `${ask}\n\nReply with a GitHub issue: the first line is a short title, then a markdown body. Do not change any files.`);
   const r = runDirect(db, u, { ...pick, repo, mode: b.mode ?? "simulated", purpose: `Agent-written issue for ${repo}` }, deps);

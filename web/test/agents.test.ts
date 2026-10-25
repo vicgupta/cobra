@@ -127,3 +127,11 @@ test("agents in workflows: two agents chained, effective hash, re-approval after
   const bad2 = await saveWorkflow(db, a, { source: wf("bad2", "  - id: x\n    uses: agent\n    with: { agent: writer, driver: codex }\n") });
   assert.equal(bad2.status, 400);
 });
+
+test("agents: prompt limit is 20000 characters (Job 18)", () => {
+  const { db, member } = setup();
+  assert.equal(createAgent(db, member, { name: "long", engine: "codex", prompt: "x".repeat(15000) }).prompt.length, 15000);
+  createAgent(db, member, { name: "edge", engine: "codex", prompt: "x".repeat(20000) });
+  assert.throws(() => createAgent(db, member, { name: "toolong", engine: "codex", prompt: "x".repeat(20001) }), is(400));
+  assert.throws(() => updateAgent(db, member, "long", { prompt: "x".repeat(20001) }), is(400));
+});

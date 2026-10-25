@@ -141,7 +141,7 @@ export function resolveRunMeta(db: DB, user: Actor, w: LoadedWorkflow, body: Sta
   if (wantMode === "custom") {
     prompt = typeof b.prompt === "string" ? b.prompt.trim() : "";
     if (!prompt) return { error: "a free-form prompt is required when promptMode is custom" };
-    if (prompt.length > 8000) return { error: "prompt must be at most 8000 characters" };
+    if (prompt.length > 20000) return { error: "prompt must be at most 20000 characters" };
     promptSource = "custom";
   } else if (wantMode === "workflow") {
     if (!templ) return { error: "this workflow has no prompt template; enter a free-form prompt" };

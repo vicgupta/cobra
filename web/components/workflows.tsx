@@ -174,7 +174,7 @@ export function RunForm({ name, inputs, enabled, reason, flow: flowProp, hasAgen
           <label className="flex items-center gap-2"><input type="radio" name="promptMode" checked={promptMode === "custom"} onChange={() => setPromptMode("custom")} /> Free-form</label>
         </div>
         {promptMode === "workflow" && flow.prompt && <pre className="mt-2 whitespace-pre-wrap rounded-md bg-zinc-900 p-2 font-mono text-xs text-zinc-400">{flow.prompt}</pre>}
-        {promptMode === "custom" && <textarea aria-label="Prompt" className={`${input} mt-2 h-24`} maxLength={8000} placeholder="What should the agent do?" value={prompt} onChange={(e) => setPrompt(e.target.value)} />}
+        {promptMode === "custom" && <textarea aria-label="Prompt" className={`${input} mt-2 h-24`} maxLength={20000} placeholder="What should the agent do?" value={prompt} onChange={(e) => setPrompt(e.target.value)} />}
       </fieldset>
       <label className="block text-sm"><span className="text-zinc-300">Mode</span>
         <select aria-label="Mode" className={`${input} mt-1`} value={mode} onChange={(e) => setMode(e.target.value as "simulated" | "real")}>

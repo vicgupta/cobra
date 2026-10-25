@@ -91,7 +91,7 @@ export const WorkflowSchema = z.strictObject({
   system: z.boolean().default(false).describe("System-generated (shipped with Cobra); read-only for tenants"),
   template: z.boolean().default(false).describe("A template tenants copy into their own workflow"),
   engine: z.enum(ENGINES).optional().describe("Default coding agent for runs (overridable per run); claude-code when unset"),
-  prompt: z.string().max(8000).optional().describe("Default run prompt; may use ${{ inputs.* }}. Runs may use it or a free-form prompt"),
+  prompt: z.string().max(20000).optional().describe("Default run prompt; may use ${{ inputs.* }}. Runs may use it or a free-form prompt"),
   on: TriggerSchema.default({ manual: true }),
   governance: GovernanceSchema,
   inputs: z.record(z.string().regex(ID, "input names must be lowercase identifiers"), InputSchema).default({}),

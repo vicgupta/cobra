@@ -66,6 +66,8 @@ Pick repo → attach a team template (instance) → choose or override engine �
 
 **Navigation (Job 17).** Team and Repos moved under Settings too: sub-tabs are Templates, Team, Repos (`/settings/templates`, `/settings/team`, `/settings/repos`), using the same page components (`web/components/team.tsx`, `web/components/repos.tsx`). `/team` and `/repos` redirect with 307 and keep the query string (`next.config.ts`). Access is unchanged (members see Repos read-only; the designated-lead picker stays system-admin-only); API routes are unchanged. Admin > Settings still has only System settings and Templates.
 
+**Prompt limit (Job 18).** Prompts may be up to 20000 characters (was 8000): agent prompts, a workflow's default `prompt` (zod and `workflows/workflow.schema.json`), run prompts, the issue-agent prompt and the run form textarea. Extra instructions stay at 4000.
+
 ## Issues and pull requests (approved by Vic, 2026-10-25 6:19 PM ET)
 
 "Admin" here means the system admin only. There is no team-admin role; the team lead does most team work.

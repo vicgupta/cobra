@@ -39,7 +39,7 @@
     "prompt": {
       "description": "Default run prompt; may use ${{ inputs.* }}. Runs may use it or a free-form prompt",
       "type": "string",
-      "maxLength": 8000
+      "maxLength": 20000
     },
     "on": {
       "default": {

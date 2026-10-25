@@ -49,7 +49,7 @@ function validate(db: DB, tenantId: number, b: Input, partial: TeamAgent | null)
   if (!AGENT_ENGINES.includes(engine)) throw new AgentError(400, `engine must be one of ${AGENT_ENGINES.join(", ")}`);
   const prompt = b.prompt === undefined && partial ? partial.prompt : typeof b.prompt === "string" ? b.prompt.replace(/\r\n/g, "\n").trim() : "";
   if (!prompt) throw new AgentError(400, "prompt is required");
-  if (prompt.length > 8000) throw new AgentError(400, "prompt must be at most 8000 characters");
+  if (prompt.length > 20000) throw new AgentError(400, "prompt must be at most 20000 characters");
   let defaultRepo: string | null = b.defaultRepo === undefined && partial ? partial.defaultRepo : typeof b.defaultRepo === "string" && b.defaultRepo.trim() ? b.defaultRepo.trim() : null;
   if (b.defaultRepo !== undefined && b.defaultRepo !== null && typeof b.defaultRepo !== "string") throw new AgentError(400, "defaultRepo must be a string or null");
   if (defaultRepo) { const d = checkTeamRepo(db, tenantId, defaultRepo); if (d) throw new AgentError(400, d); }
