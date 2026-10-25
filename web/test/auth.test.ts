@@ -6,10 +6,16 @@ import { migrate, openDb } from "../lib/db";
 import { hashPassword, verifyPassword } from "../lib/auth/password";
 import { canUseSharedConfig, createSession, deleteSession, endOtherSessions, endSession, getSessionUser, LAST_SEEN_INTERVAL_MS, listSessions, SESSION_SHORT_TTL_MS, SESSION_TTL_MS } from "../lib/auth/sessions";
 import { authenticate, createUser, resetPassword } from "../lib/auth/users";
-import { createResetToken, GENERIC_RESET_MESSAGE, hashResetToken, requestReset, RESET_TTL_MS, resetTokenState, resetWithToken, throttleReset } from "../lib/auth/password-reset";
-import { clearFailures, isLimited, recordFailure } from "../lib/auth/rate-limit";
+import { createResetToken, GENERIC_RESET_MESSAGE, hashResetToken, requestReset, RESET_TTL_MS, resetTokenState, resetWithToken } from "../lib/auth/password-reset";
+import { cleanupRateLimits, consume, emailKey, LIMITS, peek } from "../lib/auth/rate-limit";
+import { loginBlocked, recordLoginFailure, recordLoginSuccess } from "../lib/auth/login-limit";
+import { clientIp } from "../lib/client-ip";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const PW = "pw-1234567890";
+const count = (db: DatabaseSync, sql: string, ...a: Array<string | number>) => (db.prepare(sql).get(...a) as { c: number }).c;
 
 test("password hashing: salted, verifies, rejects wrong", () => {
   const a = hashPassword("correct horse"), b = hashPassword("correct horse");
@@ -77,14 +83,66 @@ test("migration 3 drops username, keeping ids, sessions and email login", () => 
   assert.equal((db.prepare("SELECT count(*) c FROM sessions").get() as { c: number }).c, 0);
 });
 
-test("login rate limit after 10 failures", () => {
-  for (let i = 0; i < 10; i++) recordFailure("k", 0);
-  assert.ok(isLimited("k", 1));
-  assert.ok(!isLimited("k", 15 * 60 * 1000 + 1));
-  clearFailures("k");
+const M15 = 15 * 60 * 1000;
+
+test("login: per-account lockout after 10 failures, Retry-After, success clears account only", () => {
+  const db = openDb(":memory:");
+  const now = 1_000_000;
+  for (let i = 0; i < 9; i++) recordLoginFailure(db, `10.0.0.${i}`, "A@x.io", now);
+  assert.equal(loginBlocked(db, "10.9.9.9", "a@x.io", now), null);
+  recordLoginFailure(db, "10.0.0.9", "a@x.io", now);
+  const b = loginBlocked(db, "10.9.9.9", " a@X.io ", now + 60_000)!;
+  assert.ok(b.limited);
+  assert.equal(b.retryAfterSec, (M15 - 60_000) / 1000);
+  assert.equal(loginBlocked(db, "10.9.9.9", "other@x.io", now), null);
+  // raw email never stored
+  assert.equal(count(db, "SELECT count(*) c FROM rate_limits WHERE key LIKE '%@%'"), 0);
+  recordLoginSuccess(db, "a@x.io");
+  assert.equal(loginBlocked(db, "10.9.9.9", "a@x.io", now), null);
+  // per-IP: 10 failures across accounts lock the IP; a success does not clear it
+  for (let i = 0; i < 10; i++) recordLoginFailure(db, "6.6.6.6", `u${i}@x.io`, now);
+  recordLoginSuccess(db, "u0@x.io");
+  assert.ok(loginBlocked(db, "6.6.6.6", "new@x.io", now));
 });
 
-const count = (db: DatabaseSync, sql: string, ...a: Array<string | number>) => (db.prepare(sql).get(...a) as { c: number }).c;
+test("rate limits: window expiry and cleanup of expired rows", () => {
+  const db = openDb(":memory:");
+  const now = 5_000_000;
+  for (let i = 0; i < 10; i++) assert.equal(consume(db, LIMITS.forgotIp, "1.1.1.1", now).limited, false);
+  assert.equal(consume(db, LIMITS.forgotIp, "1.1.1.1", now).limited, true);
+  assert.equal(peek(db, LIMITS.forgotIp, "1.1.1.1", now).count, 10);
+  assert.equal(consume(db, LIMITS.forgotIp, "1.1.1.1", now + M15).limited, false);
+  assert.equal(peek(db, LIMITS.forgotIp, "1.1.1.1", now + M15).count, 1);
+  consume(db, LIMITS.resetIp, "2.2.2.2", now);
+  assert.equal(cleanupRateLimits(db, now + 2 * M15, true), 2);
+  assert.equal(count(db, "SELECT count(*) c FROM rate_limits"), 0);
+});
+
+test("rate limits persist across a DB reopen (simulated restart)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cobra-rl-"));
+  try {
+    const file = join(dir, "t.db"), now = Date.now();
+    let db = openDb(file);
+    for (let i = 0; i < 10; i++) recordLoginFailure(db, "3.3.3.3", "r@x.io", now);
+    for (let i = 0; i < 20; i++) consume(db, LIMITS.resetIp, "4.4.4.4", now);
+    db.close();
+    db = openDb(file);
+    assert.ok(loginBlocked(db, "9.9.9.9", "r@x.io", now + 1000));
+    assert.ok(loginBlocked(db, "3.3.3.3", "x@x.io", now + 1000));
+    assert.equal(consume(db, LIMITS.resetIp, "4.4.4.4", now + 1000).limited, true);
+    db.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("client IP: trusts nginx X-Real-IP / last X-Forwarded-For hop, not client-supplied entries", () => {
+  const r = (h: Record<string, string>) => clientIp(new Request("http://x/", { headers: h }));
+  assert.equal(r({ "x-real-ip": "5.5.5.5", "x-forwarded-for": "1.2.3.4, 5.5.5.5" }), "5.5.5.5");
+  assert.equal(r({ "x-forwarded-for": "1.2.3.4, 5.5.5.5" }), "5.5.5.5");
+  assert.equal(r({}), "local");
+});
+
 
 test("migration 4 adds password_resets on an existing v3 database", () => {
   const db = new DatabaseSync(":memory:");
@@ -101,7 +159,7 @@ test("migration 4 adds password_resets on an existing v3 database", () => {
   assert.equal(authenticate(db, "v@x.io", PW), id);
   assert.equal(getSessionUser(db, token)?.id, id);
   migrate(db); // no-op when current
-  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 5);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 6);
 });
 
 test("reset tokens: random, stored only as sha256, expire after 30 minutes", () => {
@@ -169,9 +227,28 @@ test("reset request: generic message, nothing sent or stored for unknown email; 
   await new Promise((r) => setImmediate(r));
   assert.equal(sent.length, 3);
   assert.equal(count(db, "SELECT count(*) c FROM password_resets"), 3);
-  for (let i = 0; i < 10; i++) assert.equal(throttleReset("ip:t", 10, now), false);
-  assert.equal(throttleReset("ip:t", 10, now), true);
-  assert.equal(throttleReset("ip:t", 10, now + 15 * 60 * 1000), false);
+  // per-email limit is silent: 4th request same generic message, no email, no token
+  assert.equal(peek(db, LIMITS.forgotEmail, emailKey("known@x.io"), now).limited, true);
+  assert.equal(requestReset(db, "KNOWN@x.io", send, now + 1000), GENERIC_RESET_MESSAGE);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(sent.length, 3);
+  assert.equal(count(db, "SELECT count(*) c FROM password_resets"), 3);
+  // and it expires with the window
+  requestReset(db, "known@x.io", send, now + 15 * 60 * 1000);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(sent.length, 4);
+});
+
+test("migration 6: rate_limits table created from v5 with data intact", () => {
+  const db = new DatabaseSync(":memory:");
+  migrate(db, 5);
+  db.prepare("INSERT INTO tenants VALUES (1, 'Vic', 'default', 0)").run();
+  migrate(db);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 6);
+  assert.equal(count(db, "SELECT count(*) c FROM tenants"), 1);
+  const cols = (db.prepare("PRAGMA table_info(rate_limits)").all() as Array<{ name: string }>).map((c) => c.name);
+  assert.deepEqual(cols, ["bucket", "key", "count", "window_start", "expires_at"]);
+  assert.equal(consume(db, LIMITS.loginIp, "1.1.1.1").count, 1);
 });
 
 test("migration 5: existing sessions stay valid (remembered), get a public id and metadata columns", () => {
@@ -182,7 +259,7 @@ test("migration 5: existing sessions stay valid (remembered), get a public id an
   const token = "v4-session-token", t0 = Date.now() - 1000;
   db.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, 5, ?, ?)").run(createHash("sha256").update(token).digest("hex"), Date.now() + SESSION_TTL_MS, t0);
   migrate(db);
-  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 5);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 6);
   const u = getSessionUser(db, token)!;
   assert.equal(u.id, 5);
   assert.match(u.sessionId, /^[0-9a-f]{32}$/);

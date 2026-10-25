@@ -4,6 +4,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { DB } from "../db";
 import { hashPassword } from "./password";
 import { MIN_PASSWORD } from "./users";
+import { consume, emailKey, LIMITS } from "./rate-limit";
 
 export const RESET_TTL_MS = 30 * 60 * 1000;
 export const RESET_URL_BASE = "https://nova.kantsy.com/reset-password";
@@ -89,21 +90,6 @@ export function resetEmail(token: string): { subject: string; body: string } {
   };
 }
 
-// In-memory throttle for reset requests (a DB-backed limiter comes later).
-const WINDOW = 15 * 60 * 1000;
-export const RESET_LIMITS = { ip: 10, email: 3 };
-const hits = new Map<string, number[]>();
-
-/** Records a request for the key and returns true when it is over the limit. */
-export function throttleReset(key: string, max: number, now = Date.now()): boolean {
-  const recent = (hits.get(key) ?? []).filter((t) => now - t < WINDOW);
-  const limited = recent.length >= max;
-  if (!limited) recent.push(now);
-  hits.set(key, recent);
-  if (hits.size > 10_000) for (const [k, v] of hits) if (!v.some((t) => now - t < WINDOW)) hits.delete(k);
-  return limited;
-}
-
 /**
  * Handles a reset request for an email: throttled per email (silently), token
  * created and email sent (not awaited) only when the user exists. Always
@@ -111,7 +97,7 @@ export function throttleReset(key: string, max: number, now = Date.now()): boole
  */
 export function requestReset(db: DB, email: string, send: (to: string, subject: string, body: string) => Promise<void>, now = Date.now()): string {
   const e = email.trim().toLowerCase();
-  if (!throttleReset(`email:${e}`, RESET_LIMITS.email, now)) {
+  if (!consume(db, LIMITS.forgotEmail, emailKey(e), now).limited) {
     const t = createResetToken(db, e, now);
     if (t) {
       const { subject, body } = resetEmail(t.token);

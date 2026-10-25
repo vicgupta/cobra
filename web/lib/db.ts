@@ -91,6 +91,19 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     ALTER TABLE sessions ADD COLUMN ip TEXT NOT NULL DEFAULT '';
     UPDATE sessions SET last_seen_at = created_at;
   `),
+  // 6: DB-backed rate limits (fixed window per bucket + key). Emails are stored
+  // as sha256, never raw.
+  (db) => db.exec(`
+    CREATE TABLE rate_limits (
+      bucket TEXT NOT NULL,
+      key TEXT NOT NULL,
+      count INTEGER NOT NULL,
+      window_start INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      PRIMARY KEY (bucket, key)
+    ) WITHOUT ROWID;
+    CREATE INDEX rate_limits_expires ON rate_limits(expires_at);
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */
