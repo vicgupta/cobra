@@ -268,10 +268,12 @@ test("service: approve/reject/run/view enforce permissions; run log is recorded 
   // run log visibility
   assert.equal(runDetailFor(db, lead, r.id).status, 200, "runner");
   assert.equal(runDetailFor(db, admin, r.id).status, 200, "tenant admin");
-  assert.equal(runDetailFor(db, member, r.id).status, 404);
-  assert.equal(runDetailFor(db, owner, r.id).status, 404, "owner of the workflow is not the runner");
+  assert.equal(runDetailFor(db, member, r.id).status, 200, "member of the same tenant sees the run log");
+  assert.equal(runDetailFor(db, owner, r.id).status, 200, "any same-tenant user");
   assert.equal(runDetailFor(db, otherAdmin, r.id).status, 404, "admin of another tenant");
   assert.ok(!canViewRun({ id: lead.id, role: "team_lead", tenantId: 999 }, r));
+  assert.ok(!canViewRun({ id: member.id, role: "member", tenantId: 999 }, r), "member of another tenant");
+  assert.ok(canViewRun({ id: 12345, role: "member", tenantId: r.tenantId }, r));
   // templates can't be run; template copy endpoint
   assert.equal(startRun(db, admin, "issue-to-merge", {}, deps()).status, 403);
   const copy = templateCopy(db, member, "cloud-software-factory").body as { source: string; templateName: string };
@@ -369,4 +371,20 @@ test("github-files client: contents API calls (mocked fetch), no token -> clear 
   assert.equal(calls[0][0], "https://api.github.com/repos/vicgupta/cobra-sandbox/contents/w/x.yaml?ref=dev");
   assert.equal(await c.get("vicgupta/cobra-sandbox", "missing.yaml"), null);
   await assert.rejects(githubFiles(undefined, f).get("vicgupta/cobra-sandbox", "x.yaml"), /GITHUB_TOKEN is not set/);
+});
+
+test("tenant run list is scoped by tenant and visible to members", async () => {
+  const { openDb } = await import("../lib/db");
+  const db = openDb(":memory:");
+  const { createUser } = await import("../lib/auth/users");
+  const a = createUser(db, { email: "a@x.io", tenant: "default", role: "admin", password: "pw-123456789" });
+  const m = createUser(db, { email: "m@x.io", tenant: "default", role: "member", password: "pw-123456789" });
+  const o = createUser(db, { email: "o@x.io", tenant: "acme", tenantName: "Acme", role: "member", password: "pw-123456789" });
+  const t = (id: number) => (db.prepare("SELECT tenant_id t FROM users WHERE id = ?").get(id) as { t: number }).t;
+  db.prepare("INSERT INTO runs (id, tenant_id, created_by, agent, repo, issue, title, prompt, simulated, started_at) VALUES ('sim_x', ?, ?, 'claude-code', 'r', 1, 't', 'p', 1, 1)").run(t(a), a);
+  const list = (id: number) => db.prepare("SELECT id FROM runs WHERE tenant_id = ?").all(t(id)).length;
+  assert.equal(list(m), 1); assert.equal(list(o), 0);
+  const r = { createdBy: a, tenantId: t(a) };
+  assert.ok(canViewRun({ id: m, role: "member", tenantId: t(m) }, r));
+  assert.ok(!canViewRun({ id: o, role: "member", tenantId: t(o) }, r));
 });

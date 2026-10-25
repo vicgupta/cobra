@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { AgentBadge, AuthBadge } from "@/components/badges";
 import { Badge, Card, Stat } from "@/components/ui";
-import { AuthGate, ComingSoon } from "@/components/auth-gate";
+import { AuthGate } from "@/components/auth-gate";
 import { canUseSharedConfig, type SessionUser } from "@/lib/auth/sessions";
 import { getDb } from "@/lib/db";
 import { agentModes } from "@/lib/env-file";
@@ -31,7 +31,8 @@ export default function Dashboard() {
 
 async function DashboardBody({ user }: { user: SessionUser }) {
   const shared = canUseSharedConfig(user);
-  const { now, runs } = shared ? listRunsWithTime(user.tenantId) : { now: 0, runs: [] };
+  // Every member of the tenant sees its runs; starting runs and agent status stay admin-only.
+  const { now, runs } = listRunsWithTime(user.tenantId);
   const week = runs.filter((r) => now - r.startedAt < WEEK);
   const modes = shared ? await agentModes() : null;
   const team = getDb().prepare("SELECT name, email, role FROM users WHERE tenant_id = ? ORDER BY created_at").all(user.tenantId) as
@@ -47,7 +48,7 @@ async function DashboardBody({ user }: { user: SessionUser }) {
         {shared && <Link href="/runs/new" className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400">New test run</Link>}
       </div>
 
-      {!shared ? <ComingSoon /> : (
+      {(
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Stat label="Runs this week" value={week.length} hint="simulated test runs" />
@@ -57,7 +58,7 @@ async function DashboardBody({ user }: { user: SessionUser }) {
 
           <Card title="Recent runs" subtitle="Simulated test runs so far; real agent runs will appear here">
             {runs.length === 0 ? (
-              <p className="py-6 text-center text-sm text-zinc-500">No runs yet. <Link href="/runs/new" className="text-emerald-400 hover:underline">Start a test run</Link>.</p>
+              <p className="py-6 text-center text-sm text-zinc-500">No runs yet.{shared && <> <Link href="/runs/new" className="text-emerald-400 hover:underline">Start a test run</Link>.</>}</p>
             ) : (
               <ul className="divide-y divide-zinc-800">
                 {runs.slice(0, 15).map((r) => (

@@ -71,8 +71,8 @@ export function getRunDetail(db: DB, id: string): RunDetail | null {
 
 /** Only the user who started the run, or an admin of the run's tenant. */
 export function canViewRun(user: { id: number; role: string; tenantId: number }, run: Pick<RunDetail, "createdBy" | "tenantId">): boolean {
-  if (run.tenantId !== user.tenantId) return false;
-  return run.createdBy === user.id || user.role === "admin";
+  // Any member of the run's own tenant may view it (read-only log); never across tenants.
+  return run.tenantId === user.tenantId;
 }
 
 export function listWorkflowRuns(db: DB, tenantId: number, workflow: string, limit = 20) {

@@ -11,7 +11,7 @@ export const metadata = { title: "Run log · Cobra" };
 
 function Log({ user, id }: { user: SessionUser; id: string }) {
   const r = runDetailFor(getDb(), actor(user), id);
-  if (r.status !== 200) return <p className="text-sm text-zinc-400">Run not found, or you don&apos;t have access (only the user who started it and workspace admins can view a run).</p>;
+  if (r.status !== 200) return <p className="text-sm text-zinc-400">Run not found, or you don&apos;t have access (runs are visible to members of their own workspace).</p>;
   return <RunLog initial={r.body as RunDetail} />;
 }
 
