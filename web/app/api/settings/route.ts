@@ -1,29 +1,29 @@
 import { NextResponse } from "next/server";
-import { emptySettings, mask, resolveAuthMode, type MaskedSettings, type Settings } from "@/lib/settings";
-import { readJson, writeJson } from "@/lib/store";
+import { AGENT_ENV, mask, resolveAuthMode, type MaskedSettings } from "@/lib/settings";
+import { envFilePath, readManaged, writeManaged, type ManagedKey } from "@/lib/env-file";
 import type { AgentId } from "@/lib/types";
 
-const FILE = "settings.json";
 const AGENTS: AgentId[] = ["claude-code", "codex"];
 
-function toMasked(s: Settings): MaskedSettings {
-  const out = {} as MaskedSettings;
+async function masked(): Promise<MaskedSettings & { envFile: string }> {
+  const v = await readManaged();
+  const out = { envFile: envFilePath() } as MaskedSettings & { envFile: string };
   for (const a of AGENTS) {
-    const f = s[a];
+    const sub = v[AGENT_ENV[a].subscription as ManagedKey];
+    const key = v[AGENT_ENV[a].apiKey as ManagedKey];
     out[a] = {
-      subscription: mask(f.subscription),
-      apiKey: mask(f.apiKey),
-      hasSubscription: !!f.subscription,
-      hasApiKey: !!f.apiKey,
-      mode: resolveAuthMode({ subscription: !!f.subscription, apiKey: !!f.apiKey }),
+      subscription: mask(sub),
+      apiKey: mask(key),
+      hasSubscription: !!sub,
+      hasApiKey: !!key,
+      mode: resolveAuthMode({ subscription: !!sub, apiKey: !!key }),
     };
   }
   return out;
 }
 
 export async function GET() {
-  const s = await readJson<Settings>(FILE, emptySettings());
-  return NextResponse.json(toMasked({ ...emptySettings(), ...s }));
+  return NextResponse.json(await masked());
 }
 
 /**
@@ -37,18 +37,31 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const current = { ...emptySettings(), ...(await readJson<Settings>(FILE, emptySettings())) };
   const input = (body ?? {}) as Record<string, Record<string, unknown>>;
+  const changes: Partial<Record<ManagedKey, string>> = {};
   for (const a of AGENTS) {
     const patch = input[a];
     if (!patch || typeof patch !== "object") continue;
-    for (const key of ["subscription", "apiKey"] as const) {
-      const v = patch[key];
+    for (const field of ["subscription", "apiKey"] as const) {
+      const v = patch[field];
       if (v === undefined) continue;
-      if (v !== null && typeof v !== "string") return NextResponse.json({ error: `${a}.${key} must be a string` }, { status: 400 });
-      current[a][key] = (v ?? "").trim();
+      if (v !== null && typeof v !== "string") return NextResponse.json({ error: `${a}.${field} must be a string` }, { status: 400 });
+      const envKey = AGENT_ENV[a][field] as ManagedKey;
+      let value = (v ?? "").trim();
+      if (value && envKey === "CODEX_AUTH_JSON") {
+        try {
+          value = JSON.stringify(JSON.parse(value));
+        } catch {
+          return NextResponse.json({ error: "Codex auth.json contents must be valid JSON" }, { status: 400 });
+        }
+      }
+      changes[envKey] = value;
     }
   }
-  await writeJson(FILE, current);
-  return NextResponse.json(toMasked(current));
+  try {
+    await writeManaged(changes);
+  } catch {
+    return NextResponse.json({ error: "Could not write the server environment file" }, { status: 500 });
+  }
+  return NextResponse.json(await masked());
 }

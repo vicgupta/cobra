@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { AgentBadge, AuthBadge, ReviewBadge, RunStatusBadge } from "@/components/badges";
+import { AgentBadge, ReviewBadge, RunStatusBadge } from "@/components/badges";
 import { ExternalIcon } from "@/components/icons";
 import { Badge, Card, ExampleDataBanner, Stat } from "@/components/ui";
 import { agents, runs, team, weekStats } from "@/lib/mock-data";
 import { AGENT_LABEL } from "@/lib/types";
+import { Suspense } from "react";
+import { LiveAuthBadge } from "@/components/live-config";
 
 export default function Dashboard() {
   return (
@@ -79,7 +81,7 @@ export default function Dashboard() {
               <div key={a.agent} className="rounded-lg border border-zinc-800 p-4">
                 <div className="flex items-center justify-between">
                   <p className="font-medium">{AGENT_LABEL[a.agent]}</p>
-                  <AuthBadge mode={a.authMode} />
+                  <Suspense fallback={null}><LiveAuthBadge agent={a.agent} /></Suspense>
                 </div>
                 <dl className="mt-3 grid grid-cols-2 gap-y-2 text-sm">
                   <dt className="text-zinc-500">Active jobs</dt><dd className="text-right tabular-nums">{a.activeJobs}</dd>

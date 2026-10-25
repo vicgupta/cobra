@@ -1,5 +1,5 @@
 // EXAMPLE DATA ONLY — shown in the dashboard until Cobra is wired to real runs.
-import type { AgentId, AuthMode, ReviewStatus, RunStatus } from "./types";
+import type { AgentId, ReviewStatus, RunStatus } from "./types";
 
 export type TeamMember = {
   name: string;
@@ -27,7 +27,6 @@ export type AgentActivity = {
   activeJobs: number;
   successRate: number;
   lastRun: string;
-  authMode: AuthMode;
   runsThisWeek: number;
 };
 
@@ -50,8 +49,8 @@ export const runs: FactoryRun[] = [
 ];
 
 export const agents: AgentActivity[] = [
-  { agent: "claude-code", activeJobs: 2, successRate: 0.92, lastRun: "12 min ago", authMode: "subscription", runsThisWeek: 23 },
-  { agent: "codex", activeJobs: 1, successRate: 0.88, lastRun: "48 min ago", authMode: "api-key", runsThisWeek: 17 },
+  { agent: "claude-code", activeJobs: 2, successRate: 0.92, lastRun: "12 min ago", runsThisWeek: 23 },
+  { agent: "codex", activeJobs: 1, successRate: 0.88, lastRun: "48 min ago", runsThisWeek: 17 },
 ];
 
 export const weekStats = { runsThisWeek: 40, prsOpened: 34, awaitingReview: runs.filter((r) => r.review === "awaiting-review").length };

@@ -6,6 +6,7 @@
 // the "claude" agent entry in factory.config.json).
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { readEnvFile } from "../config/env-file.js";
 import { q, sh, runScript, type ScriptResult, type Workspace } from "./workspace.js";
 
 export const HOME = "/workspace/home";
@@ -73,6 +74,18 @@ export interface ResolvedAuth {
 
 /** Reads a secret's value without ever printing it. */
 export function readSecret(entry: SecretEntry): string | undefined {
+  // The server env file (COBRA_ENV_FILE) is authoritative when it exists, read
+  // fresh each call so Settings changes apply on the next run without a restart.
+  const file = readEnvFile();
+  if (file) {
+    const fromFile = file[entry.secret];
+    if (fromFile) return fromFile;
+    if (process.env[entry.secret]) {
+      // Present in the env only because systemd loaded an older copy of the file;
+      // the file no longer sets it, so treat it as cleared.
+      if (fileTracksKey(entry.secret)) return undefined;
+    }
+  }
   const fromEnv = process.env[entry.secret];
   if (fromEnv) return fromEnv;
   try {
@@ -82,9 +95,13 @@ export function readSecret(entry: SecretEntry): string | undefined {
   } catch {
     // Malformed blob: fall through to the local file.
   }
-  const file = entry.localFile?.replace(/^~/, homedir());
-  return file && existsSync(file) ? readFileSync(file, "utf8") : undefined;
+  const local = entry.localFile?.replace(/^~/, homedir());
+  return local && existsSync(local) ? readFileSync(local, "utf8") : undefined;
 }
+
+/** Keys managed by the Settings page; a missing value in the env file means cleared. */
+export const MANAGED_KEYS = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CODEX_AUTH_JSON", "CODEX_API_KEY"];
+const fileTracksKey = (key: string) => MANAGED_KEYS.includes(key);
 
 const dirOf = (path: string) => path.slice(0, path.lastIndexOf("/"));
 
