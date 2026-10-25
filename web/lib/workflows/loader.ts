@@ -9,7 +9,11 @@ import { formatIssues, WorkflowSchema, type Workflow } from "./schema";
 
 /** repo: workflows/*.yaml (built-ins); template: workflows/templates/*.yaml (system templates); tenant: a tenant's own copy stored in the DB. */
 export type Origin = "repo" | "template" | "tenant";
-export type LoadedWorkflow = { workflow: Workflow; file: string; source: string; hash: string; origin: Origin };
+export type LoadedWorkflow = {
+  workflow: Workflow; file: string; source: string; hash: string; origin: Origin;
+  /** Email of whoever saved this content (tenant workflows); counts as an author for self-approval. */
+  author?: string;
+};
 export type LoadError = { file: string; errors: string[] };
 export class WorkflowError extends Error {
   constructor(public file: string, public errors: string[]) {
@@ -97,7 +101,7 @@ export function parseWorkflow(source: string, file = "<inline>", origin: Origin 
   const flagErr = origin === "template"
     ? (!r.data.system || !r.data.template ? ["system templates must set system: true and template: true"] : [])
     : origin === "tenant"
-      ? (r.data.system || r.data.template ? ["tenant workflows can't set system or template (only Cobra ships those)"] : [])
+      ? (r.data.system ? ["system: true is reserved for templates shipped with Cobra"] : [])
       : (r.data.template ? ["template: true files belong in workflows/templates/"] : []);
   if (flagErr.length) throw new WorkflowError(file, flagErr);
   const base = path.basename(file).replace(/\.ya?ml$/, "");

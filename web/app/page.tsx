@@ -62,11 +62,13 @@ async function DashboardBody({ user }: { user: SessionUser }) {
               <ul className="divide-y divide-zinc-800">
                 {runs.slice(0, 15).map((r) => (
                   <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3 text-sm">
-                    <span className="font-medium"><span className="text-zinc-500">#{r.issue}</span> {r.title}</span>
-                    <span className="font-mono text-xs text-zinc-400">{r.repo}</span>
-                    <AgentBadge agent={r.agent} />
-                    <Badge tone="gray" dot>{STEP_LABEL[stepAt(r, now)]}</Badge>
-                    <Badge tone="amber">Simulated</Badge>
+                    <Link href={`/runs/${r.id}`} className="font-medium hover:underline">{r.issue > 0 && <span className="text-zinc-500">#{r.issue} </span>}{r.title}</Link>
+                    {r.repo && <span className="font-mono text-xs text-zinc-400">{r.repo}</span>}
+                    {r.workflow && r.workflow !== "test-run" ? (
+                      <><Badge tone="violet">{r.workflow}</Badge><Badge tone="gray" dot>{r.status ?? "unknown"}</Badge></>
+                    ) : (
+                      <><AgentBadge agent={r.agent} /><Badge tone="gray" dot>{STEP_LABEL[stepAt(r, now)]}</Badge><Badge tone="amber">Simulated</Badge></>
+                    )}
                     <span className="ml-auto text-xs text-zinc-500">{ago(now - r.startedAt)}</span>
                   </li>
                 ))}

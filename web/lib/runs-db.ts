@@ -3,8 +3,8 @@ import { getDb } from "./db";
 import type { SimulatedRun } from "./runs";
 import type { AgentId } from "./types";
 
-type Row = { id: string; agent: AgentId; repo: string; issue: number; title: string; prompt: string; started_at: number };
-const toRun = (r: Row): SimulatedRun => ({ id: r.id, agent: r.agent, repo: r.repo, issue: r.issue, title: r.title, prompt: r.prompt, startedAt: r.started_at, simulated: true });
+type Row = { id: string; agent: AgentId; repo: string; issue: number; title: string; prompt: string; started_at: number; workflow: string | null; status: string | null };
+const toRun = (r: Row): SimulatedRun => ({ id: r.id, agent: r.agent, repo: r.repo, issue: r.issue, title: r.title, prompt: r.prompt, startedAt: r.started_at, simulated: true, workflow: r.workflow, status: r.status });
 
 export function listRuns(tenantId: number, limit = 50): SimulatedRun[] {
   return (getDb().prepare("SELECT * FROM runs WHERE tenant_id = ? ORDER BY started_at DESC LIMIT ?").all(tenantId, limit) as Row[]).map(toRun);

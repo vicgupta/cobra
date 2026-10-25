@@ -1,36 +1,32 @@
 import { NextResponse } from "next/server";
-import { stepAt, type SimulatedRun } from "@/lib/runs";
-import { insertRun, listRuns } from "@/lib/runs-db";
+import { stepAt } from "@/lib/runs";
+import { listRuns } from "@/lib/runs-db";
 import { apiGuard } from "@/lib/auth/server";
+import { actor, getDb, runDeps } from "@/lib/workflows/server";
+import { startRun } from "@/lib/workflows/service";
 
-// Simulated runs only: nothing here executes Claude Code or Codex.
+// Test runs are the built-in workflows/test-run.yaml, executed by the workflow
+// engine (simulated steps only: nothing executes Claude Code or Codex).
+const TEST_RUN_WORKFLOW = "test-run";
+
 export async function GET(req: Request) {
   const g = await apiGuard(req, { sharedConfig: true });
   if (g.error) return g.error;
   const now = Date.now();
-  return NextResponse.json(listRuns(g.user.tenantId).map((r) => ({ ...r, step: stepAt(r, now) })));
+  return NextResponse.json(listRuns(g.user.tenantId).filter((r) => !r.workflow || r.workflow === TEST_RUN_WORKFLOW).map((r) => ({ ...r, step: stepAt(r, now) })));
 }
 
 export async function POST(req: Request) {
   const g = await apiGuard(req, { sharedConfig: true });
   if (g.error) return g.error;
-  const b = (await req.json().catch(() => null)) as Partial<SimulatedRun> | null;
+  const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!b) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  const issue = Number(b.issue);
-  if (b.agent !== "claude-code" && b.agent !== "codex") return NextResponse.json({ error: "agent must be claude-code or codex" }, { status: 400 });
-  if (!b.repo || !/^[\w.-]+\/[\w.-]+$/.test(b.repo)) return NextResponse.json({ error: "repo must look like owner/name" }, { status: 400 });
-  if (!Number.isInteger(issue) || issue <= 0) return NextResponse.json({ error: "issue must be a positive integer" }, { status: 400 });
-
-  const run: SimulatedRun = {
-    id: `sim_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-    agent: b.agent,
-    repo: b.repo,
-    issue,
-    title: String(b.title ?? "").slice(0, 200) || `Issue #${issue}`,
-    prompt: String(b.prompt ?? "").slice(0, 4000),
-    startedAt: Date.now(),
-    simulated: true,
-  };
-  insertRun(g.user.tenantId, g.user.id, run);
-  return NextResponse.json({ ...run, step: "queued" }, { status: 201 });
+  const inputs = { agent: b.agent, repo: b.repo, issue: b.issue, title: b.title, prompt: b.prompt };
+  const r = startRun(getDb(), actor(g.user), TEST_RUN_WORKFLOW, { inputs }, runDeps(), { idPrefix: "sim_" });
+  if (!r.run) return NextResponse.json(r.body, { status: r.status });
+  const i = r.run.inputs;
+  return NextResponse.json({
+    id: r.run.id, agent: i.agent, repo: i.repo, issue: i.issue, title: String(i.title || "") || `Issue #${i.issue}`, prompt: i.prompt ?? "",
+    startedAt: r.run.startedAt, simulated: true, workflow: TEST_RUN_WORKFLOW, step: "queued",
+  }, { status: 201 });
 }

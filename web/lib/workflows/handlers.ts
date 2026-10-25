@@ -23,7 +23,7 @@ export const shell: StepHandler = ({ run, secrets, signal, with: w }) => new Pro
   if (process.env.COBRA_WORKFLOW_ALLOW_SHELL !== "1") return reject(new Error("shell steps are disabled on this server (set COBRA_WORKFLOW_ALLOW_SHELL=1)"));
   const child = spawn("bash", ["-c", run ?? ""], {
     cwd: typeof w.cwd === "string" ? w.cwd : undefined,
-    env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: process.env.HOME ?? "/tmp", ...secrets },
+    env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: process.env.HOME ?? "/tmp", ...secrets } as unknown as NodeJS.ProcessEnv,
     signal,
   });
   let stdout = "", stderr = "";
@@ -50,6 +50,9 @@ export const agent = (runner?: AgentRunner): StepHandler => async ({ with: w, se
 export const github = (fetchImpl: typeof fetch = fetch): StepHandler => async ({ with: w, secrets, signal }) => {
   const repo = String(w.repo ?? "");
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error("with.repo must look like owner/name");
+  // Optional allow-list (e.g. COBRA_GITHUB_ALLOWED_REPOS=vicgupta/cobra-sandbox while testing).
+  const allowed = process.env.COBRA_GITHUB_ALLOWED_REPOS?.split(",").map((r) => r.trim().toLowerCase()).filter(Boolean);
+  if (allowed?.length && !allowed.includes(repo.toLowerCase())) throw new Error(`repo ${repo} is not in COBRA_GITHUB_ALLOWED_REPOS`);
   const call = async (method: string, url: string, body: unknown) => {
     const r = await fetchImpl(`https://api.github.com/repos/${repo}${url}`, {
       method, signal, body: JSON.stringify(body),

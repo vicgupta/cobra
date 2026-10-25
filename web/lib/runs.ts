@@ -20,6 +20,9 @@ export type SimulatedRun = {
   prompt: string;
   startedAt: number;
   simulated: true;
+  /** Workflow that produced the run (test runs: test-run) and its engine status. */
+  workflow?: string | null;
+  status?: string | null;
 };
 
 export function stepAt(run: Pick<SimulatedRun, "startedAt">, now: number): RunStep {

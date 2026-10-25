@@ -7,6 +7,8 @@ import { CobraLogo } from "./icons";
 
 const links = [
   { href: "/", label: "Dashboard" },
+  { href: "/workflows", label: "Workflows" },
+  { href: "/templates", label: "Templates" },
   { href: "/runs/new", label: "Test run" },
   { href: "/settings", label: "Settings" },
 ] as const;

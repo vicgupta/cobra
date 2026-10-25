@@ -3,6 +3,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { seedTemplates } from "./workflows/store";
 
 export type DB = DatabaseSync;
 
@@ -156,8 +157,16 @@ const MIGRATIONS: Array<(db: DB) => void> = [
       name TEXT NOT NULL,
       source TEXT NOT NULL,
       content_hash TEXT NOT NULL,
+      -- Instance link: the template (name + content hash; system or workspace) this was created from.
       template_name TEXT,
       template_hash TEXT,
+      -- Where the YAML lives. 'github': source is a cache of github_repo/github_path at github_sha.
+      storage TEXT NOT NULL DEFAULT 'database' CHECK (storage IN ('database', 'github')),
+      github_repo TEXT,
+      github_path TEXT,
+      github_branch TEXT,
+      github_sha TEXT,
+      synced_at INTEGER,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at INTEGER NOT NULL,
@@ -216,6 +225,9 @@ export function getDb(): DB {
   if (!g.__cobraDb) {
     g.__cobraDb = openDb(dbPath());
     importLegacyRuns(g.__cobraDb);
+    // System workflow templates: upsert from workflows/templates/*.yaml (name + content hash).
+    const { errors } = seedTemplates(g.__cobraDb);
+    for (const e of errors) console.error(`workflow template not seeded: ${e}`);
   }
   return g.__cobraDb;
 }

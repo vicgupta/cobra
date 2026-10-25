@@ -43,6 +43,7 @@ export function decisions(db: DB, tenantId: number, name: string, hash: string):
 export function approvalState(db: DB, tenantId: number, loaded: LoadedWorkflow, policy = selfApprovalPolicy()): ApprovalState {
   const { workflow: wf, hash } = loaded;
   const gov = wf.governance;
+  if (wf.template && !wf.system) return { status: "pending", hash, decisions: [], reason: "templates can't be run; copy into a workflow" };
   // System templates shipped in workflows/templates are pre-approved by the system
   // (the repo review is the approval). Tenant copies need the normal flow.
   if (loaded.origin === "template" && wf.system) return { status: "approved", hash, decisions: [], reason: "system template (pre-approved)" };
@@ -50,18 +51,19 @@ export function approvalState(db: DB, tenantId: number, loaded: LoadedWorkflow, 
   const rows = decisions(db, tenantId, wf.name, hash).filter((d) => canApprove(d, gov));
   if (rows.some((d) => d.decision === "reject")) return { status: "rejected", hash, decisions: rows, reason: "rejected by an approver" };
   const approves = rows.filter((d) => d.decision === "approve");
-  const selfCounts = (d: DecisionRow) => d.email !== gov.owner || policy === "always" || (policy === "admin" && d.role === "admin");
+  const authors = new Set([gov.owner, loaded.author?.toLowerCase()].filter(Boolean));
+  const selfCounts = (d: DecisionRow) => !authors.has(d.email) || policy === "always" || (policy === "admin" && d.role === "admin");
   const counted = approves.filter(selfCounts);
   if (counted.length >= gov.min_approvals) return { status: "approved", hash, decisions: rows, reason: `${counted.length}/${gov.min_approvals} approvals` };
   const reason = approves.length > counted.length
-    ? `the owner can't approve their own change (policy: ${policy}); ${counted.length}/${gov.min_approvals} other approvals`
+    ? `the owner/author can't approve their own change (policy: ${policy}); ${counted.length}/${gov.min_approvals} other approvals`
     : `${counted.length}/${gov.min_approvals} approvals`;
   return { status: "pending", hash, decisions: rows, reason };
 }
 
 export function recordDecision(db: DB, user: Approver, loaded: LoadedWorkflow, decision: Decision, comment = "", now = Date.now()): ApprovalState {
   if (decision !== "approve" && decision !== "reject") throw new Error("decision must be approve or reject");
-  if (loaded.origin === "template") throw new PermissionError("system templates are read-only and pre-approved; copy one into your workspace instead");
+  if (loaded.workflow.template) throw new PermissionError("templates aren't approved or run directly; copy one into a workflow, which then needs approval");
   if (!canApprove(user, loaded.workflow.governance)) throw new PermissionError(`${user.email} is not an approver of workflow '${loaded.workflow.name}'`);
   db.prepare("INSERT INTO workflow_approvals (tenant_id, workflow, content_hash, approver_id, decision, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
     .run(user.tenantId, loaded.workflow.name, loaded.hash, user.id, decision, String(comment).slice(0, 2000), now);

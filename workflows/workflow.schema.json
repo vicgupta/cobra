@@ -29,6 +29,9 @@
       "type": "boolean"
     },
     "on": {
+      "default": {
+        "manual": true
+      },
       "type": "object",
       "properties": {
         "manual": {
@@ -329,7 +332,6 @@
   "required": [
     "name",
     "version",
-    "on",
     "governance",
     "steps"
   ],

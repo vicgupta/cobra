@@ -80,7 +80,7 @@ export const WorkflowSchema = z.strictObject({
   description: z.string().default(""),
   system: z.boolean().default(false).describe("System-generated (shipped with Cobra); read-only for tenants"),
   template: z.boolean().default(false).describe("A template tenants copy into their own workflow"),
-  on: TriggerSchema,
+  on: TriggerSchema.default({ manual: true }),
   governance: GovernanceSchema,
   inputs: z.record(z.string().regex(ID, "input names must be lowercase identifiers"), InputSchema).default({}),
   steps: z.array(StepSchema).min(1),

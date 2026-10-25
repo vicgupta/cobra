@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AgentBadge } from "./badges";
 import { Badge, Card } from "./ui";
@@ -88,7 +89,7 @@ export function TestRun() {
             <button disabled={running} className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400 disabled:opacity-50">
               {running ? "Running…" : "Start"}
             </button>
-            {error && <span className="text-xs text-rose-400">{error}</span>}
+            {error && <span className="text-xs text-rose-400">{error}{/approv/i.test(error) && <> — <Link className="underline" href="/workflows/test-run">review the test-run workflow</Link></>}</span>}
           </div>
         </form>
       </Card>
@@ -125,7 +126,7 @@ export function TestRun() {
               <tbody className="divide-y divide-zinc-800">
                 {recent.map((r) => (
                   <tr key={r.id}>
-                    <td className="px-5 py-2 font-mono text-xs">{r.id}</td>
+                    <td className="px-5 py-2 font-mono text-xs"><a className="text-emerald-300 hover:underline" href={`/runs/${r.id}`}>{r.id}</a></td>
                     <td className="px-3 py-2">#{r.issue} {r.title}</td>
                     <td className="px-3 py-2 font-mono text-xs">{r.repo}</td>
                     <td className="px-3 py-2"><AgentBadge agent={r.agent} /></td>
