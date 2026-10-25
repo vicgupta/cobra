@@ -1,12 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 const input = "w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none";
 
 export function AuthForm() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
@@ -19,8 +17,11 @@ export function AuthForm() {
     setError(null);
     const r = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password, remember }) });
     if (r.ok) {
-      router.replace("/");
-      router.refresh();
+      // Full navigation: the client Router Cache may hold a pre-login prefetch of "/" (a 307 to
+      // /login), which made router.replace("/") land back on a blank /login. A real page load
+      // sends the new session cookie and renders fresh server state.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- intentional hard navigation
+      window.location.assign("/");
       return;
     }
     setError((await r.json().catch(() => ({}))).error ?? "Something went wrong");
