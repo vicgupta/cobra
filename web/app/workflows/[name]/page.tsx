@@ -49,8 +49,8 @@ function Detail({ user, name }: { user: SessionUser; name: string }) {
             <dt className="text-zinc-500">Approvers</dt><dd>{d.approvers.join(", ")}</dd>
             <dt className="text-zinc-500">Reviewers</dt><dd>{d.reviewers.join(", ") || "—"}</dd>
             <dt className="text-zinc-500">Needs</dt><dd>{d.minApprovals} approval(s); self-approval policy: {d.selfApprovalPolicy}</dd>
-            <dt className="text-zinc-500">Engine</dt><dd>{d.engine === "codex" ? "Codex" : "Claude Code"} (default; overridable per run)</dd>
-            {d.repo && <><dt className="text-zinc-500">Repo</dt><dd className="font-mono text-xs">{d.repo}</dd></>}
+            {d.hasAgentStep && <><dt className="text-zinc-500">Engine</dt><dd>{d.engine === "codex" ? "Codex" : "Claude Code"} (default; overridable per run)</dd></>}
+            {d.hasAgentStep && d.repo && <><dt className="text-zinc-500">Repo</dt><dd className="font-mono text-xs">{d.repo}</dd></>}
             <dt className="text-zinc-500">Triggers</dt><dd>{d.triggers.join(", ") || "—"}</dd>
             <dt className="text-zinc-500">Storage</dt><dd>{d.storage?.kind === "github" ? <span className="font-mono text-xs">github: {d.storage.repo}/{d.storage.path}{d.storage.branch ? `@${d.storage.branch}` : ""}</span> : d.storage?.kind === "database" ? "Cobra database" : d.storage?.kind}</dd>
             {d.createdFrom?.name && <><dt className="text-zinc-500">From template</dt><dd><Link className="text-emerald-300 hover:underline" href={`/workflows/${encodeURIComponent(d.createdFrom.name)}`}>{d.createdFrom.name}</Link> <span className="font-mono text-xs text-zinc-500">@{d.createdFrom.hash?.slice(0, 12)}</span></dd></>}
