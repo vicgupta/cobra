@@ -32,25 +32,44 @@ export interface JobFile {
 export interface ClaudeCodeConfig {
   /** Shown in error messages. */
   name?: string;
+  /** Subscription sign-in. Used first whenever its secret is available. */
   auth: SecretEntry[];
+  /** API-key sign-in. Used only when no subscription token is available. */
+  apiKeyAuth?: SecretEntry[];
   env?: Record<string, string>;
   jobFiles?: JobFile[];
   /** {prompt} is the task file and {summary} is where the final reply goes. */
   command: string;
 }
 
-/** Claude Code signed in with a subscription token from `claude setup-token`. */
+/**
+ * Claude Code. Signs in with a subscription token from `claude setup-token`
+ * (CLAUDE_CODE_OAUTH_TOKEN) when one is available, otherwise with an
+ * Anthropic API key (ANTHROPIC_API_KEY).
+ */
 export const CLAUDE_CODE: ClaudeCodeConfig = {
   name: "Claude Code",
   auth: [{ secret: "CLAUDE_CODE_OAUTH_TOKEN", env: "CLAUDE_CODE_OAUTH_TOKEN" }],
+  apiKeyAuth: [{ secret: "ANTHROPIC_API_KEY", env: "ANTHROPIC_API_KEY" }],
   command: 'claude -p "$(cat {prompt})" --dangerously-skip-permissions --output-format text > {summary}',
 };
 
-/** Same driver, signed in with an Anthropic API key instead. */
-export const CLAUDE_CODE_API_KEY: ClaudeCodeConfig = {
-  ...CLAUDE_CODE,
-  auth: [{ secret: "ANTHROPIC_API_KEY", env: "ANTHROPIC_API_KEY" }],
-};
+export type AuthMode = "subscription" | "api-key";
+
+/**
+ * Credentials passed in by the caller. When given, these are used instead of
+ * the environment. The subscription token wins if both are set.
+ */
+export interface Credentials {
+  subscriptionToken?: string;
+  apiKey?: string;
+}
+
+export interface ResolvedAuth {
+  mode: AuthMode;
+  /** Each sign-in entry with its value. Never log this. */
+  entries: Array<{ entry: SecretEntry; value: string }>;
+}
 
 /** Reads a secret's value without ever printing it. */
 export function readSecret(entry: SecretEntry): string | undefined {
@@ -71,16 +90,48 @@ const dirOf = (path: string) => path.slice(0, path.lastIndexOf("/"));
 
 /** Every path the driver writes secrets to, so they can be removed after a job. */
 export function secretPaths(agent: ClaudeCodeConfig = CLAUDE_CODE): string[] {
-  return [`${HOME}/.factory`, ...agent.auth.flatMap((a) => (a.file ? [a.file] : []))];
+  return [`${HOME}/.factory`, ...[...agent.auth, ...(agent.apiKeyAuth ?? [])].flatMap((a) => (a.file ? [a.file] : []))];
 }
 
-/** Places Claude Code's sign-in in the workspace, readable only by the agent. */
-export async function signIn(ws: Workspace, agent: ClaudeCodeConfig = CLAUDE_CODE): Promise<void> {
+const fromEntries = (entries: SecretEntry[] | undefined, read: (e: SecretEntry) => string | undefined) => {
+  if (!entries?.length) return undefined;
+  const pairs = entries.map((entry) => ({ entry, value: read(entry) }));
+  return pairs.every((p) => p.value) ? (pairs as ResolvedAuth["entries"]) : undefined;
+};
+
+/**
+ * Picks how the agent signs in. With caller credentials, uses the
+ * subscription token if given, otherwise the API key. Without them, reads the
+ * environment the same way: subscription secrets first, then the API key.
+ */
+export function resolveAuth(agent: ClaudeCodeConfig, credentials?: Credentials): ResolvedAuth {
+  const label = agent.name ?? "the agent";
+  if (credentials && (credentials.subscriptionToken || credentials.apiKey)) {
+    if (credentials.subscriptionToken) {
+      const entries = fromEntries(agent.auth, () => credentials.subscriptionToken);
+      if (entries) return { mode: "subscription", entries };
+    }
+    const entries = fromEntries(agent.apiKeyAuth, () => credentials.apiKey);
+    if (credentials.apiKey && entries) return { mode: "api-key", entries };
+    throw new Error(`${label} has no sign-in that matches the credentials provided`);
+  }
+  const sub = fromEntries(agent.auth, readSecret);
+  if (sub) return { mode: "subscription", entries: sub };
+  const key = fromEntries(agent.apiKeyAuth, readSecret);
+  if (key) return { mode: "api-key", entries: key };
+  const names = [...agent.auth, ...(agent.apiKeyAuth ?? [])].map((e) => e.secret).join(" or ");
+  throw new Error(`${label} needs a sign-in: set ${names}`);
+}
+
+/**
+ * Places the agent's sign-in in the workspace, readable only by the agent.
+ * Returns which mode was used: subscription or API key.
+ */
+export async function signIn(ws: Workspace, agent: ClaudeCodeConfig = CLAUDE_CODE, credentials?: Credentials): Promise<AuthMode> {
+  const { mode, entries } = resolveAuth(agent, credentials);
   const lines = Object.entries(agent.env ?? {}).map(([key, value]) => `export ${key}=${q(value)}`);
   await sh(ws, `mkdir -p ${HOME}/.factory && chmod 700 ${HOME}/.factory`);
-  for (const entry of agent.auth) {
-    const value = readSecret(entry);
-    if (!value) throw new Error(`Secret ${entry.secret} is not set, and ${agent.name ?? "Claude Code"} needs it`);
+  for (const { entry, value } of entries) {
     if (entry.env) lines.push(`export ${entry.env}=${q(value)}`);
     if (entry.file) {
       await sh(ws, `mkdir -p ${q(dirOf(entry.file))} && chmod 700 ${q(dirOf(entry.file))}`);
@@ -90,6 +141,7 @@ export async function signIn(ws: Workspace, agent: ClaudeCodeConfig = CLAUDE_COD
   }
   await ws.files.write({ path: ENV_FILE, content: lines.join("\n") + "\n" });
   await sh(ws, `chmod 600 ${ENV_FILE}`);
+  return mode;
 }
 
 /** Copies job files (such as a house CLAUDE.md) into the workspace, fresh each job. */

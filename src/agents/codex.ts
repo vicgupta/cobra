@@ -5,7 +5,7 @@
 //
 // Ported from vicgupta/create-ant-factory (assets/template/src/agents.mjs, the
 // "codex" agent entry in factory.config.json, and references/agents.md).
-import { HOME, signIn, writeJobFiles, buildCommand, ENV_FILE, type ClaudeCodeConfig, type RunOptions, type RunResult } from "./claude-code.js";
+import { HOME, signIn, writeJobFiles, buildCommand, ENV_FILE, type AuthMode, type ClaudeCodeConfig, type Credentials, type RunOptions, type RunResult } from "./claude-code.js";
 import { q, sh, runScript, type Workspace } from "./workspace.js";
 
 /** Same shape as the Claude Code config: auth, env, job files and a command. */
@@ -18,28 +18,27 @@ const CODEX_COMMAND =
   'codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox --output-last-message {summary} "$(cat {prompt})"';
 
 /**
- * Codex signed in with a ChatGPT plan. The secret is the content of
- * ~/.codex/auth.json after `codex login`. Codex rotates its refresh token, so a
- * copy shared with your own machine can stop working; for a long-lived
- * factory prefer CODEX_WITH_API_KEY or a sign-in made just for Cobra.
+ * Codex. Signs in with a ChatGPT plan when one is available: the subscription
+ * token is the content of ~/.codex/auth.json after `codex login`
+ * (CODEX_AUTH_JSON). Otherwise it falls back to an API key (CODEX_API_KEY,
+ * which `codex exec` reads). Codex rotates the ChatGPT refresh token, so a copy
+ * shared with your own machine can stop working; an API key or a sign-in made
+ * just for Cobra is safer for long-running use.
  */
 export const CODEX: CodexConfig = {
   name: "Codex",
   auth: [{ secret: "CODEX_AUTH_JSON", file: `${CODEX_HOME}/auth.json`, localFile: "~/.codex/auth.json" }],
+  apiKeyAuth: [{ secret: "CODEX_API_KEY", env: "CODEX_API_KEY" }],
   env: { CODEX_HOME },
   command: CODEX_COMMAND,
 };
 
-/** Codex signed in with an API key (CODEX_API_KEY for `codex exec`). */
-export const CODEX_WITH_API_KEY: CodexConfig = {
-  name: "Codex",
-  auth: [{ secret: "CODEX_API_KEY", env: "CODEX_API_KEY" }],
-  env: { CODEX_HOME },
-  command: CODEX_COMMAND,
-};
-
-/** Places Codex's sign-in in the workspace, readable only by the agent. */
-export const signInCodex = (ws: Workspace, agent: CodexConfig = CODEX): Promise<void> => signIn(ws, agent);
+/**
+ * Places Codex's sign-in in the workspace, readable only by the agent. Uses
+ * the subscription token if present, otherwise the API key, and returns which.
+ */
+export const signInCodex = (ws: Workspace, credentials?: Credentials, agent: CodexConfig = CODEX): Promise<AuthMode> =>
+  signIn(ws, agent, credentials);
 
 /** Copies job files (such as `~/.codex/AGENTS.md`) into the workspace, fresh each job. */
 export const writeCodexJobFiles = (ws: Workspace, agent: CodexConfig, baseDir: string): Promise<void> =>
