@@ -3,9 +3,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC = ["/login", "/api/auth/login"];
+// Public sign-up was removed; answer 404 for everyone instead of a login redirect.
+const REMOVED = ["/signup", "/api/auth/signup"];
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  if (REMOVED.includes(pathname.replace(/\/$/, ""))) return new NextResponse("Not found", { status: 404 });
   if (PUBLIC.includes(pathname)) return NextResponse.next();
   if (req.cookies.get("cobra_session")?.value) return NextResponse.next();
   if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
