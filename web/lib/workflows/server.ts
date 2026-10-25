@@ -6,7 +6,7 @@ import { envFilePath, parseEnv } from "../env-file";
 import type { SessionUser } from "../auth/sessions";
 import { builtinHandlers } from "./handlers";
 import { localRunner } from "./local-runner";
-import { checkTeamRepo, teamRepo } from "../repos";
+import { checkTeamRepo, teamPatSecrets, teamRepo, tokenFor } from "../repos";
 import { githubFiles } from "./github-files";
 import { githubApi } from "../github-api";
 import type { RunDeps } from "./service";
@@ -24,10 +24,13 @@ const secret = (name: string) => envFile()[name] || process.env[name] || undefin
 export const runDeps = (tenantId: number): RunDeps => {
   const db = getDb();
   const checkRepo = (repo: string) => checkTeamRepo(db, tenantId, repo);
+  // A repo's own PAT (Job 19) wins over GITHUB_TOKEN; undefined means "use the step's GITHUB_TOKEN".
+  const repoToken = (repo: string) => repoTokenFor(tenantId)(repo) || undefined;
   return {
-    handlers: builtinHandlers({ checkRepo, agentRunner: localRunner({ resolveSecret: secret, checkRepo, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch }) }),
+    handlers: builtinHandlers({ checkRepo, tokenFor: repoToken, agentRunner: localRunner({ resolveSecret: secret, checkRepo, repoToken, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch }) }),
     resolveSecret: secret,
-    redact: () => Object.values(envFile()),
+    // Every env-file value and every team PAT (plus its git header form) is redacted from run logs and errors.
+    redact: () => [...Object.values(envFile()), ...teamPatSecrets(db, tenantId, secret("COBRA_SECRET_KEY"))],
   };
 };
 
@@ -36,8 +39,15 @@ export const githubTokenSet = () => !!secret("GITHUB_TOKEN");
 
 export { getDb };
 
-/** GitHub contents client for storage: github, using GITHUB_TOKEN from the env file at call time. */
-export const githubStore = () => githubFiles(envFile().GITHUB_TOKEN || process.env.GITHUB_TOKEN || undefined);
+/** COBRA_SECRET_KEY (encrypts per-repo PATs); never returned. */
+export const secretKey = () => secret("COBRA_SECRET_KEY");
 
-/** GitHub issues/PR client with the server's GITHUB_TOKEN (read at call time, never returned). */
-export const githubClient = () => githubApi(secret("GITHUB_TOKEN"));
+/** Per repo: the team's PAT for it when set, else GITHUB_TOKEN (both read at call time, never returned). */
+const repoTokenFor = (tenantId: number) => (repo: string) => tokenFor(getDb(), tenantId, secretKey(), undefined)(repo);
+const teamToken = (tenantId: number) => (repo: string) => repoTokenFor(tenantId)(repo) || secret("GITHUB_TOKEN");
+
+/** GitHub contents client for storage: github (repo PAT, else GITHUB_TOKEN). */
+export const githubStore = (tenantId: number) => githubFiles(teamToken(tenantId));
+
+/** GitHub issues/PR client (repo PAT, else GITHUB_TOKEN). */
+export const githubClient = (tenantId: number) => githubApi(teamToken(tenantId));

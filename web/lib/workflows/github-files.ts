@@ -16,8 +16,10 @@ export function checkLocation(repo: string, path: string): string[] {
   return errs;
 }
 
-export function githubFiles(token: string | undefined, fetchImpl: typeof fetch = fetch): GitHubFiles {
+export function githubFiles(source: string | undefined | ((repo: string) => string | undefined), fetchImpl: typeof fetch = fetch): GitHubFiles {
   const call = async (url: string, init: RequestInit = {}) => {
+    const m = /^https:\/\/api\.github\.com\/repos\/([^/]+\/[^/]+)\//.exec(url);
+    const token = typeof source === "function" ? source(m ? m[1] : "") : source;
     if (!token) throw new GitHubStorageError("GITHUB_TOKEN is not set in the server env file, so GitHub storage is unavailable");
     return fetchImpl(url, { ...init, headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json" } });
   };

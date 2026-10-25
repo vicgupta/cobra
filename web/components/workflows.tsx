@@ -294,35 +294,69 @@ export function AttachTemplate({ templates, repos }: { templates: string[]; repo
   );
 }
 
-export function RepoManager({ initial, canManage }: { initial: Array<{ repo: string; defaultBranch: string | null }>; canManage: boolean }) {
+type RepoRow = { repo: string; defaultBranch: string | null; patSet: boolean; patLast4: string | null };
+const pushNote = (p: unknown) => (p === true ? "Token saved; it has push access." : p === false ? "Token saved, but it has no push access (read-only): agent runs can't push." : "Token saved.");
+
+export function RepoManager({ initial, canManage }: { initial: RepoRow[]; canManage: boolean }) {
   const [repo, setRepo] = useState("");
   const [branch, setBranch] = useState("");
+  const [pat, setPat] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
+  const [newPat, setNewPat] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const router = useRouter();
+  const patch = async (r: string, value: string | null) => {
+    const res = await fetch("/api/repos", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ repo: r, pat: value }) });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; pushAccess?: boolean | null };
+    if (!res.ok) { setNotice(null); return setError(data.error ?? "Failed"); }
+    setError(null); setNotice(value === null ? `Token cleared for ${r}; it uses the server GITHUB_TOKEN.` : pushNote(data.pushAccess)); setEditing(null); setNewPat(""); router.refresh();
+  };
   return (
     <div className="space-y-3">
       {initial.length === 0 ? <p className="text-sm text-zinc-500">No repos registered yet.</p> : (
-        <ul className="divide-y divide-zinc-800 text-sm">{initial.map((r) => (
-          <li key={r.repo} className="flex items-center gap-3 py-2"><span className="font-mono">{r.repo}</span>
-            <span className="text-xs text-zinc-500">{r.defaultBranch ? `default branch ${r.defaultBranch}` : "repo default branch"}</span>
-            {canManage && <button className={`${ghost} ml-auto text-xs`} onClick={async () => {
-              const res = await fetch(`/api/repos?repo=${encodeURIComponent(r.repo)}`, { method: "DELETE" });
-              if (!res.ok) setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Failed"); else router.refresh();
-            }}>Remove</button>}
-          </li>))}</ul>
+        <table className="w-full text-sm">
+          <thead><tr className="text-left text-xs text-zinc-500"><th className="py-1 font-normal">Repo</th><th className="py-1 font-normal">Branch</th><th className="py-1 font-normal">Personal access token</th><th /></tr></thead>
+          <tbody className="divide-y divide-zinc-800">{initial.map((r) => (
+            <tr key={r.repo}>
+              <td className="py-2 font-mono">{r.repo}</td>
+              <td className="py-2 text-xs text-zinc-500">{r.defaultBranch ? `default branch ${r.defaultBranch}` : "repo default branch"}</td>
+              <td className="py-2 text-xs">
+                {editing === r.repo ? (
+                  <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (newPat.trim()) void patch(r.repo, newPat); }}>
+                    <input type="password" autoComplete="off" aria-label={`New token for ${r.repo}`} className={`${input} py-1 text-xs`} placeholder="new token" value={newPat} onChange={(e) => setNewPat(e.target.value)} />
+                    <button className={`${button} py-1 text-xs`} disabled={!newPat.trim()}>Save</button>
+                    <button type="button" className={`${ghost} text-xs`} onClick={() => { setEditing(null); setNewPat(""); }}>Cancel</button>
+                  </form>
+                ) : <span data-pat-status={r.patSet ? "set" : "none"} className={r.patSet ? "font-mono text-emerald-300" : "text-zinc-500"}>{r.patSet ? `Set ••••${r.patLast4 ?? ""}` : "—"}</span>}
+              </td>
+              <td className="py-2 text-right">{canManage && editing !== r.repo && (
+                <span className="inline-flex gap-2">
+                  <button className={`${ghost} text-xs`} onClick={() => { setEditing(r.repo); setNewPat(""); }}>{r.patSet ? "Replace token" : "Set token"}</button>
+                  {r.patSet && <button className={`${ghost} text-xs`} onClick={() => void patch(r.repo, null)}>Clear token</button>}
+                  <button className={`${ghost} text-xs`} onClick={async () => {
+                    const res = await fetch(`/api/repos?repo=${encodeURIComponent(r.repo)}`, { method: "DELETE" });
+                    if (!res.ok) setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Failed"); else router.refresh();
+                  }}>Remove</button>
+                </span>)}</td>
+            </tr>))}</tbody>
+        </table>
       )}
       {canManage ? (
-        <form className="grid grid-cols-1 gap-2 sm:grid-cols-3" onSubmit={async (e) => {
+        <form className="grid grid-cols-1 gap-2 sm:grid-cols-4" onSubmit={async (e) => {
           e.preventDefault();
-          const { ok, data } = await send("/api/repos", { repo, defaultBranch: branch || undefined });
-          if (!ok) return setError(data.error ?? "Failed");
-          setError(null); setRepo(""); setBranch(""); router.refresh();
+          const { ok, data } = await send("/api/repos", { repo, defaultBranch: branch || undefined, pat: pat || undefined });
+          if (!ok) { setNotice(null); return setError(data.error ?? "Failed"); }
+          setError(null); setNotice(pat ? pushNote((data as { pushAccess?: unknown }).pushAccess) : null); setRepo(""); setBranch(""); setPat(""); router.refresh();
         }}>
           <input aria-label="Repo" className={input} placeholder="owner/name" value={repo} onChange={(e) => setRepo(e.target.value)} />
           <input aria-label="Default branch" className={input} placeholder="default branch (optional)" value={branch} onChange={(e) => setBranch(e.target.value)} />
+          <input aria-label="Personal access token (optional)" type="password" autoComplete="off" className={input} placeholder="Personal access token (optional)" value={pat} onChange={(e) => setPat(e.target.value)} />
           <button className={button} disabled={!repo.trim()}>Add repo</button>
         </form>
-      ) : <p className="text-xs text-zinc-500">Only admins and team leads can add or remove repos.</p>}
+      ) : <p className="text-xs text-zinc-500">Only admins and team leads can add or remove repos and their tokens.</p>}
+      <p className="text-xs text-zinc-500">A repo&apos;s token is used for all its GitHub calls, clones and pushes; without one the server&apos;s GITHUB_TOKEN is used. Tokens are encrypted and never shown again.</p>
+      {notice && <p className="text-sm text-emerald-300">{notice}</p>}
       {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
     </div>
   );

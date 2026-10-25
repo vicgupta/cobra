@@ -16,6 +16,8 @@ export type LocalRunnerOptions = {
   resolveSecret: (name: string) => string | undefined;
   checkRepo: RepoCheck;
   defaultBranch?: (repo: string) => string | null | undefined;
+  /** The repo's own PAT when set (else GITHUB_TOKEN is used). */
+  repoToken?: (repo: string) => string | undefined;
   claudeBin?: string;
   codexBin?: string;
   /** Value for codex --sandbox; empty means --dangerously-bypass-approvals-and-sandbox (default; see COBRA_CODEX_SANDBOX). */
@@ -52,7 +54,8 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     const note = (s: string) => log(`[cobra] ${s}\n`);
     const base: Env = { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: process.env.HOME ?? "/tmp", LANG: "C.UTF-8", GIT_TERMINAL_PROMPT: "0" };
     const git = opts.gitBin ?? "git";
-    const token = opts.resolveSecret("GITHUB_TOKEN");
+    const repo = typeof w.repo === "string" ? w.repo.trim() : "";
+    const token = (repo && opts.repoToken?.(repo)) || opts.resolveSecret("GITHUB_TOKEN");
     // The token reaches git only through env-based config (never argv or the remote URL).
     const gitEnv: Env = token
       ? { ...base, GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader", GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}` }
@@ -62,7 +65,6 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       if (r.code !== 0) throw new Error(`git ${args[0]} failed: ${r.out.trim().slice(-400)}`);
       return r.out;
     };
-    const repo = typeof w.repo === "string" ? w.repo.trim() : "";
     const branch = `cobra/${runId}`;
     let cloned = false;
     note(`workspace ${dir}`);

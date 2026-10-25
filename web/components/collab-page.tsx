@@ -25,7 +25,7 @@ export function CollabPage({ title, crumbs, children }: { title: string; crumbs?
 export async function WithRepo({ u, repo, render }: { u: Actor; repo: string; render: (c: Ctx) => Promise<ReactNode> }) {
   const db = getDb();
   try {
-    return await render({ db, gh: githubClient(), u, repo: repoGate(db, u, repo) });
+    return await render({ db, gh: githubClient(u.tenantId), u, repo: repoGate(db, u, repo) });
   } catch (e) {
     return <GhError e={e} />;
   }

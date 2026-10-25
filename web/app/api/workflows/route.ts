@@ -14,6 +14,6 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const g = await apiGuard(req);
   if (g.error) return g.error;
-  const r = await saveWorkflow(getDb(), actor(g.user), await req.json().catch(() => null), { github: githubStore() });
+  const r = await saveWorkflow(getDb(), actor(g.user), await req.json().catch(() => null), { github: githubStore(g.user.tenantId) });
   return NextResponse.json(r.body, { status: r.status });
 }

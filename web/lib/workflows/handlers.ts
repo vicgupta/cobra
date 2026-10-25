@@ -57,15 +57,17 @@ const envCeiling: RepoCheck = (repo) => {
   const allowed = process.env.COBRA_GITHUB_ALLOWED_REPOS?.split(",").map((r) => r.trim().toLowerCase()).filter(Boolean);
   return allowed?.length && !allowed.includes(repo.toLowerCase()) ? `repo ${repo} is not in COBRA_GITHUB_ALLOWED_REPOS` : null;
 };
-export const github = (fetchImpl: typeof fetch = fetch, checkRepo: RepoCheck = envCeiling): StepHandler => async ({ with: w, secrets, signal }) => {
+/** tokenFor: the repo's PAT when set (else undefined, so the step's GITHUB_TOKEN is used). */
+export const github = (fetchImpl: typeof fetch = fetch, checkRepo: RepoCheck = envCeiling, tokenFor?: (repo: string) => string | undefined): StepHandler => async ({ with: w, secrets, signal }) => {
   const repo = String(w.repo ?? "");
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error("with.repo must look like owner/name");
   const denied = checkRepo(repo);
   if (denied) throw new Error(denied);
+  const token = tokenFor?.(repo) || secrets.GITHUB_TOKEN;
   const call = async (method: string, url: string, body: unknown) => {
     const r = await fetchImpl(`https://api.github.com/repos/${repo}${url}`, {
       method, signal, body: JSON.stringify(body),
-      headers: { authorization: `Bearer ${secrets.GITHUB_TOKEN}`, accept: "application/vnd.github+json", "content-type": "application/json", "user-agent": "cobra" },
+      headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "content-type": "application/json", "user-agent": "cobra" },
     });
     const data = (await r.json().catch(() => ({}))) as Record<string, unknown>;
     if (!r.ok) throw new Error(`GitHub ${method} ${url}: ${r.status} ${String(data.message ?? "")}`);
@@ -101,5 +103,5 @@ export const approval = (provider?: ApprovalProvider): StepHandler => async ({ r
   return { approved: true, by: d.by, comment: d.comment ?? "" };
 };
 
-export const builtinHandlers = (opts: { agentRunner?: AgentRunner; approvalProvider?: ApprovalProvider; fetch?: typeof fetch; checkRepo?: RepoCheck } = {}): Handlers =>
-  ({ simulate, noop, shell, agent: agent(opts.agentRunner), github: github(opts.fetch, opts.checkRepo), approval: approval(opts.approvalProvider) });
+export const builtinHandlers = (opts: { agentRunner?: AgentRunner; approvalProvider?: ApprovalProvider; fetch?: typeof fetch; checkRepo?: RepoCheck; tokenFor?: (repo: string) => string | undefined } = {}): Handlers =>
+  ({ simulate, noop, shell, agent: agent(opts.agentRunner), github: github(opts.fetch, opts.checkRepo, opts.tokenFor), approval: approval(opts.approvalProvider) });

@@ -10,8 +10,13 @@ export type GhPull = { number: number; title: string; body: string | null; state
 
 export type GitHub = ReturnType<typeof githubApi>;
 
-export function githubApi(token: string | undefined, fetchImpl: typeof fetch = fetch) {
+/** A token, or a resolver per repo ("owner/name"): the repo's PAT when set, else GITHUB_TOKEN. */
+export type TokenSource = string | undefined | ((repo: string) => string | undefined);
+const repoOfPath = (p: string) => { const m = /^\/repos\/([^/?]+)\/([^/?]+)/.exec(p); return m ? `${decodeURIComponent(m[1])}/${decodeURIComponent(m[2])}` : ""; };
+
+export function githubApi(source: TokenSource, fetchImpl: typeof fetch = fetch) {
   const call = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
+    const token = typeof source === "function" ? source(repoOfPath(path)) : source;
     if (!token) throw new GitHubApiError(503, "GITHUB_TOKEN is not set in the server env file");
     const r = await fetchImpl(`https://api.github.com${path}`, {
       method,

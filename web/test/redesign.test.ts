@@ -83,7 +83,7 @@ test("regression: rows passed to Client Components are plain objects (node:sqlit
   assert.equal(list.length, 1);
   for (const r of list) {
     assert.equal(Object.getPrototypeOf(r), Object.prototype);
-    assert.deepEqual(Object.keys(r).sort(), ["createdAt", "defaultBranch", "repo"]);
+    assert.deepEqual(Object.keys(r).sort(), ["createdAt", "defaultBranch", "patLast4", "patSet", "repo"]);
   }
   for (const r of [...listWorkflowRuns(db, a.tenantId, "x"), ...instancesOf(db, a.tenantId, "x")]) assert.equal(Object.getPrototypeOf(r), Object.prototype);
 });

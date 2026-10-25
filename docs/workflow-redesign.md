@@ -68,6 +68,8 @@ Pick repo → attach a team template (instance) → choose or override engine �
 
 **Prompt limit (Job 18).** Prompts may be up to 20000 characters (was 8000): agent prompts, a workflow's default `prompt` (zod and `workflows/workflow.schema.json`), run prompts, the issue-agent prompt and the run form textarea. Extra instructions stay at 4000.
 
+**Per-repo token (Job 19).** Each team repo may have its own GitHub personal access token (Settings > Repos; set, replace or clear by admins and team leads, members see only "Set ••••abcd" or "—"). It is stored AES-256-GCM encrypted in `team_repos.pat_enc` (migration 11, with `pat_last4` and `pat_set_at`) using `COBRA_SECRET_KEY` (32 random bytes, base64 or hex, in the server env file); without the key saving a token fails with a clear error. On save it is checked with `GET /repos/<repo>` (rejected tokens are not stored; push access is reported). The API only ever returns `patSet` / `patLast4`. When set, the repo's token is used for every GitHub call on that repo (issues, PRs, merge, workflow `github` steps, GitHub file storage, agent clone and push); otherwise `GITHUB_TOKEN`. `COBRA_GITHUB_ALLOWED_REPOS` still applies. Team tokens (and their git auth-header form) are redacted from run logs and errors like env-file secrets.
+
 ## Issues and pull requests (approved by Vic, 2026-10-25 6:19 PM ET)
 
 "Admin" here means the system admin only. There is no team-admin role; the team lead does most team work.

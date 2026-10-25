@@ -244,6 +244,12 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     );
     CREATE INDEX collab_audit_item ON collab_audit(tenant_id, repo, number, at);
   `),
+  // 11: optional per-repo GitHub PAT (AES-256-GCM, COBRA_SECRET_KEY); only last 4 shown. Null = use GITHUB_TOKEN.
+  (db) => db.exec(`
+    ALTER TABLE team_repos ADD COLUMN pat_enc TEXT;
+    ALTER TABLE team_repos ADD COLUMN pat_last4 TEXT;
+    ALTER TABLE team_repos ADD COLUMN pat_set_at INTEGER;
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

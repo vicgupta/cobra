@@ -18,7 +18,7 @@ export async function collabRoute(req: Request, ctx: RepoParams, fn: (c: Ctx) =>
   const p = await ctx.params;
   const body = req.method === "GET" ? null : await req.json().catch(() => null);
   try {
-    const out = await fn({ db: getDb(), gh: githubClient(), u: actor(g.user), repo: `${p.owner}/${p.repo}`, number: p.number, deps: () => runDeps(g.user.tenantId), body });
+    const out = await fn({ db: getDb(), gh: githubClient(g.user.tenantId), u: actor(g.user), repo: `${p.owner}/${p.repo}`, number: p.number, deps: () => runDeps(g.user.tenantId), body });
     return NextResponse.json(out, { status });
   } catch (e) {
     if (e instanceof CollabError || e instanceof GitHubApiError) return NextResponse.json({ error: e.message }, { status: e instanceof GitHubApiError && e.status === 401 ? 502 : e.status });
