@@ -1,7 +1,8 @@
 // Request-time auth helpers for pages and route handlers.
 import "server-only";
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { gate } from "../admin/gate";
 import { connection, NextResponse } from "next/server";
 import { getDb } from "../db";
 import { canUseSharedConfig, getSessionUser, SESSION_COOKIE, type SessionUser } from "./sessions";
@@ -12,10 +13,19 @@ export async function currentUser(): Promise<SessionUser | null> {
   return getSessionUser(getDb(), token);
 }
 
-/** For pages: redirect to /login when signed out. */
+/** For pages: redirect to /login when signed out; the system admin account only gets /admin. */
 export async function requireUser(): Promise<SessionUser> {
   const u = await currentUser();
   if (!u) redirect("/login");
+  if (gate(u.email, "user") === "admin-only") redirect("/admin");
+  return u;
+}
+
+/** For /admin pages: 404 for everyone but the system admin (COBRA_ADMIN_EMAIL). */
+export async function requireAdmin(): Promise<SessionUser> {
+  const u = await currentUser();
+  if (!u) redirect("/login");
+  if (gate(u.email, "admin") !== "ok") notFound();
   return u;
 }
 
@@ -34,10 +44,13 @@ export function sameOrigin(req: Request): boolean {
 type Guard = { user: SessionUser; error?: undefined } | { user?: undefined; error: NextResponse };
 
 /** For API routes: 401 when signed out, 403 cross-origin POST or when shared config is required and not allowed. */
-export async function apiGuard(req: Request, opts: { sharedConfig?: boolean } = {}): Promise<Guard> {
+export async function apiGuard(req: Request, opts: { sharedConfig?: boolean; admin?: boolean } = {}): Promise<Guard> {
   if (req.method !== "GET" && req.method !== "HEAD" && !sameOrigin(req)) return { error: NextResponse.json({ error: "Bad origin" }, { status: 403 }) };
   const user = await currentUser();
   if (!user) return { error: NextResponse.json({ error: "Not signed in" }, { status: 401 }) };
+  // Admin APIs are invisible to everyone else; the admin account can't use regular APIs.
+  if (opts.admin) return gate(user.email, "admin") === "ok" ? { user } : { error: NextResponse.json({ error: "Not found" }, { status: 404 }) };
+  if (gate(user.email, "user") === "admin-only") return { error: NextResponse.json({ error: "The admin account can only use the admin dashboard" }, { status: 403 }) };
   if (opts.sharedConfig && !canUseSharedConfig(user)) return { error: NextResponse.json({ error: "Only admins of the default workspace can use this for now" }, { status: 403 }) };
   return { user };
 }

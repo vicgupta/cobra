@@ -17,7 +17,7 @@ inputs:
   repo: { type: string, required: true, pattern: '^[\w.-]+/[\w.-]+$' }
 steps:
   - id: build
-    uses: agent | github | shell | approval | wait | log
+    uses: agent | github | shell | approval | simulate | noop
     needs: [other_step]
     if: ${{ inputs.issue > 0 && steps.x.outputs.ok == true }}
     with: { ... }        # values may use ${{ inputs.* }}, ${{ steps.<id>.outputs.* }}, ${{ secrets.NAME }}

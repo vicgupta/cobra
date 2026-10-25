@@ -25,7 +25,7 @@ async function masked(): Promise<MaskedSettings & { envFile: string }> {
 }
 
 export async function GET(req: Request) {
-  const g = await apiGuard(req, { sharedConfig: true });
+  const g = await apiGuard(req, { admin: true });
   if (g.error) return g.error;
   return NextResponse.json(await masked());
 }
@@ -35,7 +35,7 @@ export async function GET(req: Request) {
  * Omitted / undefined field = keep current value, "" or null = clear, string = set.
  */
 export async function POST(req: Request) {
-  const g = await apiGuard(req, { sharedConfig: true });
+  const g = await apiGuard(req, { admin: true });
   if (g.error) return g.error;
   let body: unknown;
   try {

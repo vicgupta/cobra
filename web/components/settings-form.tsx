@@ -15,7 +15,7 @@ export function SettingsForm() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/settings")
+    fetch("/api/admin/settings")
       .then((r) => r.json())
       .then(setSaved)
       .catch(() => setError("Could not load settings"));
@@ -52,7 +52,7 @@ function AgentForm({ agent, saved, onSaved }: { agent: AgentId; saved: MaskedSet
     if (d.clearSubscription) patch.subscription = null; else if (d.subscription) patch.subscription = d.subscription;
     if (d.clearApiKey) patch.apiKey = null; else if (d.apiKey) patch.apiKey = d.apiKey;
     try {
-      const r = await fetch("/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ [agent]: patch }) });
+      const r = await fetch("/api/admin/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ [agent]: patch }) });
       if (!r.ok) throw new Error((await r.json()).error ?? "Save failed");
       onSaved(await r.json());
       setD(blank());

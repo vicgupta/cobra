@@ -12,13 +12,13 @@ export function GithubForm() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    fetch("/api/settings").then((r) => (r.ok ? r.json() : null)).then((d) => d && setSaved(d.github));
+    fetch("/api/admin/settings").then((r) => (r.ok ? r.json() : null)).then((d) => d && setSaved(d.github));
   }, []);
 
   async function save(token: string) {
     setBusy(true);
     setMsg(null);
-    const r = await fetch("/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ github: { token } }) });
+    const r = await fetch("/api/admin/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ github: { token } }) });
     const d = await r.json().catch(() => ({}));
     if (r.ok) {
       setSaved(d.github);
