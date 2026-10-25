@@ -104,6 +104,80 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     ) WITHOUT ROWID;
     CREATE INDEX rate_limits_expires ON rate_limits(expires_at);
   `),
+  // 7: workflows. team_lead role (users rebuilt to widen the CHECK; ids kept),
+  // approvals of workflow definitions by content hash, and workflow columns on runs.
+  (db) => db.exec(`
+    CREATE TABLE users_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      email TEXT NOT NULL UNIQUE CHECK (email = lower(email)),
+      name TEXT NOT NULL DEFAULT '',
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin','team_lead','member')),
+      created_at INTEGER NOT NULL
+    );
+    INSERT INTO users_new (id, tenant_id, email, name, password_hash, role, created_at)
+      SELECT id, tenant_id, email, name, password_hash, role, created_at FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_new RENAME TO users;
+    CREATE TABLE workflow_approvals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      workflow TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      approver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      decision TEXT NOT NULL CHECK (decision IN ('approve','reject')),
+      comment TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX workflow_approvals_lookup ON workflow_approvals(tenant_id, workflow, content_hash);
+    ALTER TABLE runs ADD COLUMN workflow TEXT;
+    ALTER TABLE runs ADD COLUMN workflow_hash TEXT;
+    ALTER TABLE runs ADD COLUMN status TEXT;
+    ALTER TABLE runs ADD COLUMN steps_json TEXT;
+    ALTER TABLE runs ADD COLUMN outputs_json TEXT;
+    ALTER TABLE runs ADD COLUMN error TEXT;
+    ALTER TABLE runs ADD COLUMN ended_at INTEGER;
+    -- System templates, upserted from workflows/templates/*.yaml on startup (seedTemplates).
+    CREATE TABLE workflow_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      version TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      source TEXT NOT NULL,
+      current INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      UNIQUE (name, content_hash)
+    );
+    -- A tenant's own workflows (pasted YAML or copies of a template).
+    CREATE TABLE tenant_workflows (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      source TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      template_name TEXT,
+      template_hash TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE (tenant_id, name)
+    );
+    -- Per-run execution log: one row per step status transition, output on terminal rows.
+    CREATE TABLE run_step_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      step_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending','running','succeeded','failed','skipped')),
+      attempt INTEGER NOT NULL DEFAULT 0,
+      output TEXT,
+      truncated INTEGER NOT NULL DEFAULT 0,
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX run_step_events_run ON run_step_events(run_id, id);
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

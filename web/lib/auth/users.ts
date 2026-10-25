@@ -19,13 +19,13 @@ export function authenticate(db: DB, email: string, password: string): number | 
  */
 export function createUser(
   db: DB,
-  p: { email: string; password: string; tenant: string; role: "admin" | "member"; name?: string; tenantName?: string },
+  p: { email: string; password: string; tenant: string; role: "admin" | "team_lead" | "member"; name?: string; tenantName?: string },
   now = Date.now(),
 ): number {
   const email = norm(p.email);
   if (!EMAIL_RE.test(email)) throw new Error("Invalid email");
   if (p.password.length < MIN_PASSWORD) throw new Error(`Password must be at least ${MIN_PASSWORD} characters`);
-  if (p.role !== "admin" && p.role !== "member") throw new Error("role must be admin or member");
+  if (!["admin", "team_lead", "member"].includes(p.role)) throw new Error("role must be admin, team_lead or member");
   if (db.prepare("SELECT 1 FROM users WHERE email = ?").get(email)) throw new Error("A user with that email already exists");
   let t = db.prepare("SELECT id FROM tenants WHERE slug = ?").get(p.tenant) as { id: number } | undefined;
   if (!t) {

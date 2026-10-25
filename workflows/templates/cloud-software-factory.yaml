@@ -1,0 +1,139 @@
+# yaml-language-server: $schema=../workflow.schema.json
+# System template modelled on Zach Lloyd's (Warp) "cloud software factory" loop:
+# triage -> [spec] -> human reviews specs -> implement -> code review + verification
+# -> human reviews code and verification -> CI/CD, ship. Sources (docs/workflows.md):
+#   https://www.warp.dev/blog/how-to-build-a-cloud-software-factory-the-automatic-triage-skill (2026-06-25)
+#   https://www.warp.dev/blog/how-to-build-a-cloud-software-factory-add-spec-driven-development-skills (2026-06-29)
+#   https://www.warp.dev/blog/software-factory-build-guide (2026-07-23)
+#   https://www.warp.dev/blog/three-skills-for-spec-driven-development (2026-06-11)
+# His "monitor agent creates issues" stage is a separate scheduled loop, not a step here.
+name: cloud-software-factory
+version: 1
+description: Triage, spec (with human spec review), implement, agent review + verification, human review, ship.
+system: true
+template: true
+on:
+  manual: true
+  github:
+    events: [issues.opened, issues.labeled]
+governance:
+  owner: system@cobra.local
+  approvers:
+    - role: admin
+    - role: team_lead
+  reviewers: []
+inputs:
+  repo:
+    type: string
+    required: true
+    pattern: '^[\w.-]+/[\w.-]+$'
+  issue:
+    type: number
+    required: true
+    min: 1
+  agent:
+    type: choice
+    options: [claude-code, codex]
+    default: claude-code
+  base:
+    type: string
+    default: main
+steps:
+  - id: triage
+    name: Triage agent (understand/repro, route)
+    uses: agent
+    timeout_seconds: 1800
+    with:
+      driver: ${{ inputs.agent }}
+      repo: ${{ inputs.repo }}
+      issue: ${{ inputs.issue }}
+      prompt: |-
+        Triage ${{ inputs.repo }}#${{ inputs.issue }}: understand and try to reproduce it, then reply with exactly one
+        route: ready-to-implement, ready-to-spec (complex or ambiguous but on the roadmap), or needs-info.
+    outputs:
+      route: ${{ result.route }}
+      summary: ${{ result.summary }}
+  - id: spec
+    name: Spec agent writes PRODUCT.md and TECH.md
+    uses: agent
+    needs: triage
+    if: steps.triage.outputs.route == 'ready-to-spec'
+    timeout_seconds: 3600
+    with:
+      driver: ${{ inputs.agent }}
+      repo: ${{ inputs.repo }}
+      issue: ${{ inputs.issue }}
+      branch: 'cobra/spec-${{ inputs.issue }}'
+      prompt: |-
+        Write specs/${{ inputs.issue }}/PRODUCT.md (user-facing behaviour, invariants) and specs/${{ inputs.issue }}/TECH.md
+        (architecture, code locations) for ${{ inputs.repo }}#${{ inputs.issue }}. Do not write implementation code.
+    outputs:
+      summary: ${{ result.summary }}
+  - id: spec_review
+    name: Human reviews the specs
+    uses: approval
+    needs: spec
+    if: steps.triage.outputs.route == 'ready-to-spec'
+    with:
+      role: team_lead
+      message: 'Approve the PRODUCT.md / TECH.md for ${{ inputs.repo }}#${{ inputs.issue }} before any code is generated'
+    outputs:
+      by: ${{ result.by }}
+  - id: implement
+    name: Implementation agent writes code and opens a PR
+    uses: agent
+    needs: [triage, spec_review]
+    if: steps.triage.outputs.route != 'needs-info'
+    secrets: [GITHUB_TOKEN]
+    timeout_seconds: 3600
+    with:
+      driver: ${{ inputs.agent }}
+      repo: ${{ inputs.repo }}
+      issue: ${{ inputs.issue }}
+      branch: 'cobra/issue-${{ inputs.issue }}'
+      base: ${{ inputs.base }}
+      open_pr: true
+      prompt: 'Implement ${{ inputs.repo }}#${{ inputs.issue }}, following specs/${{ inputs.issue }}/ if present; include the specs in the PR.'
+    outputs:
+      pr: ${{ result.pr_number }}
+      summary: ${{ result.summary }}
+  - id: review_and_verify
+    name: Code review agent + verification agent
+    uses: agent
+    needs: implement
+    secrets: [GITHUB_TOKEN]
+    timeout_seconds: 3600
+    with:
+      driver: ${{ inputs.agent }}
+      repo: ${{ inputs.repo }}
+      pr: ${{ steps.implement.outputs.pr }}
+      prompt: |-
+        Review PR #${{ steps.implement.outputs.pr }} for correctness, maintainability, security and match with the specs;
+        leave inline comments. Then verify the behaviour (tests, and UI checks where relevant) and report the evidence.
+    outputs:
+      report: ${{ result.summary }}
+  - id: human_review
+    name: Human reviews code and verification output
+    uses: approval
+    needs: review_and_verify
+    with:
+      role: team_lead
+      message: 'Review PR #${{ steps.implement.outputs.pr }} and the verification report, then approve to ship'
+    outputs:
+      by: ${{ result.by }}
+  - id: ship
+    name: CI/CD and ship (merge the PR)
+    uses: github
+    needs: human_review
+    secrets: [GITHUB_TOKEN]
+    with:
+      action: merge-pr
+      repo: ${{ inputs.repo }}
+      pr: ${{ steps.implement.outputs.pr }}
+      merge_method: squash
+    outputs:
+      sha: ${{ result.sha }}
+outputs:
+  route: ${{ steps.triage.outputs.route }}
+  pr: ${{ steps.implement.outputs.pr }}
+  merge_sha: ${{ steps.ship.outputs.sha }}

@@ -1,0 +1,78 @@
+# yaml-language-server: $schema=./workflow.schema.json
+# The real agent flow implemented by the drivers in src/agents (claude-code.ts,
+# codex.ts): sign in (subscription token first, else API key, read from the
+# server env file at run time), copy job files, run the agent headless on the
+# issue, and use its final reply as the PR description.
+# The web app has no worker-workspace provider yet, so the agent step fails
+# with a clear error until one is wired in (see docs/workflows.md).
+name: issue-to-pr
+version: 1
+description: Run a coding agent on a GitHub issue and open a pull request with its summary.
+on:
+  manual: true
+  github:
+    events: [issues.labeled]
+    labels: [cobra]
+governance:
+  owner: vicgupta@gmail.com
+  approvers:
+    - role: admin
+    - role: team_lead
+  min_approvals: 1
+inputs:
+  agent:
+    type: choice
+    options: [claude-code, codex]
+    default: claude-code
+  repo:
+    type: string
+    required: true
+    pattern: '^[\w.-]+/[\w.-]+$'
+  issue:
+    type: number
+    required: true
+    min: 1
+  title:
+    type: string
+    default: ''
+  prompt:
+    type: string
+    default: ''
+  timeout_minutes:
+    type: number
+    default: 20
+    min: 1
+steps:
+  - id: agent
+    name: Run agent on the issue
+    uses: agent
+    with:
+      driver: ${{ inputs.agent }}
+      repo: ${{ inputs.repo }}
+      issue: ${{ inputs.issue }}
+      prompt: |-
+        Resolve ${{ inputs.repo }}#${{ inputs.issue }}: ${{ inputs.title }}
+        ${{ inputs.prompt }}
+      work_dir: /workspace/repo
+      job_dir: /workspace/job
+      timeout_minutes: ${{ inputs.timeout_minutes }}
+    timeout_seconds: 3600
+    outputs:
+      summary: ${{ result.summary }}
+      auth_mode: ${{ result.mode }}
+      exit_code: ${{ result.code }}
+  - id: open_pr
+    name: Open pull request
+    # PR creation isn't implemented in the codebase yet; this records the intent
+    # and the description the PR would get. GITHUB_TOKEN is read at run time.
+    uses: noop
+    needs: agent
+    if: steps.agent.outputs.exit_code == 0
+    secrets: [GITHUB_TOKEN]
+    with:
+      repo: ${{ inputs.repo }}
+      body: ${{ steps.agent.outputs.summary }}
+    outputs:
+      body: ${{ result.body }}
+outputs:
+  summary: ${{ steps.agent.outputs.summary }}

@@ -10,7 +10,7 @@ export const SESSION_COOKIE = "cobra_session";
 const UA_MAX = 200;
 
 export type SessionUser = {
-  id: number; email: string; name: string; role: "admin" | "member";
+  id: number; email: string; name: string; role: "admin" | "team_lead" | "member";
   tenantId: number; tenantName: string; tenantSlug: string;
   sessionId: string;
 };

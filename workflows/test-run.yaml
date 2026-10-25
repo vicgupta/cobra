@@ -1,0 +1,74 @@
+# yaml-language-server: $schema=./workflow.schema.json
+# The simulated test run behind the "Test run" page (POST /api/runs).
+# Nothing executes an agent or touches GitHub. Step durations reproduce the
+# page's timeline (queued 0s, signing in 1.5s, running 3.5s, PR opened 8s;
+# web/lib/runs.ts STEP_AT, checked by a test).
+name: test-run
+version: 1
+description: Simulated issue-to-PR run used to test the pipeline end to end without executing an agent.
+on:
+  manual: true
+governance:
+  owner: vicgupta@gmail.com
+  approvers:
+    - role: admin
+    - role: team_lead
+  reviewers: []
+inputs:
+  agent:
+    type: choice
+    options: [claude-code, codex]
+    default: claude-code
+    description: Agent driver to (pretend to) run
+  repo:
+    type: string
+    required: true
+    pattern: '^[\w.-]+/[\w.-]+$'
+    description: owner/name
+  issue:
+    type: number
+    required: true
+    min: 1
+  title:
+    type: string
+    default: ''
+    max_length: 200
+  prompt:
+    type: string
+    default: ''
+    max_length: 4000
+steps:
+  - id: queued
+    name: Queued
+    uses: simulate
+    with: { duration_ms: 1500 }
+  - id: signing_in
+    name: Signing in
+    uses: simulate
+    needs: queued
+    with:
+      duration_ms: 2000
+      mode: simulated
+      driver: ${{ inputs.agent }}
+    outputs:
+      auth_mode: ${{ result.mode }}
+  - id: running
+    name: Running agent
+    uses: simulate
+    needs: signing_in
+    with:
+      duration_ms: 4500
+      summary: 'Simulated ${{ inputs.agent }} run for ${{ inputs.repo }}#${{ inputs.issue }}'
+    outputs:
+      summary: ${{ result.summary }}
+  - id: pr_opened
+    name: PR opened
+    uses: noop
+    needs: running
+    with:
+      url: 'https://github.com/${{ inputs.repo }}/pulls (placeholder)'
+    outputs:
+      pr_url: ${{ result.url }}
+outputs:
+  summary: ${{ steps.running.outputs.summary }}
+  pr_url: ${{ steps.pr_opened.outputs.pr_url }}

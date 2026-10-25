@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=../workflow.schema.json
+# System template: the simplest end-to-end GitHub loop in three steps.
+#   1. create a GitHub issue  ->  2. an agent implements it on a branch and opens a PR
+#   referencing the issue  ->  3. merge that PR (squash commit).
+# Copy it into your workspace (Workflows > Templates > Copy); the copy needs normal approval.
+name: issue-to-merge
+version: 1
+description: Create a GitHub issue, have an agent implement it in a pull request, then merge the PR.
+system: true
+template: true
+on:
+  manual: true
+governance:
+  owner: system@cobra.local
+  approvers:
+    - role: admin
+    - role: team_lead
+inputs:
+  repo:
+    type: string
+    required: true
+    pattern: '^[\w.-]+/[\w.-]+$'
+  title:
+    type: string
+    required: true
+    max_length: 200
+  body:
+    type: string
+    default: ''
+  agent:
+    type: choice
+    options: [claude-code, codex]
+    default: claude-code
+  base:
+    type: string
+    default: main
+steps:
+  - id: create_issue
+    name: Create GitHub issue
+    uses: github
+    secrets: [GITHUB_TOKEN]
+    with:
+      action: create-issue
+      repo: ${{ inputs.repo }}
+      title: ${{ inputs.title }}
+      body: ${{ inputs.body }}
+    outputs:
+      number: ${{ result.number }}
+      url: ${{ result.url }}
+  - id: create_pr
+    name: Implement on a branch and open a PR referencing the issue
+    uses: agent
+    needs: create_issue
+    secrets: [GITHUB_TOKEN]
+    timeout_seconds: 3600
+    with:
+      driver: ${{ inputs.agent }}
+      repo: ${{ inputs.repo }}
+      issue: ${{ steps.create_issue.outputs.number }}
+      branch: 'cobra/issue-${{ steps.create_issue.outputs.number }}'
+      base: ${{ inputs.base }}
+      open_pr: true
+      pr_title: '${{ inputs.title }} (fixes #${{ steps.create_issue.outputs.number }})'
+      prompt: |-
+        Implement GitHub issue #${{ steps.create_issue.outputs.number }} in ${{ inputs.repo }}: ${{ inputs.title }}
+        ${{ inputs.body }}
+        Commit on branch cobra/issue-${{ steps.create_issue.outputs.number }} and reference "Fixes #${{ steps.create_issue.outputs.number }}" in the PR body.
+    outputs:
+      pr: ${{ result.pr_number }}
+      pr_url: ${{ result.pr_url }}
+      summary: ${{ result.summary }}
+  - id: merge
+    name: Merge the pull request
+    uses: github
+    needs: create_pr
+    secrets: [GITHUB_TOKEN]
+    with:
+      action: merge-pr
+      repo: ${{ inputs.repo }}
+      pr: ${{ steps.create_pr.outputs.pr }}
+      merge_method: squash
+      commit_title: '${{ inputs.title }} (#${{ steps.create_pr.outputs.pr }})'
+    outputs:
+      sha: ${{ result.sha }}
+outputs:
+  issue: ${{ steps.create_issue.outputs.number }}
+  pr: ${{ steps.create_pr.outputs.pr }}
+  merge_sha: ${{ steps.merge.outputs.sha }}

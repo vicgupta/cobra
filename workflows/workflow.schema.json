@@ -1,0 +1,337 @@
+{
+  "$id": "https://github.com/vicgupta/cobra/workflows/workflow.schema.json",
+  "title": "Cobra workflow",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]*$"
+    },
+    "version": {
+      "type": [
+        "string",
+        "number"
+      ]
+    },
+    "description": {
+      "default": "",
+      "type": "string"
+    },
+    "system": {
+      "default": false,
+      "description": "System-generated (shipped with Cobra); read-only for tenants",
+      "type": "boolean"
+    },
+    "template": {
+      "default": false,
+      "description": "A template tenants copy into their own workflow",
+      "type": "boolean"
+    },
+    "on": {
+      "type": "object",
+      "properties": {
+        "manual": {
+          "anyOf": [
+            {
+              "type": "boolean",
+              "const": true
+            },
+            {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+          ]
+        },
+        "schedule": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "cron": {
+                "type": "string",
+                "pattern": "^(\\S+\\s+){4}\\S+$"
+              }
+            },
+            "required": [
+              "cron"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "github": {
+          "type": "object",
+          "properties": {
+            "events": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "issues.opened",
+                  "issues.labeled",
+                  "pull_request.opened",
+                  "pull_request.closed",
+                  "issue_comment.created"
+                ]
+              }
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "events"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "governance": {
+      "type": "object",
+      "properties": {
+        "owner": {
+          "description": "Author/owner of the workflow; counts as the author of any change",
+          "type": "string",
+          "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+        },
+        "approvers": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "admin",
+                      "team_lead",
+                      "member"
+                    ]
+                  }
+                },
+                "required": [
+                  "role"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "description": "Emails and/or { role: admin|team_lead|member } allowed to approve"
+        },
+        "reviewers": {
+          "description": "Informational: notified/asked to review, cannot approve unless also an approver",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+          }
+        },
+        "min_approvals": {
+          "default": 1,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "owner",
+        "approvers"
+      ],
+      "additionalProperties": false
+    },
+    "inputs": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "default": "string",
+            "type": "string",
+            "enum": [
+              "string",
+              "number",
+              "boolean",
+              "choice"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "type": "boolean"
+          },
+          "default": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          },
+          "options": {
+            "description": "Allowed values when type is choice",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "pattern": {
+            "description": "Regex a string input must match",
+            "type": "string"
+          },
+          "min": {
+            "type": "number"
+          },
+          "max_length": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "steps": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "uses": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "shell",
+              "github",
+              "approval",
+              "simulate",
+              "noop"
+            ],
+            "description": "agent: run a coding agent driver; shell: run a command; github: GitHub REST action; approval: human gate; simulate: wait and emit outputs; noop: emit outputs"
+          },
+          "needs": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]*$"
+                }
+              }
+            ]
+          },
+          "if": {
+            "description": "Expression; the step is skipped when false",
+            "type": "string"
+          },
+          "with": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
+          "run": {
+            "description": "Command for uses: shell",
+            "type": "string"
+          },
+          "secrets": {
+            "default": [],
+            "description": "Env-file keys read at run time and passed to the step; values never live in YAML",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9_]*$"
+            }
+          },
+          "outputs": {
+            "default": {},
+            "description": "Step outputs (expressions over the step result)",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "timeout_seconds": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 86400
+          },
+          "retries": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10
+          },
+          "continue_on_error": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "uses"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "outputs": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "name",
+    "version",
+    "on",
+    "governance",
+    "steps"
+  ],
+  "additionalProperties": false
+}

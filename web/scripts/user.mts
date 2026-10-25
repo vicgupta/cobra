@@ -1,5 +1,5 @@
 // Admin CLI for accounts (there is no public sign-up).
-//   npm run user:create -- --email x@y.com --tenant default --role admin|member [--name "Full Name"] [--tenant-name "Team"]
+//   npm run user:create -- --email x@y.com --tenant default --role admin|team_lead|member [--name "Full Name"] [--tenant-name "Team"]
 //   npm run user:reset-password -- --email x@y.com
 // The password comes from COBRA_USER_PASSWORD or stdin, never from arguments, and is never logged.
 import { parseArgs } from "node:util";
@@ -25,7 +25,7 @@ try {
   const db = openDb(dbPath());
   if (cmd === "create") {
     if (!values.tenant || !values.role) throw new Error("--tenant and --role are required");
-    createUser(db, { email: values.email, tenant: values.tenant, role: values.role as "admin" | "member", name: values.name, tenantName: values["tenant-name"], password: await password() });
+    createUser(db, { email: values.email, tenant: values.tenant, role: values.role as "admin" | "team_lead" | "member", name: values.name, tenantName: values["tenant-name"], password: await password() });
     console.log(`Created ${values.email.toLowerCase()} (${values.role}) in tenant '${values.tenant}'`);
   } else if (cmd === "reset-password") {
     resetPassword(db, values.email, await password());
