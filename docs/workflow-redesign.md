@@ -64,6 +64,8 @@ Pick repo → attach a team template (instance) → choose or override engine �
 
 **Navigation (Job 16).** Templates is no longer in the main nav. A top-level **Settings** item (every signed-in team member; last before Admin; highlighted on `/settings/*`) has a sub-tab bar styled like the admin tabs, with one sub-tab for now: Templates at `/settings/templates` (the same `TemplatesView` component, `web/components/templates.tsx`). `/settings` and the old `/templates` URL redirect there. System admins also find it in Admin > Settings > Templates (`/admin?tab=settings&sub=templates`), next to "System settings" (unchanged). Template APIs and "Use template" links (`/workflows/new?template=...`) are unchanged.
 
+**Navigation (Job 17).** Team and Repos moved under Settings too: sub-tabs are Templates, Team, Repos (`/settings/templates`, `/settings/team`, `/settings/repos`), using the same page components (`web/components/team.tsx`, `web/components/repos.tsx`). `/team` and `/repos` redirect with 307 and keep the query string (`next.config.ts`). Access is unchanged (members see Repos read-only; the designated-lead picker stays system-admin-only); API routes are unchanged. Admin > Settings still has only System settings and Templates.
+
 ## Issues and pull requests (approved by Vic, 2026-10-25 6:19 PM ET)
 
 "Admin" here means the system admin only. There is no team-admin role; the team lead does most team work.

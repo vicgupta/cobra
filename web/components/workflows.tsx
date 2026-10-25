@@ -75,7 +75,7 @@ export function YamlEditor({ initial, previousName, templateName, storage: st, r
             <input aria-label="File path" className={input} placeholder=".cobra/workflows/my-workflow.yaml" value={gh.path} onChange={(e) => setGh({ ...gh, path: e.target.value })} />
             <input aria-label="Branch" className={input} placeholder="branch (default branch if empty)" value={gh.branch} onChange={(e) => setGh({ ...gh, branch: e.target.value })} />
             {!previousName && <label className="flex items-center gap-2 text-xs text-zinc-400 sm:col-span-3"><input type="checkbox" checked={importing} onChange={(e) => setImporting(e.target.checked)} /> Import the existing file instead of the YAML below</label>}
-            <p className="text-xs text-zinc-500 sm:col-span-3">Only your team&apos;s registered repos (<Link className="text-emerald-300 hover:underline" href="/repos">Repos</Link>). Read and written with the server&apos;s GITHUB_TOKEN. Saving commits the file.</p>
+            <p className="text-xs text-zinc-500 sm:col-span-3">Only your team&apos;s registered repos (<Link className="text-emerald-300 hover:underline" href="/settings/repos">Repos</Link>). Read and written with the server&apos;s GITHUB_TOKEN. Saving commits the file.</p>
           </div>
         )}
       </fieldset>
