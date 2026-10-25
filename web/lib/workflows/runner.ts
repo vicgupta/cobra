@@ -96,6 +96,6 @@ export function canViewRun(user: { id: number; role: string; tenantId: number },
 }
 
 export function listWorkflowRuns(db: DB, tenantId: number, workflow: string, limit = 20) {
-  return db.prepare("SELECT id, status, started_at AS startedAt, ended_at AS endedAt, created_by AS createdBy, workflow_hash AS workflowHash FROM runs WHERE tenant_id = ? AND workflow = ? ORDER BY started_at DESC LIMIT ?")
-    .all(tenantId, workflow, limit) as Array<{ id: string; status: string | null; startedAt: number; endedAt: number | null; createdBy: number | null; workflowHash: string }>;
+  return (db.prepare("SELECT id, status, started_at AS startedAt, ended_at AS endedAt, created_by AS createdBy, workflow_hash AS workflowHash FROM runs WHERE tenant_id = ? AND workflow = ? ORDER BY started_at DESC LIMIT ?")
+    .all(tenantId, workflow, limit) as Array<{ id: string; status: string | null; startedAt: number; endedAt: number | null; createdBy: number | null; workflowHash: string }>).map((r) => ({ ...r }));
 }

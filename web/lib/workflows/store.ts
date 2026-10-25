@@ -179,8 +179,8 @@ export function attachedRepo(db: DB, tenantId: number, name: string): string | n
 
 /** Instances created from a template (any version), newest first. */
 export function instancesOf(db: DB, tenantId: number, templateName: string) {
-  return db.prepare("SELECT name, template_hash AS templateHash, storage, repo, created_at AS createdAt FROM tenant_workflows WHERE tenant_id = ? AND template_name = ? ORDER BY created_at DESC")
-    .all(tenantId, templateName) as Array<{ name: string; templateHash: string | null; storage: string; repo: string | null; createdAt: number }>;
+  return (db.prepare("SELECT name, template_hash AS templateHash, storage, repo, created_at AS createdAt FROM tenant_workflows WHERE tenant_id = ? AND template_name = ? ORDER BY created_at DESC")
+    .all(tenantId, templateName) as Array<{ name: string; templateHash: string | null; storage: string; repo: string | null; createdAt: number }>).map((r) => ({ ...r }));
 }
 
 /** A free instance name: base, base-2, base-3, ... */

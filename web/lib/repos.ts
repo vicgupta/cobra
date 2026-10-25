@@ -7,7 +7,9 @@ export type TeamRepo = { repo: string; defaultBranch: string | null; createdAt: 
 export const REPO_RE = /^[\w.-]+\/[\w.-]+$/;
 
 export function listTeamRepos(db: DB, tenantId: number): TeamRepo[] {
-  return db.prepare("SELECT repo, default_branch AS defaultBranch, created_at AS createdAt FROM team_repos WHERE tenant_id = ? ORDER BY repo").all(tenantId) as TeamRepo[];
+  return (db.prepare("SELECT repo, default_branch AS defaultBranch, created_at AS createdAt FROM team_repos WHERE tenant_id = ? ORDER BY repo").all(tenantId) as unknown as TeamRepo[])
+    // node:sqlite rows have a null prototype, which React can't pass to Client Components.
+    .map((r) => ({ repo: r.repo, defaultBranch: r.defaultBranch, createdAt: r.createdAt }));
 }
 
 export function teamRepo(db: DB, tenantId: number, repo: string): TeamRepo | undefined {

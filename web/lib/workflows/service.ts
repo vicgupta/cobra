@@ -58,7 +58,7 @@ export function workflowDetail(db: DB, user: Actor, name: string, dir?: string):
     prompt: w.workflow.prompt ?? null,
     repo: w.origin === "tenant" ? attachedRepo(db, user.tenantId, name) : null,
     teamRepos: listTeamRepos(db, user.tenantId).map((r) => r.repo),
-    createdFrom: w.origin === "tenant" ? (db.prepare("SELECT template_name AS name, template_hash AS hash FROM tenant_workflows WHERE tenant_id = ? AND name = ?").get(user.tenantId, name) as { name: string | null; hash: string | null }) : null,
+    createdFrom: w.origin === "tenant" ? ({ ...(db.prepare("SELECT template_name AS name, template_hash AS hash FROM tenant_workflows WHERE tenant_id = ? AND name = ?").get(user.tenantId, name) as { name: string | null; hash: string | null }) }) : null,
   });
 }
 

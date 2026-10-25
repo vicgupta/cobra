@@ -12,8 +12,8 @@ import { parseWorkflow } from "../lib/workflows/loader";
 import { recordDecision } from "../lib/workflows/approvals";
 import { builtinHandlers, github } from "../lib/workflows/handlers";
 import { localRunner } from "../lib/workflows/local-runner";
-import { getRunDetail } from "../lib/workflows/runner";
-import { findWorkflow, seedTemplates, type Actor } from "../lib/workflows/store";
+import { getRunDetail, listWorkflowRuns } from "../lib/workflows/runner";
+import { findWorkflow, instancesOf, seedTemplates, type Actor } from "../lib/workflows/store";
 import { attachTemplate, saveWorkflow, startRun, workflowDetail, type RunDeps } from "../lib/workflows/service";
 
 function setup() {
@@ -71,6 +71,20 @@ test("repos: per-team lists; admin/lead manage, members view only; team A can't 
   assert.throws(() => removeTeamRepo(db, member, "vicgupta/cobra-sandbox"), RepoError);
   removeTeamRepo(db, lead, "vicgupta/cobra-sandbox");
   assert.equal(listTeamRepos(db, a.tenantId).length, 1);
+});
+
+test("regression: rows passed to Client Components are plain objects (node:sqlite rows have a null prototype)", () => {
+  const { db, a } = setup();
+  addTeamRepo(db, a, "vicgupta/factory-demo-app", "main");
+  const raw = db.prepare("SELECT repo FROM team_repos").get() as object;
+  assert.equal(Object.getPrototypeOf(raw), null, "precondition: raw node:sqlite rows are null-prototype");
+  const list = listTeamRepos(db, a.tenantId);
+  assert.equal(list.length, 1);
+  for (const r of list) {
+    assert.equal(Object.getPrototypeOf(r), Object.prototype);
+    assert.deepEqual(Object.keys(r).sort(), ["createdAt", "defaultBranch", "repo"]);
+  }
+  for (const r of [...listWorkflowRuns(db, a.tenantId, "x"), ...instancesOf(db, a.tenantId, "x")]) assert.equal(Object.getPrototypeOf(r), Object.prototype);
 });
 
 test("repos: github step and GitHub file storage are checked against the team list", async () => {
