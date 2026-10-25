@@ -80,6 +80,13 @@ Anyone on the team, whether member, team lead or system admin, can create an iss
 
 **Designated lead.** Each team has a designated-lead setting: one person, picked by a system admin, since a team can have more than one team lead. Only that person (plus system admins) can merge into main.
 
+**Team roles (Job 25, Settings > Team).** Everyone on the team sees the designated lead ("None set" when empty) and a Members table (email, role). Rules, enforced server-side in `web/lib/team.ts` (`PATCH /api/team/members/<id>` with `{ role }` or `{ makeDesignatedLead: true }`; `PUT /api/team` for the picker); anything else gets 403:
+- Promote member → team_lead: system admins, and any team lead of the same team.
+- Demote team_lead → member: system admins (anyone; demoting the designated lead also unsets the designation). Team leads may demote other team leads of their team, but not themselves and not the current designated lead (that changes merge rights, which stays admin-only).
+- Set, change or clear the designated lead, including the one-step "Make designated lead" (promotes a member to team_lead and designates them): system admins only.
+- Members: view only. Admin roles are never granted or removed here, user 1 is never changed, other teams are untouched.
+- Every change writes a `team_audit` row (migration 13: actor, action `promote` / `demote` / `designate` / `clear_designated`, target, detail, time); admins and leads see recent changes on the page.
+
 Status: implemented (Job 15, 2026-10-25).
 
 Implementation notes (Job 15):
@@ -113,3 +120,5 @@ row (`issue_create`, `pr_create`, `merge`) as the person who started the run. Th
 the merge rule: unless the starter is the team's designated lead or a system admin, it fails with
 "merge not allowed: ... PR #n is left open", even in simulated mode. Simulated runs call neither GitHub nor an
 agent. Like every workflow, it must be approved before it runs. The `issue-to-merge` system template is unchanged.
+
+**Per-agent model (Job 23).** `team_agents.model` (migration 12, NULL = the engine's default). The Agents form has a Model select per engine (plus Default); the card and the run header show it: `[agent] name @ hash (engine, model, mode)`. Real runs pass `--model <id>` to `claude -p` and `-m <id>` to `codex exec`. Allowed ids live in `web/lib/agent-models.ts` (sources and date noted there; `COBRA_CLAUDE_MODELS` / `COBRA_CODEX_MODELS` override, comma-separated); anything else is a 400. The model is folded into the agent hash (unchanged when Default, so existing approvals stay valid).

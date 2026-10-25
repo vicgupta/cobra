@@ -252,6 +252,21 @@ const MIGRATIONS: Array<(db: DB) => void> = [
   `),
   // 12 (Job 23): per-agent model; NULL = the engine's default model
   (db) => db.exec("ALTER TABLE team_agents ADD COLUMN model TEXT;"),
+  // 13 (Job 25): audit trail for team role and designated-lead changes (collab_audit's CHECK is per-repo actions)
+  (db) => db.exec(`
+    CREATE TABLE team_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('promote','demote','designate','clear_designated')),
+      target_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      target_email TEXT,
+      detail TEXT NOT NULL DEFAULT '',
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX team_audit_tenant ON team_audit(tenant_id, at);
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

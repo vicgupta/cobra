@@ -112,3 +112,23 @@ export function DesignatedLeadForm({ leads, current }: { leads: Array<{ id: numb
     </form>
   );
 }
+
+/** Job 25: per-member controls on Settings > Team. The server enforces the same rules (lib/team.ts). */
+export function MemberControls({ member, viewer, designatedId }: { member: { id: number; email: string; role: string }; viewer: { id: number; role: string }; designatedId: number | null }) {
+  const router = useRouter();
+  const c = useAction();
+  const admin = viewer.role === "admin", lead = viewer.role === "team_lead";
+  if (member.role === "admin" || member.id === 1) return <span className="text-xs text-zinc-600">—</span>;
+  const patch = (body: unknown, done: string) => void c.run(() => call(`/api/team/members/${member.id}`, "PATCH", body), () => { router.refresh(); return done; });
+  const canPromote = (admin || lead) && member.role === "member";
+  const canDemote = member.role === "team_lead" && (admin || (lead && member.id !== viewer.id && member.id !== designatedId));
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      {canPromote && <button className={button} disabled={c.busy} onClick={() => patch({ role: "team_lead" }, "Promoted")}>Make team lead</button>}
+      {canDemote && <button className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50" disabled={c.busy}
+        onClick={() => { if (member.id !== designatedId || confirm(`${member.email} is the designated lead; demoting unsets that. Continue?`)) patch({ role: "member" }, "Demoted"); }}>Make member</button>}
+      {admin && member.id !== designatedId && <button className={button} disabled={c.busy} onClick={() => patch({ makeDesignatedLead: true }, "Designated")}>Make designated lead</button>}
+      {c.status}
+    </span>
+  );
+}
