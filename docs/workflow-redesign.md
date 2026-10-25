@@ -24,7 +24,7 @@ Status: implemented on branch `v1-workflow-redesign` (approved by Vic on 2026-10
 
 ## 5. Standard run flow
 Pick repo → attach a team template (instance) → choose or override engine → give the prompt → choose mode (simulated or real) → Run.
-- Who can start runs doesn't change: `canRun`, plus the exact approved version, plus default-tenant admin for test runs. Members still can't start runs.
+- Any user of the workflow's tenant (members included) can start runs of an approved workflow in their own tenant, including the agent-run flow (team repo, engine, prompt) and `/runs/new` test runs. Still enforced: the exact version must be approved; tenant isolation (other tenants get 404); team repo checks; templates never run. Members still can't edit workflows (unless owner/approver), manage repos, open Settings or /admin, or see agent credential status.
 - `simulated` mode records the engine and prompt but executes nothing.
 - `real` mode runs the local runner:
   - It creates a scratch workspace at `/var/lib/cobra/workspaces/<run-id>`.

@@ -38,13 +38,13 @@ The engine runs steps sequentially in topological order, with retries and timeou
 - Repo fields in the UI are dropdowns of the team's repos.
 - `/workflows/new` → "From a template": pick a template (system or team) and a team repo → `POST /api/templates/[name]/attach` creates an instance with `tenant_workflows.repo`.
 - Run flow on `/workflows/[name]`: repo → engine → prompt (workflow template or free-form) → mode → inputs → Run. `POST /api/workflows/[name]/runs` body: `{ inputs, repo?, engine?, promptMode?: workflow|custom|none, prompt?, mode?: simulated|real }`. The run stores `agent` (engine), `prompt` (final text), `prompt_source`, `mode`, `repo`, `branch`; the run page shows them and the first log entry (`run`) records them.
-- Who can start runs is unchanged (canRun; `/runs/new` test runs stay default-workspace admins only).
+- Any user of the workflow's tenant (members included) can start runs of an approved workflow in their own tenant, including the agent-run flow (team repo, engine, prompt) and `/runs/new` test runs. Still enforced: the exact version must be approved; tenant isolation (other tenants get 404); team repo checks; templates never run. Members still can't edit workflows (unless owner/approver), manage repos, open Settings or /admin, or see agent credential status.
 - `mode: real` agent steps use the local runner (`web/lib/workflows/local-runner.ts`): workspace `COBRA_WORKSPACES_DIR` (default `/var/lib/cobra/workspaces`)/`<run-id>`; with `GITHUB_TOKEN` + a team repo it clones (token passed via env git config, never argv/logs), else an empty scratch repo and the log says why; runs `claude -p --dangerously-skip-permissions` or `codex exec --dangerously-bypass-approvals-and-sandbox` (set `COBRA_CODEX_SANDBOX=workspace-write` to use Codex's sandbox where the host supports it) headless with a timeout (step `timeout`, default 10m), streams output into the step log, commits changes and pushes `cobra/<run-id>` only (never the default branch, never force). Built-in `agent-run` workflow uses it.
 
 ## Governance
 - A run is refused unless the exact version (name + sha256 of source) has the required approvals (`workflow_approvals`).
 - Who can approve: listed approvers. The self-approval policy `COBRA_WORKFLOW_SELF_APPROVAL` is `admin` by default (an author may approve only if they are an admin), or `allow`/`deny`. Authors are the owner plus the last editor.
-- Who can edit/run: admin, team_lead, the owner, or an approver. Any tenant user can create workflows. Editing a workflow changes its hash, so approval resets.
+- Who can edit: admin, team_lead, the owner, or an approver. Who can run: any user of the tenant, once the exact version is approved. Any tenant user can create workflows. Editing a workflow changes its hash, so approval resets.
 
 ## Templates and instances
 - System templates are in `workflows/templates/*.yaml` and are seeded into `workflow_templates` (keyed by name + hash, INSERT OR IGNORE, `current` flag) on DB open.

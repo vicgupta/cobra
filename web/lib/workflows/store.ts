@@ -63,8 +63,10 @@ export function canEdit(user: Actor, w: LoadedWorkflow): boolean {
 
 /** Admins, team leads, the owner and allowed approvers may run an approved workflow. */
 export function canRun(user: Actor, w: LoadedWorkflow): boolean {
-  if (w.workflow.template) return false;
-  return user.role === "admin" || user.role === "team_lead" || user.email === w.workflow.governance.owner || canApprove(user, w.workflow.governance);
+  // Any user of the workflow's tenant may start runs: findWorkflow is tenant-scoped (isolation), and
+  // startRun separately requires this exact version to be approved. Templates never run.
+  void user;
+  return !w.workflow.template;
 }
 
 export class SaveError extends Error {

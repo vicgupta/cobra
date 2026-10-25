@@ -9,15 +9,16 @@ import { startRun } from "@/lib/workflows/service";
 // engine (simulated steps only: nothing executes Claude Code or Codex).
 const TEST_RUN_WORKFLOW = "test-run";
 
+// Any member of the tenant may list and start test runs (approval of test-run is still required).
 export async function GET(req: Request) {
-  const g = await apiGuard(req, { sharedConfig: true });
+  const g = await apiGuard(req);
   if (g.error) return g.error;
   const now = Date.now();
   return NextResponse.json(listRuns(g.user.tenantId).filter((r) => !r.workflow || r.workflow === TEST_RUN_WORKFLOW).map((r) => ({ ...r, step: stepAt(r, now) })));
 }
 
 export async function POST(req: Request) {
-  const g = await apiGuard(req, { sharedConfig: true });
+  const g = await apiGuard(req);
   if (g.error) return g.error;
   const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!b) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });

@@ -250,7 +250,8 @@ test("service: approve/reject/run/view enforce permissions; run log is recorded 
   assert.equal(decide(db, lead, "flow", { decision: "approve", comment: "ok" }).status, 200);
   const detail = workflowDetail(db, lead, "flow").body as { approval: { status: string }; can: { run: boolean }; decisions: Array<{ comment: string }> };
   assert.equal(detail.approval.status, "approved"); assert.ok(detail.can.run); assert.equal(detail.decisions[0].comment, "ok");
-  assert.equal(startRun(db, member, "flow", { inputs: { who: "vic" } }, deps()).status, 403, "member isn't owner/approver");
+  assert.equal((workflowDetail(db, member, "flow").body as { can: { run: boolean; edit: boolean } }).can.run, true, "any tenant member can run an approved workflow");
+  assert.equal((workflowDetail(db, member, "flow").body as { can: { run: boolean; edit: boolean } }).can.edit, false, "editing rules unchanged");
   assert.equal(startRun(db, lead, "flow", { inputs: {} }, deps()).status, 400, "required input");
   const secret = "sk-very-secret-123";
   const handlers: Handlers = { noop: async (c) => ({ stdout: `msg=${c.with.msg} key=${c.secrets.API_KEY}` }), shell: async () => { throw new Error(`exit 1 (env had ${secret})`); } };

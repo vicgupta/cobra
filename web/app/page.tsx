@@ -31,7 +31,7 @@ export default function Dashboard() {
 
 async function DashboardBody({ user }: { user: SessionUser }) {
   const shared = canUseSharedConfig(user);
-  // Every member of the tenant sees its runs; starting runs and agent status stay admin-only.
+  // Every member of the tenant sees its runs; any member can start test runs; agent status stays admin-only.
   const { now, runs } = listRunsWithTime(user.tenantId);
   const week = runs.filter((r) => now - r.startedAt < WEEK);
   const modes = shared ? await agentModes() : null;
@@ -45,7 +45,7 @@ async function DashboardBody({ user }: { user: SessionUser }) {
           <h1 className="text-2xl font-semibold tracking-tight">Factory output</h1>
           <p className="text-sm text-zinc-400">Approved issues → agent PRs → human review. Nothing auto-merges.</p>
         </div>
-        {shared && <Link href="/runs/new" className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400">New test run</Link>}
+        <Link href="/runs/new" className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400">New test run</Link>
       </div>
 
       {(

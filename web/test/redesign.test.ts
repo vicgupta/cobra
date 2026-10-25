@@ -129,8 +129,8 @@ test("templates: team template + attach creates an instance bound to a team repo
   assert.equal(sys.status, 201, JSON.stringify(sys.body));
 });
 
-test("engine default + per-run override, templated vs free-form prompt; members still can't run", async () => {
-  const { db, a, member } = setup();
+test("engine default + per-run override, templated vs free-form prompt", async () => {
+  const { db, a } = setup();
   addTeamRepo(db, a, "vicgupta/factory-demo-app");
   const name = await approved(db, a, wfYaml("eng", "engine: codex\nprompt: 'Task: ${{ inputs.task }}'\n"));
   const d = deps(db, a.tenantId);
@@ -149,7 +149,26 @@ test("engine default + per-run override, templated vs free-form prompt; members 
   assert.equal(startRun(db, a, name, { engine: "gpt" }, d).status, 400);
   assert.equal(startRun(db, a, name, { promptMode: "custom", prompt: " " }, d).status, 400);
   assert.equal(startRun(db, a, name, { repo: "other/b-repo" }, d).status, 400, "unregistered repo");
-  assert.equal(startRun(db, member, name, { promptMode: "custom", prompt: "x" }, d).status, 403);
+});
+
+test("members: start runs of approved workflows in their own tenant; not unapproved; not across tenants", async () => {
+  const { db, a, member, b } = setup();
+  addTeamRepo(db, a, "vicgupta/factory-demo-app");
+  const name = await approved(db, a, wfYaml("mrun", "engine: claude-code\nprompt: 'Task: ${{ inputs.task }}'\n"));
+  const d = deps(db, a.tenantId);
+  const r = startRun(db, member, name, { engine: "codex", promptMode: "custom", prompt: "Create HELLO.md", mode: "simulated", repo: "vicgupta/factory-demo-app" }, d);
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  await r.run!.done;
+  const x = getRunDetail(db, r.run!.id)!;
+  assert.deepEqual([x.status, x.engine, x.promptSource, x.repo, x.createdBy], ["succeeded", "codex", "custom", "vicgupta/factory-demo-app", member.id]);
+  assert.equal(startRun(db, member, name, { repo: "other/b-repo", mode: "simulated" }, d).status, 400, "team repo check still applies");
+  // unapproved: a new version resets approval
+  const un = (await saveWorkflow(db, a, { source: wfYaml("mrun2") })).body as { name: string };
+  assert.equal(startRun(db, member, un.name, { mode: "simulated" }, d).status, 409);
+  // other tenant: not visible at all
+  assert.equal(startRun(db, b, name, { mode: "simulated" }, deps(db, b.tenantId)).status, 404);
+  // members still can't manage repos
+  assert.throws(() => addTeamRepo(db, member, "x/y"), (e: unknown) => e instanceof RepoError && e.status === 403);
 });
 
 test("YAML: engine/prompt optional (backward compatible) and validated", () => {

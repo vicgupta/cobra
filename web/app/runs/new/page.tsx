@@ -12,7 +12,7 @@ export default function NewRunPage() {
         <p className="text-sm text-zinc-400">Simulated only — no agent is executed and nothing is pushed or opened on GitHub.</p>
       </div>
       <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}>
-        <AuthGate shared><TestRun /></AuthGate>
+        <AuthGate><TestRun /></AuthGate>
       </Suspense>
     </div>
   );
