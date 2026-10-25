@@ -18,6 +18,8 @@ export type LocalRunnerOptions = {
   defaultBranch?: (repo: string) => string | null | undefined;
   claudeBin?: string;
   codexBin?: string;
+  /** Value for codex --sandbox; empty means --dangerously-bypass-approvals-and-sandbox (default; see COBRA_CODEX_SANDBOX). */
+  codexSandbox?: string;
   gitBin?: string;
   /** Clone URL base (tests point this at a local directory). */
   remoteBase?: string;
@@ -83,7 +85,12 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     let cmd: string, args: string[];
     if (driver === "codex") {
       cmd = opts.codexBin ?? "codex";
-      args = ["exec", "--skip-git-repo-check", "--sandbox", "workspace-write", "--output-last-message", lastFile, prompt];
+      // Codex's own sandbox (bubblewrap/landlock) cannot write on hosts without user namespaces, so by
+      // default it runs unsandboxed like Claude's --dangerously-skip-permissions: the run is already
+      // confined to its own throwaway clone. COBRA_CODEX_SANDBOX=workspace-write (etc.) opts back in.
+      const sandbox = (opts.codexSandbox ?? process.env.COBRA_CODEX_SANDBOX ?? "").trim();
+      const mode = sandbox ? ["--sandbox", sandbox] : ["--dangerously-bypass-approvals-and-sandbox"];
+      args = ["exec", "--skip-git-repo-check", ...mode, "--output-last-message", lastFile, prompt];
     } else {
       const oauth = opts.resolveSecret("CLAUDE_CODE_OAUTH_TOKEN");
       if (oauth) env.CLAUDE_CODE_OAUTH_TOKEN = oauth;
