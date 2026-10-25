@@ -11,6 +11,7 @@ export async function UserMenu() {
         <span className="block text-zinc-200">{u.email}</span>
         <span className="block text-xs text-zinc-500">{u.tenantName}</span>
       </span>
+      <a href="/account/sessions" className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:bg-zinc-900">Sessions</a>
       <LogoutButton />
     </div>
   );

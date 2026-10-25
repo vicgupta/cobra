@@ -78,13 +78,27 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     );
     CREATE INDEX password_resets_user ON password_resets(user_id);
   `),
+  // 5: session metadata for the Sessions page. Existing sessions stay valid and
+  // count as "remember me" (30-day) sessions; public_id is the id shown to users
+  // (the token hash in sessions.id is never sent to the browser).
+  (db) => db.exec(`
+    ALTER TABLE sessions ADD COLUMN public_id TEXT;
+    UPDATE sessions SET public_id = lower(hex(randomblob(16)));
+    CREATE UNIQUE INDEX sessions_public_id ON sessions(public_id);
+    ALTER TABLE sessions ADD COLUMN remember INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE sessions ADD COLUMN last_seen_at INTEGER;
+    ALTER TABLE sessions ADD COLUMN user_agent TEXT NOT NULL DEFAULT '';
+    ALTER TABLE sessions ADD COLUMN ip TEXT NOT NULL DEFAULT '';
+    UPDATE sessions SET last_seen_at = created_at;
+  `),
 ];
 
-export function migrate(db: DB): void {
+/** Runs pending migrations (up to `target`, for tests). */
+export function migrate(db: DB, target = MIGRATIONS.length): void {
   // Foreign keys are off while migrating (needed for table rebuilds) and checked before commit.
   db.exec("PRAGMA foreign_keys = OFF; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
   const { user_version: v } = db.prepare("PRAGMA user_version").get() as { user_version: number };
-  for (let i = v; i < MIGRATIONS.length; i++) {
+  for (let i = v; i < target; i++) {
     db.exec("BEGIN");
     try {
       MIGRATIONS[i](db);

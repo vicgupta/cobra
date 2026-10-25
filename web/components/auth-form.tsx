@@ -9,6 +9,7 @@ export function AuthForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -16,7 +17,7 @@ export function AuthForm() {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const r = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password }) });
+    const r = await fetch("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password, remember }) });
     if (r.ok) {
       router.replace("/");
       router.refresh();
@@ -37,6 +38,10 @@ export function AuthForm() {
         <label className="block space-y-1.5 text-sm">
           <span>Password</span>
           <input required type="password" name="password" autoComplete="current-password" className={input} value={password} onChange={(e) => setPassword(e.target.value)} />
+        </label>
+        <label className="flex items-center gap-2 text-sm text-zinc-300">
+          <input type="checkbox" name="remember" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-emerald-500" />
+          <span>Remember me for 30 days</span>
         </label>
         {error && <p className="text-sm text-rose-400">{error}</p>}
         <button disabled={busy} className="w-full rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400 disabled:opacity-50">

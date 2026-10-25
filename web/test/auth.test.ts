@@ -1,9 +1,10 @@
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { migrate, openDb } from "../lib/db";
 import { hashPassword, verifyPassword } from "../lib/auth/password";
-import { canUseSharedConfig, createSession, deleteSession, getSessionUser, SESSION_TTL_MS } from "../lib/auth/sessions";
+import { canUseSharedConfig, createSession, deleteSession, endOtherSessions, endSession, getSessionUser, LAST_SEEN_INTERVAL_MS, listSessions, SESSION_SHORT_TTL_MS, SESSION_TTL_MS } from "../lib/auth/sessions";
 import { authenticate, createUser, resetPassword } from "../lib/auth/users";
 import { createResetToken, GENERIC_RESET_MESSAGE, hashResetToken, requestReset, RESET_TTL_MS, resetTokenState, resetWithToken, throttleReset } from "../lib/auth/password-reset";
 import { clearFailures, isLimited, recordFailure } from "../lib/auth/rate-limit";
@@ -63,7 +64,9 @@ test("migration 3 drops username, keeping ids, sessions and email login", () => 
     PRAGMA user_version = 2;`);
   db.prepare("INSERT INTO tenants VALUES (1, 'Vic', 'default', 0)").run();
   db.prepare("INSERT INTO users VALUES (7, 1, 'vicgupta@gmail.com', 'vic', 'Vic', ?, 'admin', 0)").run(hashPassword(PW));
-  const { token } = createSession(db, 7, Date.now());
+  // A pre-migration-5 session row (no metadata columns yet) must stay valid.
+  const token = "legacy-session-token";
+  db.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, 7, ?, ?)").run(createHash("sha256").update(token).digest("hex"), Date.now() + 60_000, Date.now());
   migrate(db);
   const cols = (db.prepare("PRAGMA table_info(users)").all() as Array<{ name: string }>).map((c) => c.name);
   assert.ok(!cols.includes("username"));
@@ -84,19 +87,21 @@ test("login rate limit after 10 failures", () => {
 const count = (db: DatabaseSync, sql: string, ...a: Array<string | number>) => (db.prepare(sql).get(...a) as { c: number }).c;
 
 test("migration 4 adds password_resets on an existing v3 database", () => {
-  const db = openDb(":memory:");
-  const id = createUser(db, { email: "v@x.io", tenant: "default", role: "admin", password: PW });
-  const { token } = createSession(db, id);
-  // Roll the schema back to v3 (pre-reset) with data in place, then migrate.
-  db.exec("DROP TABLE password_resets; PRAGMA user_version = 3;");
-  migrate(db);
+  const db = new DatabaseSync(":memory:");
+  migrate(db, 3);
+  db.prepare("INSERT INTO tenants VALUES (1, 'Vic', 'default', 0)").run();
+  db.prepare("INSERT INTO users (id, tenant_id, email, password_hash, role, created_at) VALUES (3, 1, 'v@x.io', ?, 'admin', 0)").run(hashPassword(PW));
+  const id = 3;
+  migrate(db, 4);
   assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 4);
+  migrate(db);
+  const { token } = createSession(db, id);
   const cols = (db.prepare("PRAGMA table_info(password_resets)").all() as Array<{ name: string }>).map((c) => c.name);
   for (const c of ["user_id", "token_hash", "expires_at", "used_at"]) assert.ok(cols.includes(c), c);
   assert.equal(authenticate(db, "v@x.io", PW), id);
   assert.equal(getSessionUser(db, token)?.id, id);
   migrate(db); // no-op when current
-  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 4);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 5);
 });
 
 test("reset tokens: random, stored only as sha256, expire after 30 minutes", () => {
@@ -167,4 +172,75 @@ test("reset request: generic message, nothing sent or stored for unknown email; 
   for (let i = 0; i < 10; i++) assert.equal(throttleReset("ip:t", 10, now), false);
   assert.equal(throttleReset("ip:t", 10, now), true);
   assert.equal(throttleReset("ip:t", 10, now + 15 * 60 * 1000), false);
+});
+
+test("migration 5: existing sessions stay valid (remembered), get a public id and metadata columns", () => {
+  const db = new DatabaseSync(":memory:");
+  migrate(db, 4);
+  db.prepare("INSERT INTO tenants VALUES (1, 'Vic', 'default', 0)").run();
+  db.prepare("INSERT INTO users (id, tenant_id, email, password_hash, role, created_at) VALUES (5, 1, 'v@x.io', ?, 'admin', 0)").run(hashPassword(PW));
+  const token = "v4-session-token", t0 = Date.now() - 1000;
+  db.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, 5, ?, ?)").run(createHash("sha256").update(token).digest("hex"), Date.now() + SESSION_TTL_MS, t0);
+  migrate(db);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 5);
+  const u = getSessionUser(db, token)!;
+  assert.equal(u.id, 5);
+  assert.match(u.sessionId, /^[0-9a-f]{32}$/);
+  const [s] = listSessions(db, 5, u.sessionId);
+  assert.equal(s.remember, true);
+  assert.ok(s.current);
+  assert.equal(s.createdAt, t0);
+  assert.equal(authenticate(db, "v@x.io", PW), 5);
+});
+
+test("remember me: 30-day vs 12-hour server-side expiry; metadata stored; last_seen throttled", () => {
+  const db = openDb(":memory:");
+  const id = createUser(db, { email: "d@x.io", tenant: "default", role: "member", password: PW });
+  const now = 10_000_000;
+  const long = createSession(db, id, now, { remember: true, userAgent: "UA-" + "x".repeat(500), ip: "1.2.3.4" });
+  const short = createSession(db, id, now, { remember: false });
+  assert.equal(long.expiresAt, now + SESSION_TTL_MS);
+  assert.equal(short.expiresAt, now + SESSION_SHORT_TTL_MS);
+  assert.equal(SESSION_SHORT_TTL_MS, 12 * 60 * 60 * 1000);
+  assert.ok(getSessionUser(db, short.token, now + SESSION_SHORT_TTL_MS - 1));
+  assert.equal(getSessionUser(db, short.token, now + SESSION_SHORT_TTL_MS), null);
+  assert.ok(getSessionUser(db, long.token, now + SESSION_SHORT_TTL_MS));
+  const l = listSessions(db, id, long.sessionId, now + SESSION_SHORT_TTL_MS).find((s) => s.id === long.sessionId)!;
+  assert.equal(l.remember, true);
+  assert.equal(l.ip, "1.2.3.4");
+  assert.equal(l.userAgent.length, 200);
+  assert.equal(l.createdAt, now);
+  assert.equal(l.lastSeenAt, now + SESSION_SHORT_TTL_MS);
+  getSessionUser(db, long.token, now + SESSION_SHORT_TTL_MS + LAST_SEEN_INTERVAL_MS - 1);
+  assert.equal(listSessions(db, id, null, now + SESSION_SHORT_TTL_MS)[0].lastSeenAt, now + SESSION_SHORT_TTL_MS);
+  getSessionUser(db, long.token, now + SESSION_SHORT_TTL_MS + LAST_SEEN_INTERVAL_MS);
+  assert.equal(listSessions(db, id, null, now + SESSION_SHORT_TTL_MS)[0].lastSeenAt, now + SESSION_SHORT_TTL_MS + LAST_SEEN_INTERVAL_MS);
+});
+
+test("sessions page: only own sessions; end one; end all others keeps current; cross-user rejected", () => {
+  const db = openDb(":memory:");
+  const a = createUser(db, { email: "a@x.io", tenant: "default", role: "member", password: PW });
+  const b = createUser(db, { email: "b@x.io", tenant: "default", role: "admin", password: PW });
+  const now = Date.now();
+  const a1 = createSession(db, a, now), a2 = createSession(db, a, now), a3 = createSession(db, a, now, { remember: false });
+  const b1 = createSession(db, b, now), b2 = createSession(db, b, now);
+  const listA = listSessions(db, a, a1.sessionId, now);
+  assert.deepEqual(listA.map((s) => s.id).sort(), [a1.sessionId, a2.sessionId, a3.sessionId].sort());
+  assert.deepEqual(listA.filter((s) => s.current).map((s) => s.id), [a1.sessionId]);
+  assert.ok(!JSON.stringify(listA).includes(a1.token));
+  // Cross-user: A cannot end B's session.
+  assert.equal(endSession(db, a, b1.sessionId), false);
+  assert.ok(getSessionUser(db, b1.token, now));
+  // End one.
+  assert.equal(endSession(db, a, a2.sessionId), true);
+  assert.equal(getSessionUser(db, a2.token, now), null);
+  assert.equal(endSession(db, a, a2.sessionId), false);
+  // End all others keeps current, and leaves other users alone.
+  assert.equal(endOtherSessions(db, a, a1.sessionId), 1);
+  assert.ok(getSessionUser(db, a1.token, now));
+  assert.equal(getSessionUser(db, a3.token, now), null);
+  assert.ok(getSessionUser(db, b1.token, now));
+  assert.ok(getSessionUser(db, b2.token, now));
+  assert.deepEqual(listSessions(db, a, a1.sessionId, now).map((s) => s.id), [a1.sessionId]);
+  assert.equal(listSessions(db, b, null, now).length, 2);
 });

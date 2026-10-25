@@ -10,7 +10,7 @@ import { clientIp as ip } from "@/lib/client-ip";
 
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return NextResponse.json({ error: "Bad origin" }, { status: 403 });
-  const b = (await req.json().catch(() => null)) as { email?: unknown; password?: unknown } | null;
+  const b = (await req.json().catch(() => null)) as { email?: unknown; password?: unknown; remember?: unknown } | null;
   if (!b || typeof b.email !== "string" || typeof b.password !== "string" || !b.email || !b.password)
     return NextResponse.json({ error: "Enter your email and password" }, { status: 400 });
   const keys = [`ip:${ip(req)}`, `acct:${b.email.trim().toLowerCase()}`];
@@ -22,8 +22,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Wrong email or password" }, { status: 401 });
   }
   keys.forEach(clearFailures);
-  const { token, expiresAt } = createSession(db, userId);
+  const remember = b.remember !== false;
+  const { token, expiresAt } = createSession(db, userId, Date.now(), { remember, userAgent: req.headers.get("user-agent"), ip: ip(req) });
   const res = NextResponse.json({ ok: true });
-  setSessionCookie(res, token, expiresAt);
+  setSessionCookie(res, token, expiresAt, remember);
   return res;
 }

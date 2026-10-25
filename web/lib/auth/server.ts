@@ -2,11 +2,12 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { NextResponse } from "next/server";
+import { connection, NextResponse } from "next/server";
 import { getDb } from "../db";
 import { canUseSharedConfig, getSessionUser, SESSION_COOKIE, type SessionUser } from "./sessions";
 
 export async function currentUser(): Promise<SessionUser | null> {
+  await connection(); // session checks use the current time: always render per request
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   return getSessionUser(getDb(), token);
 }
