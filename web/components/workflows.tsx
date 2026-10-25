@@ -322,7 +322,7 @@ export function RepoManager({ initial, canManage }: { initial: Array<{ repo: str
           <input aria-label="Default branch" className={input} placeholder="default branch (optional)" value={branch} onChange={(e) => setBranch(e.target.value)} />
           <button className={button} disabled={!repo.trim()}>Add repo</button>
         </form>
-      ) : <p className="text-xs text-zinc-500">Only team admins and team leads can add or remove repos.</p>}
+      ) : <p className="text-xs text-zinc-500">Only admins and team leads can add or remove repos.</p>}
       {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
     </div>
   );

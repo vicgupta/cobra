@@ -227,6 +227,23 @@ const MIGRATIONS: Array<(db: DB) => void> = [
       UNIQUE (tenant_id, name)
     );
   `),
+  // 10: issues and pull requests. Designated lead per team (merge rights) and an audit trail
+  (db) => db.exec(`
+    ALTER TABLE tenants ADD COLUMN designated_lead_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    CREATE TABLE collab_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('issue_create','agent_issue','pr_create','comment','merge')),
+      repo TEXT NOT NULL,
+      number INTEGER,
+      run_id TEXT,
+      detail TEXT NOT NULL DEFAULT '',
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX collab_audit_item ON collab_audit(tenant_id, repo, number, at);
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

@@ -8,6 +8,7 @@ import { builtinHandlers } from "./handlers";
 import { localRunner } from "./local-runner";
 import { checkTeamRepo, teamRepo } from "../repos";
 import { githubFiles } from "./github-files";
+import { githubApi } from "../github-api";
 import type { RunDeps } from "./service";
 import type { Actor } from "./store";
 
@@ -37,3 +38,6 @@ export { getDb };
 
 /** GitHub contents client for storage: github, using GITHUB_TOKEN from the env file at call time. */
 export const githubStore = () => githubFiles(envFile().GITHUB_TOKEN || process.env.GITHUB_TOKEN || undefined);
+
+/** GitHub issues/PR client with the server's GITHUB_TOKEN (read at call time, never returned). */
+export const githubClient = () => githubApi(secret("GITHUB_TOKEN"));

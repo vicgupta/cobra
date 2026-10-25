@@ -70,4 +70,24 @@ Anyone on the team, whether member, team lead or system admin, can create an iss
 
 **Designated lead.** Each team has a designated-lead setting: one person, picked by a system admin, since a team can have more than one team lead. Only that person (plus system admins) can merge into main.
 
-Status: spec only, not implemented yet.
+Status: implemented (Job 15, 2026-10-25).
+
+Implementation notes (Job 15):
+
+- **Data (migration 10).** `tenants.designated_lead_user_id` (FK users, SET NULL) and `collab_audit`. An audit row holds actor, action (`issue_create`, `agent_issue`, `pr_create`, `comment` or `merge`), repo, number, run_id, detail and time. A `pr_create` row is written against both the PR and the issue, so it shows on both pages.
+- **Pages.**
+  - **Issues:** `/issues` lists the team's repos. `/issues/<owner>/<repo>` lists open issues and has two forms: create an issue by hand, or let an agent write one. The issue page `/issues/<owner>/<repo>/<n>` has the body, comments, a comment form, **Create PR** and the audit table.
+  - **Pull requests:** the list is `/pulls/<owner>/<repo>`, with open and closed views. The PR page `/pulls/<owner>/<repo>/<n>` has reviews, review comments, comments, a comment form, the **Merge** card and the audit table.
+  - **Team settings:** `/team` holds the designated lead.
+- **GitHub access.** All calls use the server's `GITHUB_TOKEN` from the env file (`lib/github-api.ts`), and only for the acting team's registered repos (`repoGate`). The API lives under `/api/github/<owner>/<repo>/...` and `/api/team`.
+- **Agent-written issue.** This is a pre-approved single run: Claude Code, Codex or a team agent, simulated or real. When the run succeeds, the first line of its output becomes the title (unless one was given) and the rest becomes the body.
+- **Create PR.** This is always a **real** run. The agent's prompt carries the issue's title and body plus any extra instructions, and the run pushes `cobra/<run-id>`. Cobra then opens a PR against the repo's default branch with `Closes #<n>`. If nothing was pushed, no PR is opened, and the run log shows why.
+- **Merge.** The server enforces it in `mergePull`: only the designated lead (who must still be a team lead) or a system admin (role `admin`) can merge. Everyone else gets 403 and the request never reaches GitHub.
+  - Cobra does a plain merge commit pinned to the PR head sha that was shown, never forced.
+  - Each merge writes an audit row.
+- **Designated lead.** It is chosen at `/team` (`PUT /api/team`) by a system admin only, from the team's team leads, and can be cleared. While none is set, only system admins can merge.
+- **Wording.** The UI says "admin" for the system admin. Labels that used to say "team admin" were reworded.
+- **Tests.** `web/test/collab.test.ts` covers:
+  - members and non-designated leads get 403 on merge;
+  - the designated lead and a system admin can merge;
+  - every action writes an audit row, scoped per team.

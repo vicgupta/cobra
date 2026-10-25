@@ -1,5 +1,6 @@
 // Route logic for the workflow API, kept free of Next so tests can exercise the
 // permission checks directly. Each function returns { status, body }.
+import { createHash } from "node:crypto";
 import type { DB } from "../db";
 import { approvalState, canApprove, PermissionError, recordDecision, selfApprovalPolicy } from "./approvals";
 import { InputError, resolveInputs, WorkflowNotApprovedError, type Handlers } from "./engine";
@@ -209,24 +210,36 @@ export function runAgent(db: DB, user: Actor, name: string, body: AgentRunBody |
   const a = getAgent(db, user.tenantId, name);
   if (!a) return err(404, `agent '${name}' not found`);
   const b = body ?? {};
-  const mode = str(b.mode) ?? "simulated";
-  if (mode !== "simulated" && mode !== "real") return err(400, "mode must be simulated or real");
   if (b.instructions !== undefined && typeof b.instructions !== "string") return err(400, "instructions must be text");
   const extra = typeof b.instructions === "string" ? b.instructions.trim() : "";
   if (extra.length > 4000) return err(400, "instructions must be at most 4000 characters");
-  const repo = str(b.repo) ?? a.defaultRepo ?? undefined;
+  return runDirect(db, user, { agent: a.name, engine: a.engine, prompt: finalPrompt(a.prompt, extra), hash: a.contentHash, repo: str(b.repo) ?? a.defaultRepo ?? undefined, mode: b.mode }, deps);
+}
+
+/** A pre-approved single agent step: a team agent (agent set) or a plain engine + prompt. */
+export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: string; prompt: string; hash?: string; repo?: string; mode?: unknown; purpose?: string }, deps: RunDeps): Res & { run?: ReturnType<typeof startWorkflowRun> } {
+  const mode = str(o.mode) ?? "simulated";
+  if (mode !== "simulated" && mode !== "real") return err(400, "mode must be simulated or real");
+  if (o.engine !== "claude-code" && o.engine !== "codex") return err(400, "engine must be claude-code or codex");
+  const engine = o.engine as "claude-code" | "codex";
+  const prompt = o.prompt.trim();
+  if (!prompt) return err(400, "prompt is required");
+  if (prompt.length > 20000) return err(400, "prompt is too long");
+  const repo = o.repo;
   if (repo) { const d = checkTeamRepo(db, user.tenantId, repo); if (d) return err(400, d); }
-  const prompt = finalPrompt(a.prompt, extra);
+  const label = o.agent ?? engine;
+  const hash = o.hash ?? createHash("sha256").update(`${engine}\n${prompt}`).digest("hex");
+  const wfName = o.agent ? `agent:${o.agent}` : `engine:${engine}`;
   const workflow: Workflow = {
-    name: `agent:${a.name}`, version: "1", description: `Direct run of team agent ${a.name}`, system: false, template: false, engine: a.engine,
+    name: wfName, version: "1", description: o.purpose ?? (o.agent ? `Direct run of team agent ${o.agent}` : `Direct ${engine} run`), system: false, template: false, engine,
     on: { manual: true }, governance: { owner: user.email, approvers: [{ role: "admin" }], reviewers: [], min_approvals: 1 }, inputs: {},
-    steps: [{ id: "agent", name: a.name, uses: "agent", needs: [], with: { agent: a.name, mode, repo: repo ?? "" }, secrets: [], outputs: { summary: "${{ result.summary }}", branch: "${{ result.branch }}" }, retries: 0, continue_on_error: false }],
-    outputs: { summary: "${{ steps.agent.outputs.summary }}", branch: "${{ steps.agent.outputs.branch }}" },
+    steps: [{ id: "agent", name: label, uses: "agent", needs: [], with: { agent: label, mode, repo: repo ?? "" }, secrets: [], outputs: { summary: "${{ result.summary }}", branch: "${{ result.branch }}", pushed: "${{ result.pushed }}" }, retries: 0, continue_on_error: false }],
+    outputs: { summary: "${{ steps.agent.outputs.summary }}", branch: "${{ steps.agent.outputs.branch }}", pushed: "${{ steps.agent.outputs.pushed }}" },
   };
-  const loaded: LoadedWorkflow = { workflow, file: `agent:${a.name}`, source: "", hash: a.contentHash, origin: "tenant", agents: { [a.name]: { engine: a.engine, prompt, hash: a.contentHash } }, agentErrors: [] };
+  const loaded: LoadedWorkflow = { workflow, file: wfName, source: "", hash, origin: "tenant", agents: { [label]: { engine, prompt, hash } }, agentErrors: [] };
   const run = startWorkflowRun(db, { tenantId: user.tenantId, userId: user.id }, loaded, {}, {
     handlers: deps.handlers, resolveSecret: deps.resolveSecret, redact: deps.redact(), preApproved: true, inputs: {},
-    meta: { engine: a.engine, prompt, promptSource: "agent", mode, repo },
+    meta: { engine, prompt, promptSource: o.agent ? "agent" : "custom", mode, repo },
   });
-  return { ...ok({ id: run.id, agent: a.name, hash: a.contentHash, engine: a.engine, mode, repo: repo ?? null, prompt, startedAt: run.startedAt }, 201), run };
+  return { ...ok({ id: run.id, agent: o.agent ?? null, hash, engine, mode, repo: repo ?? null, prompt, startedAt: run.startedAt }, 201), run };
 }

@@ -35,7 +35,7 @@ export const canManageRepos = (u: { role: string }) => u.role === "admin" || u.r
 export class RepoError extends Error { constructor(public status: number, msg: string) { super(msg); } }
 
 export function addTeamRepo(db: DB, u: { id: number; role: string; tenantId: number }, repo: string, defaultBranch?: string, now = Date.now()): TeamRepo {
-  if (!canManageRepos(u)) throw new RepoError(403, "only team admins and team leads can manage repos");
+  if (!canManageRepos(u)) throw new RepoError(403, "only admins and team leads can manage repos");
   repo = repo.trim();
   if (!REPO_RE.test(repo)) throw new RepoError(400, "repo must look like owner/name");
   const b = defaultBranch?.trim() || null;
@@ -46,7 +46,7 @@ export function addTeamRepo(db: DB, u: { id: number; role: string; tenantId: num
 }
 
 export function removeTeamRepo(db: DB, u: { role: string; tenantId: number }, repo: string): void {
-  if (!canManageRepos(u)) throw new RepoError(403, "only team admins and team leads can manage repos");
+  if (!canManageRepos(u)) throw new RepoError(403, "only admins and team leads can manage repos");
   const r = db.prepare("DELETE FROM team_repos WHERE tenant_id = ? AND lower(repo) = lower(?)").run(u.tenantId, repo);
   if (!r.changes) throw new RepoError(404, `${repo} is not registered`);
 }
