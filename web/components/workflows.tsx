@@ -230,7 +230,9 @@ export function RunLog({ initial }: { initial: Detail }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <StatusBadge status={run.status} />
-        {run.workflow && <Link className="text-emerald-300 hover:underline" href={`/workflows/${encodeURIComponent(run.workflow)}`}>{run.workflow}</Link>}
+        {run.workflow && (run.workflow.startsWith("agent:")
+          ? <Link className="text-emerald-300 hover:underline" href="/agents">{run.workflow}</Link>
+          : <Link className="text-emerald-300 hover:underline" href={`/workflows/${encodeURIComponent(run.workflow)}`}>{run.workflow}</Link>)}
         <span className="font-mono text-xs text-zinc-500">version {run.workflowHash?.slice(0, 12)}</span>
         <span className="text-xs text-zinc-500">started {new Date(run.startedAt).toLocaleString()}{run.endedAt ? ` · ended ${t(run.endedAt)}` : ""}</span>
       </div>
@@ -239,7 +241,7 @@ export function RunLog({ initial }: { initial: Detail }) {
           <dt className="text-zinc-500">Engine</dt><dd>{run.engine === "codex" ? "Codex" : "Claude Code"}</dd>
           <dt className="text-zinc-500">Mode</dt><dd>{run.mode ?? "—"}</dd>
           <dt className="text-zinc-500">Repo</dt><dd className="font-mono text-xs">{run.repo || "—"}{run.branch ? ` → ${run.branch}` : ""}</dd>
-          <dt className="text-zinc-500">Prompt</dt><dd><span className="text-xs text-zinc-500">{run.promptSource === "workflow" ? "workflow prompt" : run.promptSource === "custom" ? "free-form" : "none"}</span>
+          <dt className="text-zinc-500">Prompt</dt><dd><span className="text-xs text-zinc-500">{run.promptSource === "workflow" ? "workflow prompt" : run.promptSource === "custom" ? "free-form" : run.promptSource === "agent" ? "team agent prompt" : "none"}</span>
             {run.prompt && <pre className="mt-1 whitespace-pre-wrap font-mono text-xs text-zinc-300">{run.prompt}</pre>}</dd>
         </dl>
       )}

@@ -5,7 +5,7 @@ Status: implemented on branch `v1-workflow-redesign` (approved by Vic on 2026-10
 ## 1. Per-team GitHub repo registration
 - New table `team_repos (tenant_id, repo, default_branch, created_by, created_at)`, unique per (tenant, repo). Every team (tenant) has its own list; there is no global list.
 - The migration seeds the default team with `vicgupta/cobra-sandbox` and `vicgupta/factory-demo-app` (default branch `main`).
-- Page `/repos` (nav: Repos). Team admins and team leads can add and remove repos; members can only view. API: `GET|POST /api/repos`, `DELETE /api/repos?repo=owner/name`.
+- Page `/repos` (nav: Repos). System admins and team leads can add and remove repos; members can only view. API: `GET|POST /api/repos`, `DELETE /api/repos?repo=owner/name`.
 - `checkTeamRepo(db, tenantId, repo)` is the one gate for every GitHub read, write and run: workflow file storage (save, import, sync), `github` steps, and agent runs that clone and push. A repo must be in the team's list. `COBRA_GITHUB_ALLOWED_REPOS`, if set, stays as an optional global ceiling, so the repo must be in both lists.
 - Every repo field in the UI (the storage repo on /workflows/new, attaching a template, the run form) is a dropdown filled from the team's repos.
 - GitHub features need `GITHUB_TOKEN` (Admin → Settings). When it's missing, the UI says so instead of failing silently.
@@ -36,3 +36,38 @@ Pick repo → attach a team template (instance) → choose or override engine �
 ## Out of scope / follow-ups
 - Workspace isolation beyond a per-run directory: the agents run as the `cobra` user on nova.
 - PR creation from the pushed branch.
+
+## 6. Team agents (Job 14)
+
+- **What:** a team agent is a named engine (`claude-code` or `codex`) plus a prompt, with an optional default repo from the team's repos. They live in `team_agents` (migration 9); see `web/lib/agents.ts`.
+  - **Version:** `content_hash = sha256(engine + "\n" + prompt)` is the agent's prompt version.
+  - **Who can do what:** any team member can list, view, create and run agents, with no limit on how many. Only the creator, team leads and admins can edit or delete one; anyone else gets 403.
+  - **Visibility:** other teams never see an agent (404).
+- **UI and API:** the `/agents` page is in the nav. The API is `GET/POST /api/agents` and `GET/PATCH/DELETE /api/agents/<name>`.
+- **Direct run:** `POST /api/agents/<name>/runs` takes `{ repo?, mode: simulated|real, instructions? }`.
+  - It needs no workflow approval, because the agent itself is the unit.
+  - The engine is fixed by the agent. The repo must be one of the team's repos and defaults to the agent's default_repo.
+  - Extra instructions are appended as `Additional instructions:`.
+  - Real runs use the local runner and push to `cobra/<run-id>`.
+  - The run is recorded with workflow `agent:<name>` and prompt source `agent`.
+- **In workflows:** use `uses: agent` with `with: { agent: <name> }`.
+  - The agent's engine overrides `with.driver`; combining the two is a validation error.
+  - The agent's prompt is used literally. The step's interpolated `with.prompt`, if any, is appended as extra instructions.
+  - `mode` and `repo` default to the run's values.
+  - Chaining uses the normal `needs` order plus `${{ steps.<id>.outputs.* }}`.
+- **Approval:** the workflow's effective approval hash is `sha256(yaml hash + each referenced agent's name:content_hash)`, computed by `withAgents` in store.ts. Editing or deleting an agent sends every workflow that uses it back to pending.
+- **Unknown agent:** a reference to an agent that doesn't exist is a run-time validation error (400). It is listed on the workflow page, and the step badge shows "(unknown)".
+- **Logs:** each agent step's log starts with `[agent] <name> @ <hash12> (<engine>, <mode>)` and then `[prompt]` with the final prompt. This shows in the live log and on the run page.
+- **Parallel:** **sequential only.** The engine runs steps one at a time in topological order, so independent steps do not run in parallel.
+  - When a workflow has several agent steps, each one gets its own workspace and branch, `cobra/<run-id>-<step-id>`.
+  - With a single agent step the run keeps `cobra/<run-id>`.
+
+## Issues and pull requests (approved by Vic, 2026-10-25 6:19 PM ET)
+
+"Admin" here means the system admin only. There is no team-admin role; the team lead does most team work.
+
+Anyone on the team, whether member, team lead or system admin, can create an issue, run an agent that writes the issue, and turn an issue into a pull request, and none of that needs approval. Merging into main is limited to the team's designated team lead and to system admins. Everyone else, including other team leads, can review and comment but can't merge. The app records who did each step.
+
+**Designated lead.** Each team has a designated-lead setting: one person, picked by a system admin, since a team can have more than one team lead. Only that person (plus system admins) can merge into main.
+
+Status: spec only, not implemented yet.

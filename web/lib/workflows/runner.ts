@@ -3,7 +3,7 @@
 // (with redacted, capped output) in run_step_events.
 import type { DB } from "../db";
 import { approvalState, approvedChecker } from "./approvals";
-import { executeWorkflow, LOG_CAP, redact as redactText, resolveInputs, WorkflowNotApprovedError, type EngineEvent, type ExecuteOptions, type RunResult, type StepState } from "./engine";
+import { executeWorkflow, LOG_CAP, redact as redactText, InputError, resolveInputs, WorkflowNotApprovedError, type EngineEvent, type ExecuteOptions, type RunResult, type StepState } from "./engine";
 import type { LoadedWorkflow } from "./loader";
 
 /** True when the workflow has at least one `uses: agent` step; only those runs carry engine/mode/repo/prompt/branch. */
@@ -11,7 +11,7 @@ export function hasAgentStep(workflow: { steps: ReadonlyArray<{ uses: string }> 
   return workflow.steps.some((s) => s.uses === "agent");
 }
 
-export type RunMeta = { engine: "claude-code" | "codex"; prompt: string; promptSource: "workflow" | "custom" | "none"; mode: "simulated" | "real"; repo?: string; branch?: string };
+export type RunMeta = { engine: "claude-code" | "codex"; prompt: string; promptSource: "workflow" | "custom" | "none" | "agent"; mode: "simulated" | "real"; repo?: string; branch?: string };
 export type StartedRun = { id: string; startedAt: number; inputs: Record<string, string | number | boolean>; done: Promise<RunResult> };
 
 export function startWorkflowRun(
@@ -19,16 +19,20 @@ export function startWorkflowRun(
   who: { tenantId: number; userId: number | null },
   loaded: LoadedWorkflow,
   rawInputs: Record<string, unknown>,
-  opts: Pick<ExecuteOptions, "handlers" | "resolveSecret" | "redact"> & { idPrefix?: string; now?: number; meta?: RunMeta; inputs?: Record<string, string | number | boolean> },
+  opts: Pick<ExecuteOptions, "handlers" | "resolveSecret" | "redact"> & { idPrefix?: string; now?: number; meta?: RunMeta; inputs?: Record<string, string | number | boolean>;
+    /** Direct team-agent runs: no workflow approval (the agent itself is the unit; see service.runAgent). */
+    preApproved?: boolean },
 ): StartedRun {
   const { workflow: wf, hash } = loaded;
-  if (approvalState(db, who.tenantId, loaded).status !== "approved") throw new WorkflowNotApprovedError(wf.name, hash);
+  if (!opts.preApproved && approvalState(db, who.tenantId, loaded).status !== "approved") throw new WorkflowNotApprovedError(wf.name, hash);
+  if (loaded.agentErrors?.length) throw new InputError(loaded.agentErrors);
   const inputs = opts.inputs ?? resolveInputs(wf, rawInputs);
   // Only agent workflows carry engine/mode/repo/prompt, a branch and the "run" header event.
   const meta = opts.meta && hasAgentStep(wf) ? { ...opts.meta } : undefined;
   const startedAt = opts.now ?? Date.now();
   const id = `${opts.idPrefix ?? "run_"}${startedAt.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  if (meta?.mode === "real" && !meta.branch) meta.branch = `cobra/${id}`;
+  // One agent step pushes to cobra/<run-id>; several push to cobra/<run-id>-<step-id> each (shown in their logs).
+  if (meta?.mode === "real" && !meta.branch && wf.steps.filter((s) => s.uses === "agent").length === 1) meta.branch = `cobra/${id}`;
   // Legacy columns (agent/repo/issue/title/prompt) are filled from same-named inputs when present.
   const issue = Number(inputs.issue ?? 0);
   db.prepare(`INSERT INTO runs (id, tenant_id, created_by, agent, repo, issue, title, prompt, simulated, started_at, workflow, workflow_hash, status, engine, prompt_source, mode, branch)
@@ -69,7 +73,7 @@ export function startWorkflowRun(
     }
     update.run(e.status, JSON.stringify(strip(e.steps)), e.outputs ? JSON.stringify(e.outputs) : null, e.error ?? null, e.status === "running" ? null : now, id);
   };
-  const done = executeWorkflow(loaded, { runId: id, inputs, handlers: opts.handlers, resolveSecret: opts.resolveSecret, redact: opts.redact, run: meta ? { engine: meta.engine, prompt: meta.prompt, prompt_source: meta.promptSource, repo: meta.repo ?? "", mode: meta.mode, branch: meta.branch ?? "" } : undefined, isApproved: approvedChecker(db, who.tenantId, loaded), onEvent })
+  const done = executeWorkflow(loaded, { runId: id, inputs, handlers: opts.handlers, resolveSecret: opts.resolveSecret, redact: opts.redact, run: meta ? { engine: meta.engine, prompt: meta.prompt, prompt_source: meta.promptSource, repo: meta.repo ?? "", mode: meta.mode, branch: meta.branch ?? "" } : undefined, isApproved: opts.preApproved ? () => true : approvedChecker(db, who.tenantId, loaded), agents: loaded.agents, onEvent })
     .catch((err: unknown) => {
       const error = err instanceof Error ? err.message : String(err);
       update.run("failed", null, null, error, Date.now(), id);

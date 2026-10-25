@@ -12,12 +12,13 @@ export const metadata = { title: "Workflow · Cobra" };
 type D = {
   name: string; version: number; description?: string; origin: string; template: boolean; system: boolean; hash: string; owner: string; author: string | null;
   approvers: string[]; reviewers: string[]; minApprovals: number; approval: { status: string; reason?: string }; triggers: string[]; source: string;
-  inputs: Record<string, InputDef>; steps: Array<{ id: string; name: string; uses: string; needs: string[]; if: string | null; secrets: string[] }>;
+  inputs: Record<string, InputDef>; steps: Array<{ id: string; name: string; uses: string; needs: string[]; if: string | null; secrets: string[]; agent: string | null }>;
   decisions: Array<{ email: string; decision: string; comment: string | null; createdAt: number }>; selfApprovalPolicy: string;
   can: { approve: boolean; edit: boolean; run: boolean };
   storage: { kind: string; repo?: string; path?: string; branch?: string; sha?: string | null; syncedAt?: number | null } | null;
   instances: Array<{ name: string; templateHash: string | null; storage: string; createdAt: number; fromCurrentVersion: boolean }>;
   engine: string; prompt: string | null; repo: string | null; teamRepos: string[]; hasAgentStep: boolean;
+  sourceHash: string; agents: Array<{ name: string; engine: string; hash: string }>; agentErrors: string[];
   createdFrom: { name: string | null; hash: string | null } | null; runs: Array<{ id: string; status: string | null; startedAt: number; workflowHash: string }>;
 };
 
@@ -40,6 +41,12 @@ function Detail({ user, name }: { user: SessionUser; name: string }) {
         </div>
       </div>
       {d.description && <p className="text-sm text-zinc-400">{d.description}</p>}
+      {d.agentErrors.length > 0 && (
+        <div role="alert" className="rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">
+          <p className="font-medium">This workflow can&apos;t run until these agent references are fixed:</p>
+          <ul className="mt-1 list-disc pl-5">{d.agentErrors.map((e) => <li key={e}>{e}</li>)}</ul>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card title="Governance" subtitle="Set in the YAML under governance">
@@ -78,6 +85,7 @@ function Detail({ user, name }: { user: SessionUser; name: string }) {
             <li key={s.id} className="flex flex-wrap items-center gap-2">
               <span className="w-6 text-zinc-500">{i + 1}.</span><span className="font-mono text-xs">{s.id}</span><Badge tone="gray">{s.uses}</Badge>
               <span>{s.name}</span>
+              {s.agent && (() => { const a = d.agents.find((x) => x.name === s.agent); return <Badge tone={a ? "blue" : "red"}>agent {s.agent}{a ? ` @ ${a.hash.slice(0, 12)}` : " (unknown)"}</Badge>; })()}
               {s.needs.length > 0 && <span className="text-xs text-zinc-500">after {s.needs.join(", ")}</span>}
               {s.if && <span className="font-mono text-xs text-zinc-500">if {s.if}</span>}
               {s.secrets.length > 0 && <span className="text-xs text-amber-300">secrets: {s.secrets.join(", ")}</span>}

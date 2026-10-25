@@ -68,6 +68,12 @@ export const StepSchema = z.strictObject({
   }
   if (s.uses === "shell" && !s.run) ctx.addIssue({ code: "custom", message: "uses: shell needs run", path: ["run"] });
   if (s.uses !== "shell" && s.run) ctx.addIssue({ code: "custom", message: "run is only valid with uses: shell", path: ["run"] });
+  const ag = s.with.agent;
+  if (ag !== undefined) {
+    if (s.uses !== "agent") ctx.addIssue({ code: "custom", message: "with.agent is only valid with uses: agent", path: ["with", "agent"] });
+    else if (typeof ag !== "string" || !/^[a-z][a-z0-9-]{0,62}$/.test(ag)) ctx.addIssue({ code: "custom", message: "with.agent must be a team agent name (lowercase slug)", path: ["with", "agent"] });
+    if (s.with.driver !== undefined) ctx.addIssue({ code: "custom", message: "with.driver can't be combined with with.agent (the agent fixes the engine)", path: ["with", "driver"] });
+  }
   const d = s.with.driver;
   if (s.uses === "agent" && d !== undefined && !(typeof d === "string" && (["claude-code", "codex"].includes(d) || d.includes("${{")))) {
     ctx.addIssue({ code: "custom", message: "with.driver must be claude-code or codex", path: ["with", "driver"] });

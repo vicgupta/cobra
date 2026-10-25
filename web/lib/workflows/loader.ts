@@ -13,7 +13,14 @@ export type LoadedWorkflow = {
   workflow: Workflow; file: string; source: string; hash: string; origin: Origin;
   /** Email of whoever saved this content (tenant workflows); counts as an author for self-approval. */
   author?: string;
+  /** Hash of the YAML alone when `hash` is the effective hash including referenced team agents. */
+  sourceHash?: string;
+  /** Team agents referenced by `with: { agent }` steps, resolved for the workflow's tenant. */
+  agents?: Record<string, ResolvedAgent>;
+  /** Unknown agent references (run-time validation errors shown on the workflow page). */
+  agentErrors?: string[];
 };
+export type ResolvedAgent = { engine: "claude-code" | "codex"; prompt: string; hash: string };
 export type LoadError = { file: string; errors: string[] };
 export class WorkflowError extends Error {
   constructor(public file: string, public errors: string[]) {

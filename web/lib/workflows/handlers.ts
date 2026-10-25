@@ -41,13 +41,13 @@ export const shell: StepHandler = ({ run, secrets, signal, with: w }) => new Pro
  * no workspace provider yet, so this needs an injected runner; without one it fails clearly.
  */
 export type AgentRunner = (args: { runId: string; driver: "claude-code" | "codex"; with: Record<string, unknown>; secrets: Record<string, string>; signal: AbortSignal; timeoutMs?: number; log: (chunk: string) => void }) => Promise<Record<string, unknown>>;
-export const agent = (runner?: AgentRunner): StepHandler => async ({ runId, with: w, secrets, signal, timeoutMs, log }) => {
+export const agent = (runner?: AgentRunner): StepHandler => async ({ runId, stepKey, with: w, secrets, signal, timeoutMs, log }) => {
   const driver = (w.driver || "claude-code") as "claude-code" | "codex";
   if (driver !== "claude-code" && driver !== "codex") throw new Error(`unknown agent driver ${String(driver)}`);
   // Simulated mode: record what would run, execute nothing.
   if (w.mode === "simulated") return { simulated: true, driver, summary: `Simulated ${driver} run${w.repo ? ` on ${String(w.repo)}` : ""}; prompt: ${String(w.prompt ?? "")}` };
   if (!runner) throw new Error("no agent workspace provider is configured on this server; agent steps can't run yet");
-  return runner({ runId, driver, with: w, secrets, signal, timeoutMs, log: log ?? (() => {}) });
+  return runner({ runId: stepKey ?? runId, driver, with: w, secrets, signal, timeoutMs, log: log ?? (() => {}) });
 };
 
 /** GitHub REST actions with the GITHUB_TOKEN listed in the step's secrets (read from the env file at run time). */

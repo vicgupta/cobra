@@ -210,6 +210,23 @@ const MIGRATIONS: Array<(db: DB) => void> = [
       db.prepare("INSERT OR IGNORE INTO team_repos (tenant_id, repo, default_branch, created_at) VALUES (?, ?, ?, ?)").run(t.id, repo, branch, Date.now());
     }
   },
+  // 9: team agents (named engine + prompt, reusable in single runs and workflow steps)
+  (db) => db.exec(`
+    CREATE TABLE team_agents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      engine TEXT NOT NULL CHECK (engine IN ('claude-code', 'codex')),
+      prompt TEXT NOT NULL,
+      default_repo TEXT,
+      -- sha256 of engine, newline, prompt: the prompt version.
+      content_hash TEXT NOT NULL,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE (tenant_id, name)
+    );
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

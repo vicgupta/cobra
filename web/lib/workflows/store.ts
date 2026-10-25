@@ -4,6 +4,9 @@
 //  - tenant:   tenant_workflows rows (pasted/edited YAML, template copies, tenant templates)
 import type { DB } from "../db";
 import { checkTeamRepo } from "../repos";
+import { createHash } from "node:crypto";
+import { getAgent } from "../agents";
+import type { ResolvedAgent } from "./loader";
 import { checkLocation, GitHubStorageError, type GitHubFiles } from "./github-files";
 import { canApprove, type Approver } from "./approvals";
 import { contentHash, loadTemplates, loadWorkflows, parseWorkflow, templatesDir, workflowsDir, WorkflowError, type LoadedWorkflow } from "./loader";
@@ -35,6 +38,29 @@ type TenantRow = { name: string; source: string; author: string | null };
 function tenantRows(db: DB, tenantId: number): TenantRow[] {
   return db.prepare("SELECT w.name, w.source, u.email AS author FROM tenant_workflows w LEFT JOIN users u ON u.id = w.updated_by WHERE w.tenant_id = ? ORDER BY w.name").all(tenantId) as TenantRow[];
 }
+/** Names of team agents referenced by `uses: agent` steps with `with: { agent }`. */
+export function agentRefs(wf: LoadedWorkflow["workflow"]): string[] {
+  return [...new Set(wf.steps.filter((s) => s.uses === "agent" && typeof s.with.agent === "string").map((s) => String(s.with.agent)))].sort();
+}
+
+/**
+ * Resolves referenced team agents and folds each one's content_hash into the
+ * workflow's effective hash, so editing (or deleting) an agent sends every
+ * workflow that uses it back to pending approval. Unknown agents become errors.
+ */
+export function withAgents(db: DB, tenantId: number, loaded: LoadedWorkflow): LoadedWorkflow {
+  const refs = agentRefs(loaded.workflow);
+  if (!refs.length) return loaded;
+  const agents: Record<string, ResolvedAgent> = {}, agentErrors: string[] = [];
+  for (const n of refs) {
+    const a = getAgent(db, tenantId, n);
+    if (a) agents[n] = { engine: a.engine, prompt: a.prompt, hash: a.contentHash };
+    else agentErrors.push(`unknown agent '${n}' (steps: ${loaded.workflow.steps.filter((s) => s.with.agent === n).map((s) => s.id).join(", ")}); create it on the Agents page`);
+  }
+  const hash = createHash("sha256").update([loaded.hash, ...refs.map((n) => `agent:${n}:${agents[n]?.hash ?? "missing"}`)].join("\n")).digest("hex");
+  return { ...loaded, hash, sourceHash: loaded.hash, agents, agentErrors };
+}
+
 const parseTenant = (r: TenantRow): LoadedWorkflow => ({ ...parseWorkflow(r.source, `db:${r.name}`, "tenant"), author: r.author ?? undefined });
 
 /** Everything visible to a tenant; invalid tenant rows are listed with their errors. */
@@ -48,7 +74,7 @@ export function listAll(db: DB, tenantId: number, dir = workflowsDir()): Listed[
     catch (e) { out.push({ name: r.name, origin: "tenant", errors: e instanceof WorkflowError ? e.errors : [String(e)] }); }
   }
   for (const t of systemTemplates(db)) out.push({ loaded: t, name: t.workflow.name, origin: "template" });
-  return out;
+  return out.map((l) => (l.loaded ? { ...l, loaded: withAgents(db, tenantId, l.loaded) } : l));
 }
 
 export function findWorkflow(db: DB, tenantId: number, name: string, dir = workflowsDir()): LoadedWorkflow | null {

@@ -3,7 +3,8 @@
 // caller to record (see lib/workflows/runner.ts for the runs-table recorder).
 // The engine refuses to run a definition whose content hash isn't approved.
 import { condition, interpolate, type Scope } from "./expr";
-import { topoOrder, type LoadedWorkflow } from "./loader";
+import { topoOrder, type LoadedWorkflow, type ResolvedAgent } from "./loader";
+import { finalPrompt } from "../agents";
 import type { Workflow, WorkflowStep } from "./schema";
 
 export type StepStatus = "pending" | "running" | "succeeded" | "failed" | "skipped";
@@ -13,6 +14,8 @@ export type RunResult = { status: RunStatus; steps: Record<string, StepState>; o
 
 export type StepContext = {
   runId: string;
+  /** Workspace/branch key: the run id, or <run-id>-<step-id> when the workflow has several agent steps. */
+  stepKey?: string;
   step: WorkflowStep;
   with: Record<string, unknown>;
   run?: string;
@@ -52,6 +55,8 @@ export type ExecuteOptions = {
   redact?: string[];
   /** Extra run-level values (engine, prompt, repo, mode, branch) visible as ${{ run.* }}. */
   run?: Record<string, unknown>;
+  /** Team agents for `with: { agent }` steps (see withAgents); a missing one fails that step. */
+  agents?: Record<string, ResolvedAgent>;
 };
 
 export const LOG_CAP = 16_000;
@@ -109,6 +114,8 @@ export function resolveInputs(wf: Workflow, raw: Record<string, unknown> = {}): 
   return out;
 }
 
+const withHeader = (h: string, l: { log: string; truncated: boolean }) => (h ? { ...l, log: h + l.log } : l);
+
 function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, ms?: number): Promise<T> {
   const ac = new AbortController();
   if (!ms) return fn(ac.signal);
@@ -129,6 +136,8 @@ export async function executeWorkflow(loaded: LoadedWorkflow, opts: ExecuteOptio
   const secretValues = new Set(opts.redact ?? []);
   const setStep = (id: string, patch: Partial<StepState>) => { steps[id] = { ...steps[id], ...patch }; emit({ type: "step", id, state: steps[id] }); };
   emit({ type: "run", status: "running", steps });
+  // Steps run one at a time in topological order (independent steps are not parallel).
+  const agentSteps = wf.steps.filter((s) => s.uses === "agent").length;
 
   for (const id of topoOrder(wf)) {
     const step = wf.steps.find((s) => s.id === id)!;
@@ -140,7 +149,7 @@ export async function executeWorkflow(loaded: LoadedWorkflow, opts: ExecuteOptio
     } catch (e) { setStep(id, { status: "failed", error: `if: ${(e as Error).message}` }); continue; }
     const handler = opts.handlers[step.uses];
     setStep(id, { status: "running", startedAt: Date.now() });
-    let lastError = "";
+    let lastError = "", header = "";
     for (let attempt = 1; attempt <= step.retries + 1; attempt++) {
       try {
         if (!handler) throw new Error(`no handler registered for uses: ${step.uses}`);
@@ -151,13 +160,27 @@ export async function executeWorkflow(loaded: LoadedWorkflow, opts: ExecuteOptio
           secrets[name] = v;
           secretValues.add(v);
         }
-        const withArgs = Object.fromEntries(Object.entries(step.with).map(([k, v]) => [k, interpolate(scope, v)]));
+        const withArgs: Record<string, unknown> = Object.fromEntries(Object.entries(step.with).map(([k, v]) => [k, interpolate(scope, v)]));
+        if (step.uses === "agent" && typeof step.with.agent === "string") {
+          // Team agent: fixed engine; its prompt (literal) plus the step's interpolated with.prompt as extra instructions.
+          const name = step.with.agent, a = opts.agents?.[name];
+          if (!a) throw new Error(`unknown agent '${name}' (not defined for this team)`);
+          const run = (scope.run ?? {}) as Record<string, unknown>;
+          withArgs.driver = a.engine;
+          withArgs.prompt = finalPrompt(a.prompt, withArgs.prompt);
+          if (withArgs.mode === undefined || withArgs.mode === "") withArgs.mode = run.mode || "simulated";
+          if (withArgs.repo === undefined || withArgs.repo === "") withArgs.repo = run.repo || "";
+          if (!header) {
+            header = redact(`[agent] ${name} @ ${a.hash.slice(0, 12)} (${a.engine}, ${String(withArgs.mode)})\n[prompt]\n${String(withArgs.prompt)}\n`, secretValues);
+            emit({ type: "log", id, chunk: header });
+          }
+        }
         const run = step.run === undefined ? undefined : String(interpolate(scope, step.run));
         const timeoutMs = step.timeout_seconds ? step.timeout_seconds * 1000 : undefined;
-        const result = await withTimeout((signal) => handler({ runId: opts.runId, step, with: withArgs, run, secrets, signal, timeoutMs, log: (chunk) => emit({ type: "log", id, chunk: redact(chunk, secretValues) }) }), timeoutMs);
+        const result = await withTimeout((signal) => handler({ runId: opts.runId, stepKey: agentSteps > 1 ? `${opts.runId}-${id}` : opts.runId, step, with: withArgs, run, secrets, signal, timeoutMs, log: (chunk) => emit({ type: "log", id, chunk: redact(chunk, secretValues) }) }), timeoutMs);
         const outScope = { ...scope, result };
         const outputs = Object.fromEntries(Object.entries(step.outputs).map(([k, v]) => [k, interpolate(outScope, v)]));
-        setStep(id, { status: "succeeded", outputs, attempts: attempt, endedAt: Date.now(), error: undefined, ...stepLog(result, undefined, secretValues) });
+        setStep(id, { status: "succeeded", outputs, attempts: attempt, endedAt: Date.now(), error: undefined, ...withHeader(header, stepLog(result, undefined, secretValues)) });
         lastError = "";
         break;
       } catch (e) {
@@ -167,7 +190,7 @@ export async function executeWorkflow(loaded: LoadedWorkflow, opts: ExecuteOptio
     }
     if (lastError) {
       // continue_on_error: dependents still run (the step counts as succeeded, its error is kept).
-      setStep(id, { status: step.continue_on_error ? "succeeded" : "failed", error: lastError, endedAt: Date.now(), ...stepLog(undefined, lastError, secretValues) });
+      setStep(id, { status: step.continue_on_error ? "succeeded" : "failed", error: lastError, endedAt: Date.now(), ...withHeader(header, stepLog(undefined, lastError, secretValues)) });
     }
   }
   const failed = Object.entries(steps).filter(([, s]) => s.status === "failed").map(([k]) => k);
