@@ -9,6 +9,7 @@ const AGENTS: AgentId[] = ["claude-code", "codex"];
 async function masked(): Promise<MaskedSettings & { envFile: string }> {
   const v = await readManaged();
   const out = { envFile: envFilePath() } as MaskedSettings & { envFile: string };
+  out.github = { token: mask(v.GITHUB_TOKEN), hasToken: !!v.GITHUB_TOKEN };
   for (const a of AGENTS) {
     const sub = v[AGENT_ENV[a].subscription as ManagedKey];
     const key = v[AGENT_ENV[a].apiKey as ManagedKey];
@@ -30,7 +31,7 @@ export async function GET(req: Request) {
 }
 
 /**
- * Body: { [agent]: { subscription?: string | null, apiKey?: string | null } }
+ * Body: { [agent]: { subscription?: string | null, apiKey?: string | null }, github?: { token?: string | null } }
  * Omitted / undefined field = keep current value, "" or null = clear, string = set.
  */
 export async function POST(req: Request) {
@@ -62,6 +63,11 @@ export async function POST(req: Request) {
       }
       changes[envKey] = value;
     }
+  }
+  const gh = input.github?.token;
+  if (gh !== undefined) {
+    if (gh !== null && typeof gh !== "string") return NextResponse.json({ error: "github.token must be a string" }, { status: 400 });
+    changes.GITHUB_TOKEN = (gh ?? "").trim();
   }
   try {
     await writeManaged(changes);

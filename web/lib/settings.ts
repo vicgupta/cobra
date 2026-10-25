@@ -26,4 +26,4 @@ export function mask(value: string): string {
 }
 
 export type MaskedAgent = { subscription: string; apiKey: string; hasSubscription: boolean; hasApiKey: boolean; mode: AuthMode };
-export type MaskedSettings = Record<AgentId, MaskedAgent>;
+export type MaskedSettings = Record<AgentId, MaskedAgent> & { github: { token: string; hasToken: boolean } };

@@ -7,7 +7,7 @@ import path from "node:path";
 import { AGENT_ENV, resolveAuthMode } from "./settings";
 import type { AgentId, AuthMode } from "./types";
 
-export const MANAGED_KEYS = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CODEX_AUTH_JSON", "CODEX_API_KEY"] as const;
+export const MANAGED_KEYS = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CODEX_AUTH_JSON", "CODEX_API_KEY", "GITHUB_TOKEN"] as const;
 export type ManagedKey = (typeof MANAGED_KEYS)[number];
 
 const DEFAULT_ENV_FILE = "/etc/cobra/cobra.env";

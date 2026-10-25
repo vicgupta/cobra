@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { escapeValue, parseEnv, unescapeValue } from "../src/config/env-file.js";
-import { readSecret } from "../src/agents/claude-code.js";
+import { readSecret, readGithubToken } from "../src/agents/claude-code.js";
 
 test("escape/parse round-trip", () => {
   for (const v of ['plain', 'with "quotes"', "back\\slash", "multi\nline\nvalue", '{"a":"b\\"c"}', "trailing\\"]) {
@@ -39,6 +39,12 @@ test("readSecret precedence: env file > process.env > FACTORY_SECRETS_JSON > loc
     // Non-managed keys still fall through when the file lacks them.
     process.env.OTHER_SECRET = "from-env";
     assert.equal(readSecret({ secret: "OTHER_SECRET" }), "from-env");
+    // GITHUB_TOKEN: read fresh from the file, and a cleared value is not served stale.
+    process.env.GITHUB_TOKEN = "stale-env";
+    writeFileSync(envFile, `GITHUB_TOKEN=${escapeValue("gh-file")}\n`);
+    assert.equal(readGithubToken(), "gh-file");
+    writeFileSync(envFile, "#GITHUB_TOKEN=\n");
+    assert.equal(readGithubToken(), undefined);
   } finally {
     process.env = saved;
     rmSync(dir, { recursive: true, force: true });

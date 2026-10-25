@@ -99,8 +99,13 @@ export function readSecret(entry: SecretEntry): string | undefined {
   return local && existsSync(local) ? readFileSync(local, "utf8") : undefined;
 }
 
+/** GitHub token from Settings (GITHUB_TOKEN), read fresh from the env file on each call. Never log it. */
+export function readGithubToken(): string | undefined {
+  return readSecret({ secret: "GITHUB_TOKEN" });
+}
+
 /** Keys managed by the Settings page; a missing value in the env file means cleared. */
-export const MANAGED_KEYS = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CODEX_AUTH_JSON", "CODEX_API_KEY"];
+export const MANAGED_KEYS = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CODEX_AUTH_JSON", "CODEX_API_KEY", "GITHUB_TOKEN"];
 const fileTracksKey = (key: string) => MANAGED_KEYS.includes(key);
 
 const dirOf = (path: string) => path.slice(0, path.lastIndexOf("/"));

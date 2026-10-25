@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { SettingsForm } from "@/components/settings-form";
+import { GithubForm } from "@/components/github-form";
 import { EnvFilePath } from "@/components/live-config";
 import { AuthGate } from "@/components/auth-gate";
 
@@ -18,6 +19,7 @@ export default function SettingsPage() {
             Values are saved to the server environment file <EnvFilePath /> and used by the agent driver on the next run (no restart needed). Saved secrets are never sent back to the browser — only the last 4 characters.
           </div>
           <SettingsForm />
+          <GithubForm />
         </AuthGate>
       </Suspense>
     </div>
