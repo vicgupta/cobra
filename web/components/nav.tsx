@@ -8,7 +8,6 @@ import { CobraLogo } from "./icons";
 const userLinks = [
   { href: "/", label: "Dashboard" },
   { href: "/workflows", label: "Workflows" },
-  { href: "/templates", label: "Templates" },
   { href: "/agents", label: "Agents" },
   { href: "/issues", label: "Issues" },
   { href: "/pulls", label: "Pull requests" },

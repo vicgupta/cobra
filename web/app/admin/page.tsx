@@ -41,6 +41,8 @@ async function AdminBody({ searchParams }: { searchParams: PageProps<"/admin">["
         {TABS.map(([k, label]) => (
           <Link key={k} href={`/admin?tab=${k}`} className={`rounded-md px-3 py-1.5 ${k === tab ? "bg-zinc-800 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`}>{label}</Link>
         ))}
+        {/* Templates is hidden from the main nav for now; system admins reach it here. The /templates page itself is unchanged. */}
+        <Link href="/templates" className="rounded-md px-3 py-1.5 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100">Templates</Link>
       </nav>
       {tab === "overview" && <Overview now={now} />}
       {tab === "tenants" && <Tenants />}

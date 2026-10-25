@@ -62,6 +62,8 @@ Pick repo → attach a team template (instance) → choose or override engine �
   - When a workflow has several agent steps, each one gets its own workspace and branch, `cobra/<run-id>-<step-id>`.
   - With a single agent step the run keeps `cobra/<run-id>`.
 
+**Navigation (Job 16).** Templates is hidden from the main nav. It is reachable from Admin (a "Templates" link at the end of the tab bar) and by direct URL (`/templates`, unchanged).
+
 ## Issues and pull requests (approved by Vic, 2026-10-25 6:19 PM ET)
 
 "Admin" here means the system admin only. There is no team-admin role; the team lead does most team work.
