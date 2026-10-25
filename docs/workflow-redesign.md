@@ -27,7 +27,7 @@ Pick repo → attach a team template (instance) → choose or override engine �
 - Any user of the workflow's tenant (members included) can start runs of an approved workflow in their own tenant, including the agent-run flow (team repo, engine, prompt) and `/runs/new` test runs. Still enforced: the exact version must be approved; tenant isolation (other tenants get 404); team repo checks; templates never run. Members still can't edit workflows (unless owner/approver), manage repos, open Settings or /admin, or see agent credential status.
 - `simulated` mode records the engine and prompt but executes nothing.
 - `real` mode runs the local runner:
-  - It creates a scratch workspace at `/var/lib/cobra/workspaces/<run-id>`.
+  - It creates a scratch workspace at `/home/cobra/workspaces/<run-id>`.
   - With `GITHUB_TOKEN` set and the repo registered to the team, it clones the repo. Otherwise it uses an empty scratch git repo, and the log says why.
   - It runs `claude -p` or `codex exec` headless as the service user, with a timeout, and streams output into the step log.
   - If there are changes, it commits them and pushes to `cobra/<run-id>`, never to the default branch and never with force.

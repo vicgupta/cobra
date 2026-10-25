@@ -3,7 +3,7 @@
 # engine (claude-code or codex, default below) and prompt (this template or a
 # free-form one). mode=simulated records everything without executing; mode=real
 # uses the local runner (web/lib/workflows/local-runner.ts): workspace under
-# /var/lib/cobra/workspaces/<run-id>, clone when GITHUB_TOKEN is set and the repo
+# /home/cobra/workspaces/<run-id>, clone when GITHUB_TOKEN is set and the repo
 # is registered to the team, push changes to cobra/<run-id> (see docs/workflow-redesign.md).
 name: agent-run
 version: 1

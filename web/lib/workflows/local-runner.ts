@@ -1,5 +1,5 @@
 // Basic local agent runner: a per-run scratch workspace (COBRA_WORKSPACES_DIR,
-// default /var/lib/cobra/workspaces/<run-id>), the chosen CLI run headless as the
+// default /home/cobra/workspaces/<run-id>), the chosen CLI run headless as the
 // service user with a timeout, output streamed into the step log. With GITHUB_TOKEN
 // and a team-registered repo it clones the repo and pushes changes to cobra/<run-id>
 // (never the default branch, never --force); otherwise it uses an empty scratch repo.
@@ -30,7 +30,7 @@ export type LocalRunnerOptions = {
   defaultTimeoutMs?: number;
 };
 
-export const workspacesDir = () => process.env.COBRA_WORKSPACES_DIR || "/var/lib/cobra/workspaces";
+export const workspacesDir = () => process.env.COBRA_WORKSPACES_DIR || "/home/cobra/workspaces";
 
 function run(cmd: string, args: string[], o: { cwd: string; env: Env; signal: AbortSignal; log: (s: string) => void; timeoutMs?: number }): Promise<{ code: number; out: string }> {
   return new Promise((resolve, reject) => {
