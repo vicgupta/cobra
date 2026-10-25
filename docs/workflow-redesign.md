@@ -62,7 +62,7 @@ Pick repo → attach a team template (instance) → choose or override engine �
   - When a workflow has several agent steps, each one gets its own workspace and branch, `cobra/<run-id>-<step-id>`.
   - With a single agent step the run keeps `cobra/<run-id>`.
 
-**Navigation (Job 16).** Templates is hidden from the main nav. It is reachable from Admin (a "Templates" link at the end of the tab bar) and by direct URL (`/templates`, unchanged).
+**Navigation (Job 16).** Templates is no longer in the main nav. A top-level **Settings** item (every signed-in team member; last before Admin; highlighted on `/settings/*`) has a sub-tab bar styled like the admin tabs, with one sub-tab for now: Templates at `/settings/templates` (the same `TemplatesView` component, `web/components/templates.tsx`). `/settings` and the old `/templates` URL redirect there. System admins also find it in Admin > Settings > Templates (`/admin?tab=settings&sub=templates`), next to "System settings" (unchanged). Template APIs and "Use template" links (`/workflows/new?template=...`) are unchanged.
 
 ## Issues and pull requests (approved by Vic, 2026-10-25 6:19 PM ET)
 

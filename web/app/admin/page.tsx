@@ -9,6 +9,7 @@ import { EndSessionButton } from "@/components/admin-actions";
 import { SettingsForm } from "@/components/settings-form";
 import { GithubForm } from "@/components/github-form";
 import { EnvFilePath } from "@/components/live-config";
+import { TemplatesView } from "@/components/templates";
 
 export const metadata = { title: "Admin · Cobra" };
 
@@ -28,7 +29,8 @@ export default function AdminPage({ searchParams }: PageProps<"/admin">) {
 
 async function AdminBody({ searchParams }: { searchParams: PageProps<"/admin">["searchParams"] }) {
   await requireAdmin();
-  const raw = (await searchParams).tab;
+  const sp = await searchParams;
+  const raw = sp.tab;
   const tab: Tab = (TABS.find(([k]) => k === raw)?.[0] ?? "overview");
   const now = m.clock();
   return (
@@ -41,8 +43,6 @@ async function AdminBody({ searchParams }: { searchParams: PageProps<"/admin">["
         {TABS.map(([k, label]) => (
           <Link key={k} href={`/admin?tab=${k}`} className={`rounded-md px-3 py-1.5 ${k === tab ? "bg-zinc-800 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`}>{label}</Link>
         ))}
-        {/* Templates is hidden from the main nav for now; system admins reach it here. The /templates page itself is unchanged. */}
-        <Link href="/templates" className="rounded-md px-3 py-1.5 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100">Templates</Link>
       </nav>
       {tab === "overview" && <Overview now={now} />}
       {tab === "tenants" && <Tenants />}
@@ -52,7 +52,7 @@ async function AdminBody({ searchParams }: { searchParams: PageProps<"/admin">["
       {tab === "logs" && <Logs />}
       {tab === "approvals" && <Approvals />}
       {tab === "rate-limits" && <RateLimits now={now} />}
-      {tab === "settings" && <Settings />}
+      {tab === "settings" && <SettingsTabs sub={sp.sub === "templates" ? "templates" : "system"} />}
     </div>
   );
 }
@@ -173,6 +173,18 @@ function RateLimits({ now }: { now: number }) {
         rows={r.limits.map((l) => [l.bucket, l.max, `${l.windowMs / 60000} min`, l.tracked, l.blocked ? <Badge key="b" tone="red">{l.blocked}</Badge> : 0])} /></Card>
       <Card title="Current entries" subtitle="Account and email keys are sha256 hashes; IP keys are client IPs."><Table head={["Bucket", "Key", "Count", "Window start", "Expires"]}
         rows={r.rows.map((x) => [x.bucket, <code key="k" className="text-xs">{x.key.length > 24 ? x.key.slice(0, 16) + "…" : x.key}</code>, x.max && x.count >= x.max ? <Badge key="c" tone="red">{x.count}/{x.max}</Badge> : `${x.count}/${x.max ?? "?"}`, dt(x.window_start), dt(x.expires_at)])} /></Card>
+    </div>
+  );
+}
+
+function SettingsTabs({ sub }: { sub: "system" | "templates" }) {
+  const tabs = [["system", "System settings", "/admin?tab=settings"], ["templates", "Templates", "/admin?tab=settings&sub=templates"]] as const;
+  return (
+    <div className="space-y-6">
+      <nav aria-label="Admin settings" className="flex flex-wrap gap-1 border-b border-zinc-800 pb-2 text-sm">
+        {tabs.map(([k, label, href]) => <Link key={k} href={href} className={`rounded-md px-3 py-1.5 ${k === sub ? "bg-zinc-800 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`}>{label}</Link>)}
+      </nav>
+      {sub === "templates" ? <TemplatesView /> : <Settings />}
     </div>
   );
 }

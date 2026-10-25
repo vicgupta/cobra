@@ -14,6 +14,7 @@ const userLinks = [
   { href: "/repos", label: "Repos" },
   { href: "/team", label: "Team" },
   { href: "/runs/new", label: "Test run" },
+  { href: "/settings", label: "Settings" },
 ];
 const adminLink = { href: "/admin", label: "Admin" };
 
