@@ -56,3 +56,13 @@ npm start
 ```
 
 Requires Node 20 or later.
+
+## Web app
+
+A Next.js dashboard lives in `web/` (its own `package.json`; not part of the root TypeScript build).
+
+```bash
+cd web && npm install && npm run dev
+```
+
+Open http://localhost:3000. Pages: `/` (runs-first dashboard, example data), `/settings` (agent credentials, local dev storage in gitignored `web/data/`), `/runs/new` (simulated test run — no agent is executed).
