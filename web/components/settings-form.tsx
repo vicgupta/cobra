@@ -70,6 +70,7 @@ function AgentForm({ agent, saved, onSaved }: { agent: AgentId; saved: MaskedSet
         <SecretField
           label={env.subscriptionLabel}
           env={env.subscription}
+          help={env.subscriptionHelp}
           multiline={agent === "codex"}
           value={d.subscription}
           savedMask={cur.subscription}
@@ -98,11 +99,11 @@ function AgentForm({ agent, saved, onSaved }: { agent: AgentId; saved: MaskedSet
 }
 
 function SecretField(p: {
-  label: string; env: string; value: string; savedMask: string; cleared: boolean; multiline?: boolean;
+  label: string; env: string; help?: string; value: string; savedMask: string; cleared: boolean; multiline?: boolean;
   onChange: (v: string) => void; onClear: () => void;
 }) {
   const cls = "w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none";
-  const placeholder = p.savedMask ? `Saved (${p.savedMask}) — type to replace` : "Not set";
+  const placeholder = p.savedMask ? "Saved — type to replace" : "Not set";
   return (
     <label className="block space-y-1.5">
       <span className="flex items-center justify-between text-sm">
@@ -113,6 +114,8 @@ function SecretField(p: {
           </button>
         )}
       </span>
+      {p.help && <span className="block text-xs text-zinc-500">{p.help}</span>}
+      <span className="block text-xs">Status: <span className={p.savedMask ? "text-emerald-400" : "text-zinc-400"}>{p.savedMask ? "Set" : "Not set"}</span></span>
       {p.multiline ? (
         <textarea rows={3} autoComplete="off" spellCheck={false} className={cls} placeholder={p.cleared ? "Will be cleared on save" : placeholder} value={p.value} onChange={(e) => p.onChange(e.target.value)} />
       ) : (

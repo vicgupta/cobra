@@ -77,3 +77,9 @@ test("admin metrics: cross-tenant counts, sessions without token hashes, end any
   assert.deepEqual(m.executionLogs(db), []);
   assert.deepEqual(m.workflows(db), []);
 });
+
+test("settings mask never reveals any part of a secret", async () => {
+  const { mask } = await import("../lib/settings");
+  assert.equal(mask(""), "");
+  assert.equal(mask("sk-ant-oat01-SECRETVALUE1234"), "Set");
+});

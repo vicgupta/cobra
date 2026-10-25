@@ -34,7 +34,7 @@ export function GithubForm() {
       <label className="mt-3 block space-y-1.5 text-sm">
         <span>
           GitHub token <code className="text-xs text-zinc-500">GITHUB_TOKEN</code>
-          {saved && <span className="ml-2 text-xs text-zinc-400">{saved.hasToken ? `saved ${saved.token}` : "not set"}</span>}
+          {saved && <span className="ml-2 text-xs text-zinc-400">{saved.hasToken ? "Set" : "Not set"}</span>}
         </span>
         <input type="password" autoComplete="off" className={input} placeholder={saved?.hasToken ? "Enter a new token to replace" : "github_pat_…"} value={value} onChange={(e) => setValue(e.target.value)} />
       </label>
