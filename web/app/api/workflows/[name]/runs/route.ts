@@ -7,6 +7,6 @@ import { startRun } from "@/lib/workflows/service";
 export async function POST(req: Request, ctx: { params: Promise<{ name: string }> }) {
   const g = await apiGuard(req);
   if (g.error) return g.error;
-  const r = startRun(getDb(), actor(g.user), (await ctx.params).name, await req.json().catch(() => null), runDeps(g.user.tenantId));
+  const r = startRun(getDb(), actor(g.user), (await ctx.params).name, await req.json().catch(() => null), runDeps(g.user.tenantId, actor(g.user)));
   return NextResponse.json(r.body, { status: r.status });
 }

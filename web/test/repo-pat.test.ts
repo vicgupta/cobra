@@ -76,7 +76,7 @@ test("repo PAT: GitHub calls use the repo's PAT, else fall back to GITHUB_TOKEN"
   await githubApi(tok, fake).getIssue("acme/no-pat", 1);
   await githubFiles(tok, fake).get("acme/with-pat", "w.yaml");
   await githubFiles(tok, fake).get("acme/no-pat", "w.yaml");
-  const h = github(fake, () => null, (r) => tokenFor(db, lead.tenantId, KEY, undefined)(r));
+  const h = github(fake, () => null, (r) => tokenFor(db, lead.tenantId, KEY, SERVER)(r));
   const step = (repo: string) => h({ runId: "r", step: {} as never, with: { repo, action: "create-issue", title: "t" }, secrets: { GITHUB_TOKEN: SERVER }, signal: new AbortController().signal } as never);
   await step("acme/with-pat"); await step("acme/no-pat");
   assert.deepEqual(seen, [["acme/with-pat", PAT], ["acme/no-pat", SERVER], ["acme/with-pat", PAT], ["acme/no-pat", SERVER], ["acme/with-pat", PAT], ["acme/no-pat", SERVER]]);

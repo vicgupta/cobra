@@ -101,3 +101,15 @@ Implementation notes (Job 15):
   - members and non-designated leads get 403 on merge;
   - the designated lead and a system admin can merge;
   - every action writes an audit row, scoped per team.
+
+### Built-in issue-to-merge workflow (Job 21)
+
+`workflows/issue-to-merge-flow.yaml` (name `issue-to-merge-flow`; `issue-to-merge` is already the system template's name, and names are shared across built-ins and templates) is a built-in (repo) workflow with three `uses: github` steps:
+`issue_create` (inputs `title`, `body`) -> `pr_from_issue` (runs the run's engine, claude-code or
+codex with the per-run override, on the issue, pushes `cobra/<run-id>`, and opens a PR whose body starts
+`Closes #<issue>`) -> `merge` (plain merge pinned to the PR's head sha, never forced). Every GitHub call
+goes through the Job 20 resolver (the repo's PAT, else GITHUB_TOKEN). Each step writes a `collab_audit`
+row (`issue_create`, `pr_create`, `merge`) as the person who started the run. The merge step enforces
+the merge rule: unless the starter is the team's designated lead or a system admin, it fails with
+"merge not allowed: ... PR #n is left open", even in simulated mode. Simulated runs call neither GitHub nor an
+agent. Like every workflow, it must be approved before it runs. The `issue-to-merge` system template is unchanged.

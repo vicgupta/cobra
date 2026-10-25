@@ -50,7 +50,7 @@ test("loader: cycles, unknown needs, unknown refs, non-ancestor refs", () => {
 test("built-ins and system templates all parse; JSON schema file is current", () => {
   const repo = loadWorkflows(DIR), tpl = loadTemplates();
   assert.deepEqual([...repo.errors, ...tpl.errors], []);
-  assert.deepEqual(repo.workflows.map((w) => w.workflow.name).sort(), ["agent-run", "issue-to-pr", "test-run"]);
+  assert.deepEqual(repo.workflows.map((w) => w.workflow.name).sort(), ["agent-run", "issue-to-merge-flow", "issue-to-pr", "test-run"]);
   assert.deepEqual(tpl.workflows.map((w) => w.workflow.name).sort(), ["cloud-software-factory", "issue-to-merge"]);
   assert.equal(tpl.workflows.find((w) => w.workflow.name === "issue-to-merge")!.workflow.steps.length, 3);
   assert.equal(tpl.workflows.find((w) => w.workflow.name === "cloud-software-factory")!.workflow.steps.length, 7);

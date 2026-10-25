@@ -42,7 +42,7 @@ export const TriggerSchema = z.strictObject({
 }).refine((t) => t.manual || t.schedule || t.github, "on must declare at least one trigger (manual, schedule or github)");
 
 export const STEP_TYPES = ["agent", "shell", "github", "approval", "simulate", "noop"] as const;
-export const GITHUB_ACTIONS = ["create-issue", "create-pr", "merge-pr"] as const;
+export const GITHUB_ACTIONS = ["create-issue", "create-pr", "merge-pr", "issue_create", "pr_from_issue", "merge"] as const;
 
 export const StepSchema = z.strictObject({
   id: id("step id"),

@@ -4,13 +4,14 @@ import { readFileSync } from "node:fs";
 import { getDb } from "../db";
 import { envFilePath, parseEnv } from "../env-file";
 import type { SessionUser } from "../auth/sessions";
-import { builtinHandlers } from "./handlers";
+import { builtinHandlers, type CollabHooks } from "./handlers";
+import { audit, canMerge } from "../collab";
+import type { Actor } from "./store";
 import { localRunner } from "./local-runner";
 import { checkTeamRepo, teamPatSecrets, teamRepo, tokenFor } from "../repos";
 import { githubFiles } from "./github-files";
 import { githubApi } from "../github-api";
 import type { RunDeps } from "./service";
-import type { Actor } from "./store";
 
 export const actor = (u: SessionUser): Actor => ({ id: u.id, email: u.email, role: u.role, tenantId: u.tenantId, name: u.name });
 
@@ -21,18 +22,25 @@ function envFile(): Record<string, string> {
 /** Secrets are read fresh from the server env file at run time (process.env as fallback); never stored in YAML. */
 const secret = (name: string) => envFile()[name] || process.env[name] || undefined;
 /** Handlers scoped to a team: GitHub steps and agent clones only reach that team's registered repos. */
-export const runDeps = (tenantId: number): RunDeps => {
+/** user: who starts the run; the github issue/PR/merge actions audit as them and enforce the merge rule (Job 21). */
+export const runDeps = (tenantId: number, user?: Actor): RunDeps => {
   const db = getDb();
   const checkRepo = (repo: string) => checkTeamRepo(db, tenantId, repo);
   // One resolver for every GitHub touch (Job 20): the repo's PAT, else GITHUB_TOKEN.
   const token = githubTokenFor(tenantId);
   return {
-    handlers: builtinHandlers({ checkRepo, tokenFor: token, agentRunner: localRunner({ resolveSecret: secret, checkRepo, githubToken: token, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch }) }),
+    handlers: builtinHandlers({ checkRepo, tokenFor: token, collab: user ? collabHooks(db, user) : undefined, agentRunner: localRunner({ resolveSecret: secret, checkRepo, githubToken: token, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch }) }),
     resolveSecret: secret,
     // Every env-file value and every team PAT (plus its git header form) is redacted from run logs and errors.
     redact: () => [...Object.values(envFile()), ...teamPatSecrets(db, tenantId, secret("COBRA_SECRET_KEY"))],
   };
 };
+
+const collabHooks = (db: ReturnType<typeof getDb>, u: Actor): CollabHooks => ({
+  canMerge: () => canMerge(db, u),
+  who: u.email,
+  audit: (action, repo, number, runId, detail) => audit(db, u, action, repo, number, runId, detail),
+});
 
 /** True when GITHUB_TOKEN is set (value never returned). */
 export const githubTokenSet = () => !!secret("GITHUB_TOKEN");

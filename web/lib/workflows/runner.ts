@@ -7,8 +7,9 @@ import { executeWorkflow, LOG_CAP, redact as redactText, InputError, resolveInpu
 import type { LoadedWorkflow } from "./loader";
 
 /** True when the workflow has at least one `uses: agent` step; only those runs carry engine/mode/repo/prompt/branch. */
-export function hasAgentStep(workflow: { steps: ReadonlyArray<{ uses: string }> }): boolean {
-  return workflow.steps.some((s) => s.uses === "agent");
+/** Agent steps, plus github pr_from_issue (it runs an agent): these get the engine/repo/mode run fields. */
+export function hasAgentStep(workflow: { steps: ReadonlyArray<{ uses: string; with?: Record<string, unknown> }> }): boolean {
+  return workflow.steps.some((s) => s.uses === "agent" || (s.uses === "github" && s.with?.action === "pr_from_issue"));
 }
 
 export type RunMeta = { engine: "claude-code" | "codex"; prompt: string; promptSource: "workflow" | "custom" | "none" | "agent"; mode: "simulated" | "real"; repo?: string; branch?: string };

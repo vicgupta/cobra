@@ -1,0 +1,73 @@
+# yaml-language-server: $schema=./workflow.schema.json
+# Issue -> PR -> merge on a team repo (Job 21). Every GitHub call uses the repo's
+# token (its PAT when set, else GITHUB_TOKEN). Each step writes a collab_audit row
+# as the person who started the run. The merge step enforces the merge rule: only
+# the team's designated lead or a system admin can merge; anyone else gets a clear
+# failure and the PR stays open. Simulated runs touch neither GitHub nor an agent.
+name: issue-to-merge-flow
+version: 1
+description: Create an issue on a team repo, have a coding agent open a PR for it, then merge the PR (lead/admin only).
+engine: claude-code
+on:
+  manual: true
+governance:
+  owner: vicgupta@gmail.com
+  approvers:
+    - role: admin
+    - role: team_lead
+  min_approvals: 1
+inputs:
+  title:
+    type: string
+    required: true
+  body:
+    type: string
+    default: ''
+steps:
+  - id: issue
+    name: Create issue
+    uses: github
+    secrets: [GITHUB_TOKEN]
+    with:
+      action: issue_create
+      repo: ${{ run.repo }}
+      mode: ${{ run.mode }}
+      title: ${{ inputs.title }}
+      body: ${{ inputs.body }}
+    outputs:
+      number: ${{ result.number }}
+      url: ${{ result.url }}
+  - id: pr
+    name: Create PR from the issue
+    uses: github
+    needs: issue
+    secrets: [GITHUB_TOKEN]
+    timeout_seconds: 3600
+    with:
+      action: pr_from_issue
+      repo: ${{ run.repo }}
+      mode: ${{ run.mode }}
+      driver: ${{ run.engine }}
+      issue: ${{ steps.issue.outputs.number }}
+      instructions: ${{ run.prompt }}
+    outputs:
+      number: ${{ result.number }}
+      url: ${{ result.url }}
+      head_sha: ${{ result.head_sha }}
+  - id: merge
+    name: Merge the PR
+    uses: github
+    needs: pr
+    secrets: [GITHUB_TOKEN]
+    with:
+      action: merge
+      repo: ${{ run.repo }}
+      mode: ${{ run.mode }}
+      pr: ${{ steps.pr.outputs.number }}
+      sha: ${{ steps.pr.outputs.head_sha }}
+    outputs:
+      sha: ${{ result.sha }}
+outputs:
+  issue: ${{ steps.issue.outputs.number }}
+  pr: ${{ steps.pr.outputs.number }}
+  merge_sha: ${{ steps.merge.outputs.sha }}
