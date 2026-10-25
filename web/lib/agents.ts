@@ -1,28 +1,31 @@
 // Team agents: a named engine + prompt that any team member can create and run,
 // directly or from workflow steps (`uses: agent` with `with: { agent: <name> }`).
 // Visible to the whole team, never to other teams. Only the creator, team leads
-// and admins may edit or delete. content_hash = sha256(engine + "\n" + prompt)
+// and admins may edit or delete. content_hash = sha256(engine + "\n" + prompt [+ "\nmodel:" + model])
 // is the agent's prompt version; workflows that reference an agent fold it into
 // their effective approval hash (lib/workflows/store.ts withAgents).
 import { createHash } from "node:crypto";
 import type { DB } from "./db";
 import { checkTeamRepo } from "./repos";
+import { checkModel } from "./agent-models";
 
 export const AGENT_ENGINES = ["claude-code", "codex"] as const;
 export type AgentEngine = (typeof AGENT_ENGINES)[number];
 export const AGENT_NAME_RE = /^[a-z][a-z0-9-]{0,62}$/;
 
 export type TeamAgent = {
-  id: number; name: string; engine: AgentEngine; prompt: string; defaultRepo: string | null;
+  id: number; name: string; engine: AgentEngine; model: string | null; prompt: string; defaultRepo: string | null;
   contentHash: string; createdBy: number | null; createdByEmail: string | null; createdAt: number; updatedAt: number;
 };
 export type AgentUser = { id: number; role: string; tenantId: number };
 
 export class AgentError extends Error { constructor(public status: number, msg: string) { super(msg); } }
 
-export const agentHash = (engine: string, prompt: string) => createHash("sha256").update(`${engine}\n${prompt}`).digest("hex");
+/** Without a model the hash is unchanged from before Job 23, so existing approvals stay valid. */
+export const agentHash = (engine: string, prompt: string, model?: string | null) =>
+  createHash("sha256").update(model ? `${engine}\n${prompt}\nmodel:${model}` : `${engine}\n${prompt}`).digest("hex");
 
-const COLS = `a.id, a.name, a.engine, a.prompt, a.default_repo AS defaultRepo, a.content_hash AS contentHash, a.created_by AS createdBy,
+const COLS = `a.id, a.name, a.engine, a.model, a.prompt, a.default_repo AS defaultRepo, a.content_hash AS contentHash, a.created_by AS createdBy,
   u.email AS createdByEmail, a.created_at AS createdAt, a.updated_at AS updatedAt`;
 // node:sqlite rows have a null prototype; spread into plain objects for client components.
 const plain = (r: unknown) => ({ ...(r as TeamAgent) });
@@ -41,12 +44,16 @@ export function canEditAgent(u: AgentUser, a: Pick<TeamAgent, "createdBy">): boo
   return u.role === "admin" || u.role === "team_lead" || (a.createdBy !== null && a.createdBy === u.id);
 }
 
-type Input = { name?: unknown; engine?: unknown; prompt?: unknown; defaultRepo?: unknown };
+type Input = { name?: unknown; engine?: unknown; model?: unknown; prompt?: unknown; defaultRepo?: unknown };
 function validate(db: DB, tenantId: number, b: Input, partial: TeamAgent | null) {
   const name = b.name === undefined && partial ? partial.name : typeof b.name === "string" ? b.name.trim() : "";
   if (!AGENT_NAME_RE.test(name)) throw new AgentError(400, "name must be a slug: lowercase letters, digits and '-', starting with a letter (max 63)");
   const engine = (b.engine === undefined && partial ? partial.engine : b.engine) as AgentEngine;
   if (!AGENT_ENGINES.includes(engine)) throw new AgentError(400, `engine must be one of ${AGENT_ENGINES.join(", ")}`);
+  // Changing the engine without naming a model resets it to the default (old model may not exist there).
+  const rawModel = b.model !== undefined ? b.model : partial && engine === partial.engine ? partial.model : null;
+  let model: string | null;
+  try { model = checkModel(engine, rawModel); } catch (e) { throw new AgentError(400, (e as Error).message); }
   const prompt = b.prompt === undefined && partial ? partial.prompt : typeof b.prompt === "string" ? b.prompt.replace(/\r\n/g, "\n").trim() : "";
   if (!prompt) throw new AgentError(400, "prompt is required");
   if (prompt.length > 20000) throw new AgentError(400, "prompt must be at most 20000 characters");
@@ -54,14 +61,14 @@ function validate(db: DB, tenantId: number, b: Input, partial: TeamAgent | null)
   if (b.defaultRepo !== undefined && b.defaultRepo !== null && typeof b.defaultRepo !== "string") throw new AgentError(400, "defaultRepo must be a string or null");
   if (defaultRepo) { const d = checkTeamRepo(db, tenantId, defaultRepo); if (d) throw new AgentError(400, d); }
   else defaultRepo = null;
-  return { name, engine, prompt, defaultRepo };
+  return { name, engine, model, prompt, defaultRepo };
 }
 
 export function createAgent(db: DB, u: AgentUser, b: Input | null, now = Date.now()): TeamAgent {
   const v = validate(db, u.tenantId, b ?? {}, null);
   if (getAgent(db, u.tenantId, v.name)) throw new AgentError(409, `an agent named '${v.name}' already exists in this team`);
-  db.prepare("INSERT INTO team_agents (tenant_id, name, engine, prompt, default_repo, content_hash, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(u.tenantId, v.name, v.engine, v.prompt, v.defaultRepo, agentHash(v.engine, v.prompt), u.id, now, now);
+  db.prepare("INSERT INTO team_agents (tenant_id, name, engine, model, prompt, default_repo, content_hash, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(u.tenantId, v.name, v.engine, v.model, v.prompt, v.defaultRepo, agentHash(v.engine, v.prompt, v.model), u.id, now, now);
   return getAgent(db, u.tenantId, v.name)!;
 }
 
@@ -71,8 +78,8 @@ export function updateAgent(db: DB, u: AgentUser, name: string, b: Input | null,
   if (!canEditAgent(u, a)) throw new AgentError(403, "only the agent's creator, team leads and admins can edit it");
   const v = validate(db, u.tenantId, b ?? {}, a);
   if (v.name !== a.name && getAgent(db, u.tenantId, v.name)) throw new AgentError(409, `an agent named '${v.name}' already exists in this team`);
-  db.prepare("UPDATE team_agents SET name = ?, engine = ?, prompt = ?, default_repo = ?, content_hash = ?, updated_at = ? WHERE id = ?")
-    .run(v.name, v.engine, v.prompt, v.defaultRepo, agentHash(v.engine, v.prompt), now, a.id);
+  db.prepare("UPDATE team_agents SET name = ?, engine = ?, model = ?, prompt = ?, default_repo = ?, content_hash = ?, updated_at = ? WHERE id = ?")
+    .run(v.name, v.engine, v.model, v.prompt, v.defaultRepo, agentHash(v.engine, v.prompt, v.model), now, a.id);
   return getAgent(db, u.tenantId, v.name)!;
 }
 

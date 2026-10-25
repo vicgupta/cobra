@@ -20,7 +20,7 @@ export type LoadedWorkflow = {
   /** Unknown agent references (run-time validation errors shown on the workflow page). */
   agentErrors?: string[];
 };
-export type ResolvedAgent = { engine: "claude-code" | "codex"; prompt: string; hash: string };
+export type ResolvedAgent = { engine: "claude-code" | "codex"; model?: string | null; prompt: string; hash: string };
 export type LoadError = { file: string; errors: string[] };
 export class WorkflowError extends Error {
   constructor(public file: string, public errors: string[]) {

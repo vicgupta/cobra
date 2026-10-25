@@ -167,11 +167,12 @@ export async function executeWorkflow(loaded: LoadedWorkflow, opts: ExecuteOptio
           if (!a) throw new Error(`unknown agent '${name}' (not defined for this team)`);
           const run = (scope.run ?? {}) as Record<string, unknown>;
           withArgs.driver = a.engine;
+          if (a.model) withArgs.model = a.model; else delete withArgs.model;
           withArgs.prompt = finalPrompt(a.prompt, withArgs.prompt);
           if (withArgs.mode === undefined || withArgs.mode === "") withArgs.mode = run.mode || "simulated";
           if (withArgs.repo === undefined || withArgs.repo === "") withArgs.repo = run.repo || "";
           if (!header) {
-            header = redact(`[agent] ${name} @ ${a.hash.slice(0, 12)} (${a.engine}, ${String(withArgs.mode)})\n[prompt]\n${String(withArgs.prompt)}\n`, secretValues);
+            header = redact(`[agent] ${name} @ ${a.hash.slice(0, 12)} (${a.engine}, ${a.model || "default"}, ${String(withArgs.mode)})\n[prompt]\n${String(withArgs.prompt)}\n`, secretValues);
             emit({ type: "log", id, chunk: header });
           }
         }

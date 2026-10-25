@@ -213,11 +213,11 @@ export function runAgent(db: DB, user: Actor, name: string, body: AgentRunBody |
   if (b.instructions !== undefined && typeof b.instructions !== "string") return err(400, "instructions must be text");
   const extra = typeof b.instructions === "string" ? b.instructions.trim() : "";
   if (extra.length > 4000) return err(400, "instructions must be at most 4000 characters");
-  return runDirect(db, user, { agent: a.name, engine: a.engine, prompt: finalPrompt(a.prompt, extra), hash: a.contentHash, repo: str(b.repo) ?? a.defaultRepo ?? undefined, mode: b.mode }, deps);
+  return runDirect(db, user, { agent: a.name, engine: a.engine, model: a.model, prompt: finalPrompt(a.prompt, extra), hash: a.contentHash, repo: str(b.repo) ?? a.defaultRepo ?? undefined, mode: b.mode }, deps);
 }
 
 /** A pre-approved single agent step: a team agent (agent set) or a plain engine + prompt. */
-export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: string; prompt: string; hash?: string; repo?: string; mode?: unknown; purpose?: string }, deps: RunDeps): Res & { run?: ReturnType<typeof startWorkflowRun> } {
+export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: string; model?: string | null; prompt: string; hash?: string; repo?: string; mode?: unknown; purpose?: string }, deps: RunDeps): Res & { run?: ReturnType<typeof startWorkflowRun> } {
   const mode = str(o.mode) ?? "simulated";
   if (mode !== "simulated" && mode !== "real") return err(400, "mode must be simulated or real");
   if (o.engine !== "claude-code" && o.engine !== "codex") return err(400, "engine must be claude-code or codex");
@@ -236,7 +236,7 @@ export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: stri
     steps: [{ id: "agent", name: label, uses: "agent", needs: [], with: { agent: label, mode, repo: repo ?? "" }, secrets: [], outputs: { summary: "${{ result.summary }}", branch: "${{ result.branch }}", pushed: "${{ result.pushed }}" }, retries: 0, continue_on_error: false }],
     outputs: { summary: "${{ steps.agent.outputs.summary }}", branch: "${{ steps.agent.outputs.branch }}", pushed: "${{ steps.agent.outputs.pushed }}" },
   };
-  const loaded: LoadedWorkflow = { workflow, file: wfName, source: "", hash, origin: "tenant", agents: { [label]: { engine, prompt, hash } }, agentErrors: [] };
+  const loaded: LoadedWorkflow = { workflow, file: wfName, source: "", hash, origin: "tenant", agents: { [label]: { engine, model: o.model ?? null, prompt, hash } }, agentErrors: [] };
   const run = startWorkflowRun(db, { tenantId: user.tenantId, userId: user.id }, loaded, {}, {
     handlers: deps.handlers, resolveSecret: deps.resolveSecret, redact: deps.redact(), preApproved: true, inputs: {},
     meta: { engine, prompt, promptSource: o.agent ? "agent" : "custom", mode, repo },

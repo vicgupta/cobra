@@ -71,7 +71,7 @@ test("agents: direct single run (no approval) logs agent, short hash and final p
   assert.deepEqual([d.workflow, d.engine, d.mode, d.repo, d.promptSource, d.branch], ["agent:reviewer", "codex", "simulated", "vicgupta/factory-demo-app", "agent", null]);
   assert.match(d.prompt!, /Review the code\n\nAdditional instructions:\nFocus on tests/);
   const out = d.events.find((e) => e.stepId === "agent" && e.status === "succeeded")!.output!;
-  assert.match(out, new RegExp(`\\[agent\\] reviewer @ ${ag.contentHash.slice(0, 12)} \\(codex, simulated\\)`));
+  assert.match(out, new RegExp(`\\[agent\\] reviewer @ ${ag.contentHash.slice(0, 12)} \\(codex, default, simulated\\)`));
   assert.match(out, /Focus on tests/);
   assert.equal(runAgent(db, member, "reviewer", { repo: "other/x" }, deps(db, member.tenantId)).status, 400);
   assert.equal(runAgent(db, member, "reviewer", { mode: "fast" }, deps(db, member.tenantId)).status, 400);
@@ -103,7 +103,7 @@ test("agents in workflows: two agents chained, effective hash, re-approval after
   const d = getRunDetail(db, r.run!.id)!;
   assert.equal(d.status, "succeeded");
   const log = (id: string) => d.events.find((e) => e.stepId === id && e.status === "succeeded")!.output!;
-  assert.match(log("write"), /\[agent\] writer @ [0-9a-f]{12} \(claude-code, simulated\)\n\[prompt\]\nWrite the change\n\nAdditional instructions:\nTopic: docs/);
+  assert.match(log("write"), /\[agent\] writer @ [0-9a-f]{12} \(claude-code, default, simulated\)\n\[prompt\]\nWrite the change\n\nAdditional instructions:\nTopic: docs/);
   assert.match(log("review"), /\[agent\] reviewer @ [0-9a-f]{12} \(codex/);
   assert.match(log("review"), /Previous: Simulated claude-code run/, "chained through needs + outputs");
   // editing an agent sends the workflow back to pending

@@ -250,6 +250,8 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     ALTER TABLE team_repos ADD COLUMN pat_last4 TEXT;
     ALTER TABLE team_repos ADD COLUMN pat_set_at INTEGER;
   `),
+  // 12 (Job 23): per-agent model; NULL = the engine's default model
+  (db) => db.exec("ALTER TABLE team_agents ADD COLUMN model TEXT;"),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */
