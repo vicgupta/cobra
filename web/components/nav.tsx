@@ -9,6 +9,7 @@ const userLinks = [
   { href: "/", label: "Dashboard" },
   { href: "/workflows", label: "Workflows" },
   { href: "/templates", label: "Templates" },
+  { href: "/repos", label: "Repos" },
   { href: "/runs/new", label: "Test run" },
 ];
 const adminLink = { href: "/admin", label: "Admin" };

@@ -14,7 +14,7 @@ type Row = { name: string; origin: string; template?: boolean; owner?: string; a
 function List({ user }: { user: SessionUser }) {
   const rows = (listWorkflowsFor(getDb(), actor(user)).body as Row[]).filter((r) => !r.template && r.origin !== "template");
   return (
-    <Card title="Workflows" subtitle="Built-ins from the repo and your workspace's workflows" action={<Link href="/workflows/new" className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500">New workflow</Link>}>
+    <Card title="Workflows" subtitle="Built-ins from the repo and your workspace's workflows" action={<Link href="/workflows/new" className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500">New (template + repo)</Link>}>
       <table className="w-full text-left text-sm">
         <thead className="text-xs text-zinc-500"><tr><th className="py-2">Name</th><th>Source</th><th>Owner</th><th>Approvers</th><th>Status</th></tr></thead>
         <tbody className="divide-y divide-zinc-800">

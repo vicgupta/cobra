@@ -5,6 +5,8 @@ import { getDb } from "../db";
 import { envFilePath, parseEnv } from "../env-file";
 import type { SessionUser } from "../auth/sessions";
 import { builtinHandlers } from "./handlers";
+import { localRunner } from "./local-runner";
+import { checkTeamRepo, teamRepo } from "../repos";
 import { githubFiles } from "./github-files";
 import type { RunDeps } from "./service";
 import type { Actor } from "./store";
@@ -16,11 +18,20 @@ function envFile(): Record<string, string> {
 }
 
 /** Secrets are read fresh from the server env file at run time (process.env as fallback); never stored in YAML. */
-export const runDeps = (): RunDeps => ({
-  handlers: builtinHandlers(),
-  resolveSecret: (name) => envFile()[name] || process.env[name] || undefined,
-  redact: () => Object.values(envFile()),
-});
+const secret = (name: string) => envFile()[name] || process.env[name] || undefined;
+/** Handlers scoped to a team: GitHub steps and agent clones only reach that team's registered repos. */
+export const runDeps = (tenantId: number): RunDeps => {
+  const db = getDb();
+  const checkRepo = (repo: string) => checkTeamRepo(db, tenantId, repo);
+  return {
+    handlers: builtinHandlers({ checkRepo, agentRunner: localRunner({ resolveSecret: secret, checkRepo, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch }) }),
+    resolveSecret: secret,
+    redact: () => Object.values(envFile()),
+  };
+};
+
+/** True when GITHUB_TOKEN is set (value never returned). */
+export const githubTokenSet = () => !!secret("GITHUB_TOKEN");
 
 export { getDb };
 

@@ -41,7 +41,7 @@ export function CopyButton({ text, label = "Copy YAML" }: { text: string; label?
 export type StorageInit = { kind: string; repo?: string; path?: string; branch?: string };
 
 /** Create (no previousName) or edit a tenant workflow/template. Storage: Cobra database or a YAML file in a GitHub repo. */
-export function YamlEditor({ initial, previousName, templateName, storage: st }: { initial: string; previousName?: string; templateName?: string; storage?: StorageInit }) {
+export function YamlEditor({ initial, previousName, templateName, storage: st, repos = [] }: { initial: string; previousName?: string; templateName?: string; storage?: StorageInit; repos?: string[] }) {
   const [source, setSource] = useState(initial);
   const [storage, setStorage] = useState<"database" | "github">(st?.kind === "github" ? "github" : "database");
   const [gh, setGh] = useState({ repo: st?.repo ?? "", path: st?.path ?? "", branch: st?.branch ?? "" });
@@ -68,11 +68,14 @@ export function YamlEditor({ initial, previousName, templateName, storage: st }:
         </div>
         {storage === "github" && (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <input aria-label="GitHub repo" className={input} placeholder="owner/repo" value={gh.repo} onChange={(e) => setGh({ ...gh, repo: e.target.value })} />
+            <select aria-label="GitHub repo" className={input} value={gh.repo} onChange={(e) => setGh({ ...gh, repo: e.target.value })}>
+              <option value="">{repos.length ? "Choose a team repo…" : "No repos registered (see Repos)"}</option>
+              {[...repos, ...(gh.repo && !repos.includes(gh.repo) ? [gh.repo] : [])].map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
             <input aria-label="File path" className={input} placeholder=".cobra/workflows/my-workflow.yaml" value={gh.path} onChange={(e) => setGh({ ...gh, path: e.target.value })} />
             <input aria-label="Branch" className={input} placeholder="branch (default branch if empty)" value={gh.branch} onChange={(e) => setGh({ ...gh, branch: e.target.value })} />
             {!previousName && <label className="flex items-center gap-2 text-xs text-zinc-400 sm:col-span-3"><input type="checkbox" checked={importing} onChange={(e) => setImporting(e.target.checked)} /> Import the existing file instead of the YAML below</label>}
-            <p className="text-xs text-zinc-500 sm:col-span-3">Read and written with the server&apos;s GITHUB_TOKEN. Saving commits the file.</p>
+            <p className="text-xs text-zinc-500 sm:col-span-3">Only your team&apos;s registered repos (<Link className="text-emerald-300 hover:underline" href="/repos">Repos</Link>). Read and written with the server&apos;s GITHUB_TOKEN. Saving commits the file.</p>
           </div>
         )}
       </fieldset>
@@ -128,9 +131,17 @@ export function ApprovalPanel({ name, hash }: { name: string; hash: string }) {
 
 export type InputDef = { type: "string" | "number" | "boolean" | "choice"; description?: string; required?: boolean; default?: string | number | boolean; options?: string[] };
 
-export function RunForm({ name, inputs, enabled, reason }: { name: string; inputs: Record<string, InputDef>; enabled: boolean; reason?: string }) {
+export type RunFlow = { engine: string; prompt: string | null; repo: string | null; repos: string[] };
+
+/** Run flow: repo → engine → prompt (workflow template or free-form) → mode → inputs → Run. */
+export function RunForm({ name, inputs, enabled, reason, flow }: { name: string; inputs: Record<string, InputDef>; enabled: boolean; reason?: string; flow?: RunFlow }) {
   const [values, setValues] = useState<Record<string, string | boolean>>(() =>
     Object.fromEntries(Object.entries(inputs).map(([k, d]) => [k, d.type === "boolean" ? Boolean(d.default) : d.default === undefined ? "" : String(d.default)])));
+  const [repo, setRepo] = useState(flow?.repo ?? "");
+  const [engine, setEngine] = useState(flow?.engine ?? "claude-code");
+  const [promptMode, setPromptMode] = useState<"workflow" | "custom">(flow?.prompt ? "workflow" : "custom");
+  const [prompt, setPrompt] = useState("");
+  const [mode, setMode] = useState<"simulated" | "real">("simulated");
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const router = useRouter();
@@ -138,13 +149,40 @@ export function RunForm({ name, inputs, enabled, reason }: { name: string; input
     e.preventDefault();
     setBusy(true);
     const payload = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== ""));
-    const { ok, data } = await send(`/api/workflows/${encodeURIComponent(name)}/runs`, { inputs: payload });
+    const extra = flow ? { engine, mode, repo: repo || undefined, ...(promptMode === "custom" ? (prompt.trim() ? { promptMode, prompt } : { promptMode: "none" }) : { promptMode }) } : {};
+    const { ok, data } = await send(`/api/workflows/${encodeURIComponent(name)}/runs`, { inputs: payload, ...extra });
     setBusy(false);
     if (!ok) return setErrors(data.errors ?? [data.error ?? "Run failed"]);
     router.push(`/runs/${data.id}`);
   }
+  const flowFields = flow && (
+    <div className="space-y-3 rounded-md border border-zinc-800 p-3">
+      <label className="block text-sm"><span className="text-zinc-300">Repo</span>
+        <select aria-label="Repo" className={`${input} mt-1`} value={repo} onChange={(e) => setRepo(e.target.value)}>
+          <option value="">— none (scratch workspace) —</option>
+          {flow.repos.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select></label>
+      <label className="block text-sm"><span className="text-zinc-300">Engine</span> <span className="ml-2 text-xs text-zinc-500">workflow default: {flow.engine}</span>
+        <select aria-label="Engine" className={`${input} mt-1`} value={engine} onChange={(e) => setEngine(e.target.value)}>
+          <option value="claude-code">Claude Code</option><option value="codex">Codex</option>
+        </select></label>
+      <fieldset className="text-sm"><legend className="text-zinc-300">Prompt</legend>
+        <div className="mt-1 flex gap-4">
+          <label className="flex items-center gap-2"><input type="radio" name="promptMode" disabled={!flow.prompt} checked={promptMode === "workflow"} onChange={() => setPromptMode("workflow")} /> Workflow prompt</label>
+          <label className="flex items-center gap-2"><input type="radio" name="promptMode" checked={promptMode === "custom"} onChange={() => setPromptMode("custom")} /> Free-form</label>
+        </div>
+        {promptMode === "workflow" && flow.prompt && <pre className="mt-2 whitespace-pre-wrap rounded-md bg-zinc-900 p-2 font-mono text-xs text-zinc-400">{flow.prompt}</pre>}
+        {promptMode === "custom" && <textarea aria-label="Prompt" className={`${input} mt-2 h-24`} maxLength={8000} placeholder="What should the agent do?" value={prompt} onChange={(e) => setPrompt(e.target.value)} />}
+      </fieldset>
+      <label className="block text-sm"><span className="text-zinc-300">Mode</span>
+        <select aria-label="Mode" className={`${input} mt-1`} value={mode} onChange={(e) => setMode(e.target.value as "simulated" | "real")}>
+          <option value="simulated">Simulated (records only, executes nothing)</option><option value="real">Real (local runner)</option>
+        </select></label>
+    </div>
+  );
   return (
     <form onSubmit={run} className="space-y-3">
+      {flowFields}
       {Object.entries(inputs).map(([k, d]) => (
         <label key={k} className="block text-sm">
           <span className="text-zinc-300">{k}{d.required && <span className="text-rose-300"> *</span>}</span>
@@ -171,7 +209,8 @@ export function RunForm({ name, inputs, enabled, reason }: { name: string; input
 }
 
 type Event = { stepId: string; status: string; attempt: number; output: string | null; truncated: boolean; at: number };
-type Detail = { id: string; workflow: string | null; workflowHash: string | null; status: string | null; error: string | null; startedAt: number; endedAt: number | null; outputs: Record<string, unknown> | null; events: Event[] };
+type Detail = { id: string; workflow: string | null; workflowHash: string | null; status: string | null; error: string | null; startedAt: number; endedAt: number | null; outputs: Record<string, unknown> | null; events: Event[];
+  engine?: string | null; promptSource?: string | null; prompt?: string | null; mode?: string | null; repo?: string | null; branch?: string | null };
 
 /** Read-only run log; polls while the run is still going. */
 export function RunLog({ initial }: { initial: Detail }) {
@@ -193,6 +232,15 @@ export function RunLog({ initial }: { initial: Detail }) {
         <span className="font-mono text-xs text-zinc-500">version {run.workflowHash?.slice(0, 12)}</span>
         <span className="text-xs text-zinc-500">started {new Date(run.startedAt).toLocaleString()}{run.endedAt ? ` · ended ${t(run.endedAt)}` : ""}</span>
       </div>
+      {run.engine && (
+        <dl className="grid grid-cols-[7rem_1fr] gap-y-1 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm">
+          <dt className="text-zinc-500">Engine</dt><dd>{run.engine === "codex" ? "Codex" : "Claude Code"}</dd>
+          <dt className="text-zinc-500">Mode</dt><dd>{run.mode ?? "—"}</dd>
+          <dt className="text-zinc-500">Repo</dt><dd className="font-mono text-xs">{run.repo || "—"}{run.branch ? ` → ${run.branch}` : ""}</dd>
+          <dt className="text-zinc-500">Prompt</dt><dd><span className="text-xs text-zinc-500">{run.promptSource === "workflow" ? "workflow prompt" : run.promptSource === "custom" ? "free-form" : "none"}</span>
+            {run.prompt && <pre className="mt-1 whitespace-pre-wrap font-mono text-xs text-zinc-300">{run.prompt}</pre>}</dd>
+        </dl>
+      )}
       {run.error && <p role="alert" className="rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{run.error}</p>}
       <ol className="space-y-2">
         {run.events.map((e, i) => (
@@ -211,6 +259,67 @@ export function RunLog({ initial }: { initial: Detail }) {
       {run.outputs && Object.keys(run.outputs).length > 0 && (
         <pre className="overflow-auto rounded-md border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs">{JSON.stringify(run.outputs, null, 2)}</pre>
       )}
+    </div>
+  );
+}
+
+/** Pick a template and one of the team's repos; creates a workflow instance attached to that repo. */
+export function AttachTemplate({ templates, repos }: { templates: string[]; repos: string[] }) {
+  const [template, setTemplate] = useState(templates[0] ?? "");
+  const [repo, setRepo] = useState(repos[0] ?? "");
+  const [errors, setErrors] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const router = useRouter();
+  if (!templates.length) return <p className="text-sm text-zinc-500">No templates yet.</p>;
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <select aria-label="Template" className={input} value={template} onChange={(e) => setTemplate(e.target.value)}>{templates.map((t) => <option key={t}>{t}</option>)}</select>
+        <select aria-label="Template repo" className={input} value={repo} onChange={(e) => setRepo(e.target.value)}>
+          {!repos.length && <option value="">No repos registered</option>}{repos.map((r) => <option key={r}>{r}</option>)}</select>
+        <button className={button} disabled={busy || !template || !repo} onClick={async () => {
+          setBusy(true);
+          const { ok, data } = await send(`/api/templates/${encodeURIComponent(template)}/attach`, { repo });
+          setBusy(false);
+          if (!ok) return setErrors(data.errors ?? [data.error ?? "Failed"]);
+          router.push(`/workflows/${encodeURIComponent(String(data.name))}`);
+        }}>{busy ? "Creating…" : "Create from template"}</button>
+      </div>
+      <Errors errors={errors} />
+    </div>
+  );
+}
+
+export function RepoManager({ initial, canManage }: { initial: Array<{ repo: string; defaultBranch: string | null }>; canManage: boolean }) {
+  const [repo, setRepo] = useState("");
+  const [branch, setBranch] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  return (
+    <div className="space-y-3">
+      {initial.length === 0 ? <p className="text-sm text-zinc-500">No repos registered yet.</p> : (
+        <ul className="divide-y divide-zinc-800 text-sm">{initial.map((r) => (
+          <li key={r.repo} className="flex items-center gap-3 py-2"><span className="font-mono">{r.repo}</span>
+            <span className="text-xs text-zinc-500">{r.defaultBranch ? `default branch ${r.defaultBranch}` : "repo default branch"}</span>
+            {canManage && <button className={`${ghost} ml-auto text-xs`} onClick={async () => {
+              const res = await fetch(`/api/repos?repo=${encodeURIComponent(r.repo)}`, { method: "DELETE" });
+              if (!res.ok) setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Failed"); else router.refresh();
+            }}>Remove</button>}
+          </li>))}</ul>
+      )}
+      {canManage ? (
+        <form className="grid grid-cols-1 gap-2 sm:grid-cols-3" onSubmit={async (e) => {
+          e.preventDefault();
+          const { ok, data } = await send("/api/repos", { repo, defaultBranch: branch || undefined });
+          if (!ok) return setError(data.error ?? "Failed");
+          setError(null); setRepo(""); setBranch(""); router.refresh();
+        }}>
+          <input aria-label="Repo" className={input} placeholder="owner/name" value={repo} onChange={(e) => setRepo(e.target.value)} />
+          <input aria-label="Default branch" className={input} placeholder="default branch (optional)" value={branch} onChange={(e) => setBranch(e.target.value)} />
+          <button className={button} disabled={!repo.trim()}>Add repo</button>
+        </form>
+      ) : <p className="text-xs text-zinc-500">Only team admins and team leads can add or remove repos.</p>}
+      {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
     </div>
   );
 }

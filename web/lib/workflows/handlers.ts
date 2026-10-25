@@ -40,19 +40,28 @@ export const shell: StepHandler = ({ run, secrets, signal, with: w }) => new Pro
  * Runs a coding agent (src/agents drivers) in a worker workspace. The web app has
  * no workspace provider yet, so this needs an injected runner; without one it fails clearly.
  */
-export type AgentRunner = (args: { driver: "claude-code" | "codex"; with: Record<string, unknown>; secrets: Record<string, string>; signal: AbortSignal; timeoutMs?: number }) => Promise<Record<string, unknown>>;
-export const agent = (runner?: AgentRunner): StepHandler => async ({ with: w, secrets, signal, timeoutMs }) => {
+export type AgentRunner = (args: { runId: string; driver: "claude-code" | "codex"; with: Record<string, unknown>; secrets: Record<string, string>; signal: AbortSignal; timeoutMs?: number; log: (chunk: string) => void }) => Promise<Record<string, unknown>>;
+export const agent = (runner?: AgentRunner): StepHandler => async ({ runId, with: w, secrets, signal, timeoutMs, log }) => {
+  const driver = (w.driver || "claude-code") as "claude-code" | "codex";
+  if (driver !== "claude-code" && driver !== "codex") throw new Error(`unknown agent driver ${String(driver)}`);
+  // Simulated mode: record what would run, execute nothing.
+  if (w.mode === "simulated") return { simulated: true, driver, summary: `Simulated ${driver} run${w.repo ? ` on ${String(w.repo)}` : ""}; prompt: ${String(w.prompt ?? "")}` };
   if (!runner) throw new Error("no agent workspace provider is configured on this server; agent steps can't run yet");
-  return runner({ driver: (w.driver as "claude-code" | "codex") ?? "claude-code", with: w, secrets, signal, timeoutMs });
+  return runner({ runId, driver, with: w, secrets, signal, timeoutMs, log: log ?? (() => {}) });
 };
 
 /** GitHub REST actions with the GITHUB_TOKEN listed in the step's secrets (read from the env file at run time). */
-export const github = (fetchImpl: typeof fetch = fetch): StepHandler => async ({ with: w, secrets, signal }) => {
+/** Returns an error message when the acting team may not use the repo (team list + optional global ceiling). */
+export type RepoCheck = (repo: string) => string | null;
+const envCeiling: RepoCheck = (repo) => {
+  const allowed = process.env.COBRA_GITHUB_ALLOWED_REPOS?.split(",").map((r) => r.trim().toLowerCase()).filter(Boolean);
+  return allowed?.length && !allowed.includes(repo.toLowerCase()) ? `repo ${repo} is not in COBRA_GITHUB_ALLOWED_REPOS` : null;
+};
+export const github = (fetchImpl: typeof fetch = fetch, checkRepo: RepoCheck = envCeiling): StepHandler => async ({ with: w, secrets, signal }) => {
   const repo = String(w.repo ?? "");
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error("with.repo must look like owner/name");
-  // Optional allow-list (e.g. COBRA_GITHUB_ALLOWED_REPOS=vicgupta/cobra-sandbox while testing).
-  const allowed = process.env.COBRA_GITHUB_ALLOWED_REPOS?.split(",").map((r) => r.trim().toLowerCase()).filter(Boolean);
-  if (allowed?.length && !allowed.includes(repo.toLowerCase())) throw new Error(`repo ${repo} is not in COBRA_GITHUB_ALLOWED_REPOS`);
+  const denied = checkRepo(repo);
+  if (denied) throw new Error(denied);
   const call = async (method: string, url: string, body: unknown) => {
     const r = await fetchImpl(`https://api.github.com/repos/${repo}${url}`, {
       method, signal, body: JSON.stringify(body),
@@ -92,5 +101,5 @@ export const approval = (provider?: ApprovalProvider): StepHandler => async ({ r
   return { approved: true, by: d.by, comment: d.comment ?? "" };
 };
 
-export const builtinHandlers = (opts: { agentRunner?: AgentRunner; approvalProvider?: ApprovalProvider; fetch?: typeof fetch } = {}): Handlers =>
-  ({ simulate, noop, shell, agent: agent(opts.agentRunner), github: github(opts.fetch), approval: approval(opts.approvalProvider) });
+export const builtinHandlers = (opts: { agentRunner?: AgentRunner; approvalProvider?: ApprovalProvider; fetch?: typeof fetch; checkRepo?: RepoCheck } = {}): Handlers =>
+  ({ simulate, noop, shell, agent: agent(opts.agentRunner), github: github(opts.fetch, opts.checkRepo), approval: approval(opts.approvalProvider) });

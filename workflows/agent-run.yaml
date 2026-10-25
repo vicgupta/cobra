@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=./workflow.schema.json
+# One agent run on a team repo: the run flow on /workflows/<name> picks the repo,
+# engine (claude-code or codex, default below) and prompt (this template or a
+# free-form one). mode=simulated records everything without executing; mode=real
+# uses the local runner (web/lib/workflows/local-runner.ts): workspace under
+# /var/lib/cobra/workspaces/<run-id>, clone when GITHUB_TOKEN is set and the repo
+# is registered to the team, push changes to cobra/<run-id> (see docs/workflow-redesign.md).
+name: agent-run
+version: 1
+description: Run Claude Code or Codex headless on a team repo with a templated or free-form prompt.
+engine: claude-code
+prompt: '${{ inputs.task }}'
+on:
+  manual: true
+governance:
+  owner: vicgupta@gmail.com
+  approvers:
+    - role: admin
+    - role: team_lead
+inputs:
+  task:
+    type: string
+    default: 'Create HELLO.md containing a one-line greeting.'
+    max_length: 4000
+    description: Task text used by the prompt template
+steps:
+  - id: agent
+    name: Run agent
+    uses: agent
+    with:
+      driver: ${{ run.engine }}
+      mode: ${{ run.mode }}
+      repo: ${{ run.repo }}
+      prompt: ${{ run.prompt }}
+    outputs:
+      summary: ${{ result.summary }}
+      branch: ${{ result.branch }}
+outputs:
+  summary: ${{ steps.agent.outputs.summary }}
+  branch: ${{ steps.agent.outputs.branch }}

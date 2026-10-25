@@ -28,6 +28,19 @@
       "description": "A template tenants copy into their own workflow",
       "type": "boolean"
     },
+    "engine": {
+      "description": "Default coding agent for runs (overridable per run); claude-code when unset",
+      "type": "string",
+      "enum": [
+        "claude-code",
+        "codex"
+      ]
+    },
+    "prompt": {
+      "description": "Default run prompt; may use ${{ inputs.* }}. Runs may use it or a free-form prompt",
+      "type": "string",
+      "maxLength": 8000
+    },
     "on": {
       "default": {
         "manual": true

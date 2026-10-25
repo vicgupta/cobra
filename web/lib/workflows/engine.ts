@@ -20,13 +20,16 @@ export type StepContext = {
   secrets: Record<string, string>;
   signal: AbortSignal;
   timeoutMs?: number;
+  /** Streams a chunk of live output into the step log (redacted by the recorder). */
+  log?: (chunk: string) => void;
 };
 export type StepHandler = (ctx: StepContext) => Promise<Record<string, unknown>>;
 export type Handlers = Partial<Record<WorkflowStep["uses"], StepHandler>>;
 
 export type EngineEvent =
   | { type: "run"; status: RunStatus; steps: Record<string, StepState>; outputs?: Record<string, unknown>; error?: string }
-  | { type: "step"; id: string; state: StepState };
+  | { type: "step"; id: string; state: StepState }
+  | { type: "log"; id: string; chunk: string };
 
 export class WorkflowNotApprovedError extends Error {
   constructor(name: string, hash: string) {
@@ -47,6 +50,8 @@ export type ExecuteOptions = {
   onEvent?: (e: EngineEvent) => void;
   /** Extra values to redact from step logs (the runner passes every env-file value). */
   redact?: string[];
+  /** Extra run-level values (engine, prompt, repo, mode, branch) visible as ${{ run.* }}. */
+  run?: Record<string, unknown>;
 };
 
 export const LOG_CAP = 16_000;
@@ -119,7 +124,7 @@ export async function executeWorkflow(loaded: LoadedWorkflow, opts: ExecuteOptio
   if (!opts.isApproved(wf.name, hash)) throw new WorkflowNotApprovedError(wf.name, hash);
   const inputs = resolveInputs(wf, opts.inputs);
   const steps: Record<string, StepState> = Object.fromEntries(wf.steps.map((s) => [s.id, { status: "pending", outputs: {}, attempts: 0 } as StepState]));
-  const scope: Scope = { inputs, steps, run: { id: opts.runId } };
+  const scope: Scope = { inputs, steps, run: { ...opts.run, id: opts.runId } };
   const emit = opts.onEvent ?? (() => {});
   const secretValues = new Set(opts.redact ?? []);
   const setStep = (id: string, patch: Partial<StepState>) => { steps[id] = { ...steps[id], ...patch }; emit({ type: "step", id, state: steps[id] }); };
@@ -149,7 +154,7 @@ export async function executeWorkflow(loaded: LoadedWorkflow, opts: ExecuteOptio
         const withArgs = Object.fromEntries(Object.entries(step.with).map(([k, v]) => [k, interpolate(scope, v)]));
         const run = step.run === undefined ? undefined : String(interpolate(scope, step.run));
         const timeoutMs = step.timeout_seconds ? step.timeout_seconds * 1000 : undefined;
-        const result = await withTimeout((signal) => handler({ runId: opts.runId, step, with: withArgs, run, secrets, signal, timeoutMs }), timeoutMs);
+        const result = await withTimeout((signal) => handler({ runId: opts.runId, step, with: withArgs, run, secrets, signal, timeoutMs, log: (chunk) => emit({ type: "log", id, chunk: redact(chunk, secretValues) }) }), timeoutMs);
         const outScope = { ...scope, result };
         const outputs = Object.fromEntries(Object.entries(step.outputs).map(([k, v]) => [k, interpolate(outScope, v)]));
         setStep(id, { status: "succeeded", outputs, attempts: attempt, endedAt: Date.now(), error: undefined, ...stepLog(result, undefined, secretValues) });

@@ -187,6 +187,29 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     );
     CREATE INDEX run_step_events_run ON run_step_events(run_id, id);
   `),
+  // 8: per-team GitHub repos; engine/prompt/mode on runs; attached repo on workflow instances
+  (db) => {
+    db.exec(`
+    CREATE TABLE team_repos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      repo TEXT NOT NULL,
+      default_branch TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      UNIQUE (tenant_id, repo)
+    );
+    ALTER TABLE runs ADD COLUMN engine TEXT;
+    ALTER TABLE runs ADD COLUMN prompt_source TEXT;
+    ALTER TABLE runs ADD COLUMN mode TEXT;
+    ALTER TABLE runs ADD COLUMN branch TEXT;
+    ALTER TABLE tenant_workflows ADD COLUMN repo TEXT;
+    `);
+    const t = db.prepare("SELECT id FROM tenants WHERE slug = 'default'").get() as { id: number } | undefined;
+    if (t) for (const [repo, branch] of [["vicgupta/cobra-sandbox", null], ["vicgupta/factory-demo-app", "main"]]) {
+      db.prepare("INSERT OR IGNORE INTO team_repos (tenant_id, repo, default_branch, created_at) VALUES (?, ?, ?, ?)").run(t.id, repo, branch, Date.now());
+    }
+  },
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

@@ -74,12 +74,18 @@ export const StepSchema = z.strictObject({
   }
 });
 
+export const ENGINES = ["claude-code", "codex"] as const;
+export type Engine = (typeof ENGINES)[number];
+export const ENGINE_LABEL: Record<Engine, string> = { "claude-code": "Claude Code", codex: "Codex" };
+
 export const WorkflowSchema = z.strictObject({
   name: id("name"),
   version: z.union([z.string(), z.number()]).transform(String),
   description: z.string().default(""),
   system: z.boolean().default(false).describe("System-generated (shipped with Cobra); read-only for tenants"),
   template: z.boolean().default(false).describe("A template tenants copy into their own workflow"),
+  engine: z.enum(ENGINES).optional().describe("Default coding agent for runs (overridable per run); claude-code when unset"),
+  prompt: z.string().max(8000).optional().describe("Default run prompt; may use ${{ inputs.* }}. Runs may use it or a free-form prompt"),
   on: TriggerSchema.default({ manual: true }),
   governance: GovernanceSchema,
   inputs: z.record(z.string().regex(ID, "input names must be lowercase identifiers"), InputSchema).default({}),

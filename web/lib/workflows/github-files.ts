@@ -12,8 +12,7 @@ export function checkLocation(repo: string, path: string): string[] {
   const errs: string[] = [];
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) errs.push("github repo must look like owner/name");
   if (!/^[\w./-]+\.ya?ml$/.test(path) || path.split("/").includes("..") || path.startsWith("/")) errs.push("github path must be a relative .yaml/.yml path");
-  const allowed = process.env.COBRA_GITHUB_ALLOWED_REPOS?.split(",").map((r) => r.trim().toLowerCase()).filter(Boolean);
-  if (allowed?.length && !allowed.includes(repo.toLowerCase())) errs.push(`repo ${repo} is not in COBRA_GITHUB_ALLOWED_REPOS`);
+  // Team registration + the optional COBRA_GITHUB_ALLOWED_REPOS ceiling are checked by checkTeamRepo (lib/repos.ts).
   return errs;
 }
 

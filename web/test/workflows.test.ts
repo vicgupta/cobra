@@ -1,3 +1,4 @@
+import { addTeamRepo } from "../lib/repos";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -49,7 +50,7 @@ test("loader: cycles, unknown needs, unknown refs, non-ancestor refs", () => {
 test("built-ins and system templates all parse; JSON schema file is current", () => {
   const repo = loadWorkflows(DIR), tpl = loadTemplates();
   assert.deepEqual([...repo.errors, ...tpl.errors], []);
-  assert.deepEqual(repo.workflows.map((w) => w.workflow.name).sort(), ["issue-to-pr", "test-run"]);
+  assert.deepEqual(repo.workflows.map((w) => w.workflow.name).sort(), ["agent-run", "issue-to-pr", "test-run"]);
   assert.deepEqual(tpl.workflows.map((w) => w.workflow.name).sort(), ["cloud-software-factory", "issue-to-merge"]);
   assert.equal(tpl.workflows.find((w) => w.workflow.name === "issue-to-merge")!.workflow.steps.length, 3);
   assert.equal(tpl.workflows.find((w) => w.workflow.name === "cloud-software-factory")!.workflow.steps.length, 7);
@@ -259,11 +260,11 @@ test("service: approve/reject/run/view enforce permissions; run log is recorded 
   const r = getRunDetail(db, res.run!.id)!;
   assert.equal(r.status, "failed");
   assert.deepEqual(r.events.map((e) => `${e.stepId}:${e.status}`), [
-    "hello:pending", "fail:pending", "never:pending", "hello:running", "hello:succeeded", "fail:running", "fail:failed", "never:skipped",
+    "run:succeeded", "hello:pending", "fail:pending", "never:pending", "hello:running", "hello:succeeded", "fail:running", "fail:failed", "never:skipped",
   ]);
   const all = JSON.stringify(r);
   assert.ok(!all.includes(secret), "secret redacted everywhere");
-  assert.match(r.events.find((e) => e.status === "succeeded")!.output!, /msg=hi vic key=\[REDACTED\]/);
+  assert.match(r.events.find((e) => e.stepId === "hello" && e.status === "succeeded")!.output!, /msg=hi vic key=\[REDACTED\]/);
   assert.match(r.events.find((e) => e.status === "failed")!.output!, /exit 1/);
   // run log visibility
   assert.equal(runDetailFor(db, lead, r.id).status, 200, "runner");
@@ -337,6 +338,9 @@ test("storage: github (mocked client, vicgupta/cobra-sandbox only) create, edit,
   const REPO = "vicgupta/cobra-sandbox";
   const src = yaml("  - id: a\n    uses: noop\n").replace("name: t", "name: gh-flow");
   const body = (extra: object) => ({ source: src, storage: "github", github: { repo: REPO, path: ".cobra/gh-flow.yaml" }, ...extra });
+  assert.equal((await saveWorkflow(db, admin, body({}), { github: gh.client })).status, 400, "not registered to the team");
+  addTeamRepo(db, admin, REPO);
+  addTeamRepo(db, admin, "vicgupta/cobra");
   assert.equal((await saveWorkflow(db, admin, body({}))).status, 500, "no client configured");
   assert.equal((await saveWorkflow(db, admin, { ...body({}), github: { repo: REPO, path: "../x.yaml" } }, { github: gh.client })).status, 400);
   process.env.COBRA_GITHUB_ALLOWED_REPOS = REPO;

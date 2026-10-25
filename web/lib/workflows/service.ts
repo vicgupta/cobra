@@ -2,10 +2,13 @@
 // permission checks directly. Each function returns { status, body }.
 import type { DB } from "../db";
 import { approvalState, canApprove, PermissionError, recordDecision, selfApprovalPolicy } from "./approvals";
-import { InputError, WorkflowNotApprovedError, type Handlers } from "./engine";
+import { InputError, resolveInputs, WorkflowNotApprovedError, type Handlers } from "./engine";
+import { interpolate } from "./expr";
+import { ENGINES, type Engine } from "./schema";
+import { checkTeamRepo, listTeamRepos } from "../repos";
 import type { LoadedWorkflow } from "./loader";
-import { canViewRun, getRunDetail, listWorkflowRuns, startWorkflowRun } from "./runner";
-import { canEdit, canRun, findWorkflow, freeName, instancesOf, listAll, saveTenantWorkflow, SaveError, storageOf, syncFromGitHub, systemTemplates, templateCopySource, type Actor, type Storage } from "./store";
+import { canViewRun, getRunDetail, listWorkflowRuns, startWorkflowRun, type RunMeta } from "./runner";
+import { attachedRepo, canEdit, canRun, findWorkflow, freeName, instancesOf, listAll, saveTenantWorkflow, SaveError, storageOf, syncFromGitHub, systemTemplates, templateCopySource, type Actor, type Storage } from "./store";
 import type { GitHubFiles } from "./github-files";
 
 export type Res = { status: number; body: unknown };
@@ -22,6 +25,7 @@ function summary(db: DB, user: Actor, w: LoadedWorkflow) {
     approvers: wf.governance.approvers.map((a) => (typeof a === "string" ? a : `role:${a.role}`)),
     reviewers: wf.governance.reviewers, minApprovals: wf.governance.min_approvals,
     approval: { status: st.status, reason: st.reason },
+    engine: wf.engine ?? "claude-code",
     triggers: Object.keys(wf.on).filter((k) => (wf.on as Record<string, unknown>)[k]),
   };
 }
@@ -50,11 +54,15 @@ export function workflowDetail(db: DB, user: Actor, name: string, dir?: string):
     runs: w.workflow.template ? [] : listWorkflowRuns(db, user.tenantId, name),
     storage: w.origin === "tenant" ? storageOf(db, user.tenantId, name) : { kind: w.origin === "template" ? "repo+database" : "repo" },
     instances: w.workflow.template ? instancesOf(db, user.tenantId, name).map((i) => ({ ...i, fromCurrentVersion: i.templateHash === w.hash })) : [],
+    engine: w.workflow.engine ?? "claude-code",
+    prompt: w.workflow.prompt ?? null,
+    repo: w.origin === "tenant" ? attachedRepo(db, user.tenantId, name) : null,
+    teamRepos: listTeamRepos(db, user.tenantId).map((r) => r.repo),
     createdFrom: w.origin === "tenant" ? (db.prepare("SELECT template_name AS name, template_hash AS hash FROM tenant_workflows WHERE tenant_id = ? AND name = ?").get(user.tenantId, name) as { name: string | null; hash: string | null }) : null,
   });
 }
 
-type SaveBody = { source?: unknown; previousName?: unknown; templateName?: unknown; storage?: unknown; github?: { repo?: unknown; path?: unknown; branch?: unknown } | null; import?: unknown };
+type SaveBody = { source?: unknown; previousName?: unknown; templateName?: unknown; repo?: unknown; storage?: unknown; github?: { repo?: unknown; path?: unknown; branch?: unknown } | null; import?: unknown };
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 
 export async function saveWorkflow(db: DB, user: Actor, body: SaveBody | null, deps: { github?: GitHubFiles; dir?: string } = {}): Promise<Res> {
@@ -70,7 +78,7 @@ export async function saveWorkflow(db: DB, user: Actor, body: SaveBody | null, d
   else if (body.storage !== undefined) return err(400, "storage must be database or github");
   try {
     const w = await saveTenantWorkflow(db, user, typeof body.source === "string" ? body.source : "", {
-      previousName: str(body.previousName), templateName: str(body.templateName), storage, github: deps.github, importExisting: imp, dir: deps.dir,
+      previousName: str(body.previousName), templateName: str(body.templateName), repo: str(body.repo), storage, github: deps.github, importExisting: imp, dir: deps.dir,
     });
     return ok(summary(db, user, w), body.previousName ? 200 : 201);
   } catch (e) {
@@ -108,19 +116,66 @@ export function decide(db: DB, user: Actor, name: string, body: { decision?: unk
   }
 }
 
-export function startRun(db: DB, user: Actor, name: string, body: { inputs?: unknown } | null, deps: RunDeps, extra: { idPrefix?: string } = {}): Res & { run?: ReturnType<typeof startWorkflowRun> } {
+export type StartBody = { inputs?: unknown; engine?: unknown; promptMode?: unknown; prompt?: unknown; repo?: unknown; mode?: unknown };
+
+/** Resolves engine / prompt / repo / mode for a run: workflow defaults, overridable per run. */
+export function resolveRunMeta(db: DB, user: Actor, w: LoadedWorkflow, body: StartBody | null, inputs: Record<string, string | number | boolean>): { meta?: RunMeta; error?: string } {
+  const b = body ?? {};
+  const engine = (str(b.engine) ?? w.workflow.engine ?? "claude-code") as Engine;
+  if (!ENGINES.includes(engine)) return { error: `engine must be one of ${ENGINES.join(", ")}` };
+  const mode = str(b.mode) ?? "simulated";
+  if (mode !== "simulated" && mode !== "real") return { error: "mode must be simulated or real" };
+  const templ = w.workflow.prompt;
+  const wantMode = str(b.promptMode) ?? (str(b.prompt) !== undefined ? "custom" : templ ? "workflow" : "none");
+  let prompt = "", promptSource: RunMeta["promptSource"];
+  if (wantMode === "custom") {
+    prompt = typeof b.prompt === "string" ? b.prompt.trim() : "";
+    if (!prompt) return { error: "a free-form prompt is required when promptMode is custom" };
+    if (prompt.length > 8000) return { error: "prompt must be at most 8000 characters" };
+    promptSource = "custom";
+  } else if (wantMode === "workflow") {
+    if (!templ) return { error: "this workflow has no prompt template; enter a free-form prompt" };
+    prompt = String(interpolate({ inputs, run: { engine } }, templ));
+    promptSource = "workflow";
+  } else if (wantMode === "none") promptSource = "none";
+  else return { error: "promptMode must be workflow, custom or none" };
+  const repo = str(b.repo) ?? (w.origin === "tenant" ? attachedRepo(db, user.tenantId, w.workflow.name) ?? undefined : undefined) ?? (typeof inputs.repo === "string" && inputs.repo ? inputs.repo : undefined);
+  if (repo) { const d = checkTeamRepo(db, user.tenantId, repo); if (d) return { error: d }; }
+  if (mode === "real" && !prompt) return { error: "a real run needs a prompt" };
+  return { meta: { engine, prompt, promptSource, mode, repo } };
+}
+
+export function startRun(db: DB, user: Actor, name: string, body: StartBody | null, deps: RunDeps, extra: { idPrefix?: string } = {}): Res & { run?: ReturnType<typeof startWorkflowRun> } {
   const w = findWorkflow(db, user.tenantId, name, deps.dir);
   if (!w) return err(404, `workflow '${name}' not found`);
   if (!canRun(user, w)) return err(403, w.workflow.template ? "templates can't be run; copy one into a workflow first" : "you can't run this workflow");
-  const inputs = body?.inputs && typeof body.inputs === "object" ? (body.inputs as Record<string, unknown>) : {};
+  const raw = body?.inputs && typeof body.inputs === "object" ? (body.inputs as Record<string, unknown>) : {};
   try {
-    const run = startWorkflowRun(db, { tenantId: user.tenantId, userId: user.id }, w, inputs, { handlers: deps.handlers, resolveSecret: deps.resolveSecret, redact: deps.redact(), idPrefix: extra.idPrefix });
-    return { ...ok({ id: run.id, startedAt: run.startedAt, inputs: run.inputs, workflow: name }, 201), run };
+    const inputs = resolveInputs(w.workflow, raw);
+    const r = resolveRunMeta(db, user, w, body, inputs);
+    if (!r.meta) return err(400, r.error!);
+    const run = startWorkflowRun(db, { tenantId: user.tenantId, userId: user.id }, w, raw,
+      { handlers: deps.handlers, resolveSecret: deps.resolveSecret, redact: deps.redact(), idPrefix: extra.idPrefix, meta: r.meta, inputs });
+    return { ...ok({ id: run.id, startedAt: run.startedAt, inputs: run.inputs, workflow: name, engine: r.meta.engine, promptSource: r.meta.promptSource, mode: r.meta.mode, repo: r.meta.repo ?? null }, 201), run };
   } catch (e) {
     if (e instanceof WorkflowNotApprovedError) return err(409, e.message);
     if (e instanceof InputError) return err(400, e.errors[0], e.errors);
     throw e;
   }
+}
+
+/** Creates a team workflow instance from a template (system or team), attached to a team repo. */
+export async function attachTemplate(db: DB, user: Actor, body: { template?: unknown; name?: unknown; repo?: unknown } | null, deps: { github?: GitHubFiles; dir?: string } = {}): Promise<Res> {
+  const tname = str(body?.template), repo = str(body?.repo);
+  if (!tname) return err(400, "template is required");
+  if (!repo) return err(400, "repo is required");
+  const t = findWorkflow(db, user.tenantId, tname, deps.dir);
+  if (!t || !t.workflow.template) return err(404, `template '${tname}' not found`);
+  const d = checkTeamRepo(db, user.tenantId, repo);
+  if (d) return err(400, d);
+  const base = str(body?.name) ?? `${tname.replace(/-template$/, "")}-${repo.split("/")[1]}`.toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").slice(0, 60);
+  const name = str(body?.name) ?? freeName(db, user.tenantId, base, deps.dir);
+  return saveWorkflow(db, user, { source: templateCopySource(t, user, name), templateName: tname, repo }, deps);
 }
 
 export function runDetailFor(db: DB, user: Actor, id: string): Res {

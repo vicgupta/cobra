@@ -52,6 +52,9 @@ function ancestors(wf: Workflow, id: string, acc = new Set<string>()): Set<strin
   return acc;
 }
 
+/** Run-level values steps can read: ${{ run.engine }}, ${{ run.prompt }}, ... */
+export const RUN_FIELDS = ["id", "engine", "prompt", "prompt_source", "repo", "mode", "branch"];
+
 /** Graph and reference checks the schema can't express. */
 export function semanticErrors(wf: Workflow): string[] {
   const errors: string[] = [];
@@ -74,7 +77,7 @@ export function semanticErrors(wf: Workflow): string[] {
         else if (b !== "outputs" && b !== "status") errors.push(`${where}: use steps.${a}.outputs.<name> or steps.${a}.status`);
         else if (b === "outputs") { const key = p.split(".")[3]; const st = wf.steps.find((s) => s.id === a)!; if (!key || !(key in st.outputs)) errors.push(`${where}: step '${a}' has no output '${key ?? ""}'`); }
       } else if (root === "result" && allowResult) { /* the step's own result */ }
-      else if (root === "run") { if (a !== "id") errors.push(`${where}: only run.id is available`); }
+      else if (root === "run") { if (!RUN_FIELDS.includes(a ?? "")) errors.push(`${where}: run.${a ?? ""} is not available (use ${RUN_FIELDS.map((f) => `run.${f}`).join(", ")})`); }
       else errors.push(`${where}: unknown reference '${p}' (use inputs.*, steps.*, run.id)`);
     }
   };
@@ -85,6 +88,7 @@ export function semanticErrors(wf: Workflow): string[] {
     if (s.if) check(`steps[${i}].if`, /\$\{\{/.test(s.if) ? refsIn(s.if) : operandPaths(s.if), anc, false);
     for (const [k, v] of Object.entries(s.outputs)) check(`steps[${i}].outputs.${k}`, refsIn(v), anc, true);
   });
+  if (wf.prompt) check("prompt", refsIn(wf.prompt), new Set(), false);
   for (const [k, v] of Object.entries(wf.outputs)) check(`outputs.${k}`, refsIn(v), "all", false);
   return errors;
 }

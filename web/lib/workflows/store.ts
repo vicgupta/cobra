@@ -3,6 +3,7 @@
 //  - template: workflows/templates/*.yaml, seeded into workflow_templates (read-only, all tenants)
 //  - tenant:   tenant_workflows rows (pasted/edited YAML, template copies, tenant templates)
 import type { DB } from "../db";
+import { checkTeamRepo } from "../repos";
 import { checkLocation, GitHubStorageError, type GitHubFiles } from "./github-files";
 import { canApprove, type Approver } from "./approvals";
 import { contentHash, loadTemplates, loadWorkflows, parseWorkflow, templatesDir, workflowsDir, WorkflowError, type LoadedWorkflow } from "./loader";
@@ -97,7 +98,7 @@ async function gh<T>(f: () => Promise<T>): Promise<T> {
  * YAML is committed to repo/path first and the DB keeps a cache plus the blob sha.
  */
 export async function saveTenantWorkflow(db: DB, user: Actor, source: string, opts: {
-  previousName?: string; templateName?: string; storage?: Storage; github?: GitHubFiles; importExisting?: boolean; dir?: string; now?: number;
+  previousName?: string; templateName?: string; repo?: string; storage?: Storage; github?: GitHubFiles; importExisting?: boolean; dir?: string; now?: number;
 } = {}): Promise<LoadedWorkflow> {
   const now = opts.now ?? Date.now();
   const all = listAll(db, user.tenantId, opts.dir);
@@ -110,6 +111,8 @@ export async function saveTenantWorkflow(db: DB, user: Actor, source: string, op
   const storage: Storage = opts.storage ?? prev ?? { kind: "database" };
   if (storage.kind === "github") {
     const errs = checkLocation(storage.repo, storage.path);
+    const denied = checkTeamRepo(db, user.tenantId, storage.repo);
+    if (denied && !errs.length) errs.push(denied);
     if (errs.length) throw new SaveError(400, errs);
     if (!opts.github) throw new SaveError(500, ["GitHub storage is not configured on this server"]);
   }
@@ -141,9 +144,10 @@ export async function saveTenantWorkflow(db: DB, user: Actor, source: string, op
   } else {
     const tpl = opts.templateName ? all.find((l) => l.name === opts.templateName && l.loaded?.workflow.template)?.loaded : undefined;
     if (opts.templateName && !tpl) throw new SaveError(404, [`template '${opts.templateName}' not found`]);
+    if (opts.repo) { const d = checkTeamRepo(db, user.tenantId, opts.repo); if (d) throw new SaveError(400, [d]); }
     db.prepare(`INSERT INTO tenant_workflows (tenant_id, name, source, content_hash, template_name, template_hash, created_by, updated_by, created_at, updated_at,
-      storage, github_repo, github_path, github_branch, github_sha, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(user.tenantId, name, loaded.source, loaded.hash, opts.templateName ?? null, tpl?.hash ?? null, user.id, user.id, now, now, ...gcols);
+      storage, github_repo, github_path, github_branch, github_sha, synced_at, repo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(user.tenantId, name, loaded.source, loaded.hash, opts.templateName ?? null, tpl?.hash ?? null, user.id, user.id, now, now, ...gcols, opts.repo ?? null);
   }
   return { ...loaded, file: `db:${name}`, author: user.email };
 }
@@ -153,6 +157,8 @@ export async function syncFromGitHub(db: DB, user: Actor, name: string, github: 
   const st = storageOf(db, user.tenantId, name);
   if (!st) throw new SaveError(404, [`workflow '${name}' not found`]);
   if (st.kind !== "github") throw new SaveError(400, ["this workflow is stored in the database"]);
+  const denied = checkTeamRepo(db, user.tenantId, st.repo);
+  if (denied) throw new SaveError(403, [denied]);
   const w = findWorkflow(db, user.tenantId, name);
   if (w && !canEdit(user, w)) throw new SaveError(403, ["you can't sync this workflow"]);
   const f = await gh(() => github.get(st.repo, st.path, st.branch));
@@ -165,10 +171,16 @@ export async function syncFromGitHub(db: DB, user: Actor, name: string, github: 
   return { changed, loaded };
 }
 
+/** The repo a workflow instance is attached to (tenant workflows only). */
+export function attachedRepo(db: DB, tenantId: number, name: string): string | null {
+  const r = db.prepare("SELECT repo FROM tenant_workflows WHERE tenant_id = ? AND name = ?").get(tenantId, name) as { repo: string | null } | undefined;
+  return r?.repo ?? null;
+}
+
 /** Instances created from a template (any version), newest first. */
 export function instancesOf(db: DB, tenantId: number, templateName: string) {
-  return db.prepare("SELECT name, template_hash AS templateHash, storage, created_at AS createdAt FROM tenant_workflows WHERE tenant_id = ? AND template_name = ? ORDER BY created_at DESC")
-    .all(tenantId, templateName) as Array<{ name: string; templateHash: string | null; storage: string; createdAt: number }>;
+  return db.prepare("SELECT name, template_hash AS templateHash, storage, repo, created_at AS createdAt FROM tenant_workflows WHERE tenant_id = ? AND template_name = ? ORDER BY created_at DESC")
+    .all(tenantId, templateName) as Array<{ name: string; templateHash: string | null; storage: string; repo: string | null; createdAt: number }>;
 }
 
 /** A free instance name: base, base-2, base-3, ... */

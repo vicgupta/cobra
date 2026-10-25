@@ -17,6 +17,7 @@ type D = {
   can: { approve: boolean; edit: boolean; run: boolean };
   storage: { kind: string; repo?: string; path?: string; branch?: string; sha?: string | null; syncedAt?: number | null } | null;
   instances: Array<{ name: string; templateHash: string | null; storage: string; createdAt: number; fromCurrentVersion: boolean }>;
+  engine: string; prompt: string | null; repo: string | null; teamRepos: string[];
   createdFrom: { name: string | null; hash: string | null } | null; runs: Array<{ id: string; status: string | null; startedAt: number; workflowHash: string }>;
 };
 
@@ -48,6 +49,8 @@ function Detail({ user, name }: { user: SessionUser; name: string }) {
             <dt className="text-zinc-500">Approvers</dt><dd>{d.approvers.join(", ")}</dd>
             <dt className="text-zinc-500">Reviewers</dt><dd>{d.reviewers.join(", ") || "—"}</dd>
             <dt className="text-zinc-500">Needs</dt><dd>{d.minApprovals} approval(s); self-approval policy: {d.selfApprovalPolicy}</dd>
+            <dt className="text-zinc-500">Engine</dt><dd>{d.engine === "codex" ? "Codex" : "Claude Code"} (default; overridable per run)</dd>
+            {d.repo && <><dt className="text-zinc-500">Repo</dt><dd className="font-mono text-xs">{d.repo}</dd></>}
             <dt className="text-zinc-500">Triggers</dt><dd>{d.triggers.join(", ") || "—"}</dd>
             <dt className="text-zinc-500">Storage</dt><dd>{d.storage?.kind === "github" ? <span className="font-mono text-xs">github: {d.storage.repo}/{d.storage.path}{d.storage.branch ? `@${d.storage.branch}` : ""}</span> : d.storage?.kind === "database" ? "Cobra database" : d.storage?.kind}</dd>
             {d.createdFrom?.name && <><dt className="text-zinc-500">From template</dt><dd><Link className="text-emerald-300 hover:underline" href={`/workflows/${encodeURIComponent(d.createdFrom.name)}`}>{d.createdFrom.name}</Link> <span className="font-mono text-xs text-zinc-500">@{d.createdFrom.hash?.slice(0, 12)}</span></dd></>}
@@ -86,7 +89,7 @@ function Detail({ user, name }: { user: SessionUser; name: string }) {
       {!d.template && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card title="Run">
-            <RunForm name={d.name} inputs={d.inputs} enabled={d.can.run}
+            <RunForm name={d.name} inputs={d.inputs} enabled={d.can.run} flow={{ engine: d.engine, prompt: d.prompt, repo: d.repo, repos: d.teamRepos }}
               reason={d.approval.status !== "approved" ? "Runs are enabled once this exact version is approved." : "Only admins, team leads, the owner and approvers can run this workflow."} />
           </Card>
           <Card title="Recent runs">
