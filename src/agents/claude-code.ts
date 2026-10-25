@@ -30,6 +30,8 @@ export interface JobFile {
 }
 
 export interface ClaudeCodeConfig {
+  /** Shown in error messages. */
+  name?: string;
   auth: SecretEntry[];
   env?: Record<string, string>;
   jobFiles?: JobFile[];
@@ -39,6 +41,7 @@ export interface ClaudeCodeConfig {
 
 /** Claude Code signed in with a subscription token from `claude setup-token`. */
 export const CLAUDE_CODE: ClaudeCodeConfig = {
+  name: "Claude Code",
   auth: [{ secret: "CLAUDE_CODE_OAUTH_TOKEN", env: "CLAUDE_CODE_OAUTH_TOKEN" }],
   command: 'claude -p "$(cat {prompt})" --dangerously-skip-permissions --output-format text > {summary}',
 };
@@ -77,7 +80,7 @@ export async function signIn(ws: Workspace, agent: ClaudeCodeConfig = CLAUDE_COD
   await sh(ws, `mkdir -p ${HOME}/.factory && chmod 700 ${HOME}/.factory`);
   for (const entry of agent.auth) {
     const value = readSecret(entry);
-    if (!value) throw new Error(`Secret ${entry.secret} is not set, and Claude Code needs it`);
+    if (!value) throw new Error(`Secret ${entry.secret} is not set, and ${agent.name ?? "Claude Code"} needs it`);
     if (entry.env) lines.push(`export ${entry.env}=${q(value)}`);
     if (entry.file) {
       await sh(ws, `mkdir -p ${q(dirOf(entry.file))} && chmod 700 ${q(dirOf(entry.file))}`);
