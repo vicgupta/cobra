@@ -6,6 +6,11 @@ import { approvalState, approvedChecker } from "./approvals";
 import { executeWorkflow, LOG_CAP, redact as redactText, resolveInputs, WorkflowNotApprovedError, type EngineEvent, type ExecuteOptions, type RunResult, type StepState } from "./engine";
 import type { LoadedWorkflow } from "./loader";
 
+/** True when the workflow has at least one `uses: agent` step; only those runs carry engine/mode/repo/prompt/branch. */
+export function hasAgentStep(workflow: { steps: ReadonlyArray<{ uses: string }> }): boolean {
+  return workflow.steps.some((s) => s.uses === "agent");
+}
+
 export type RunMeta = { engine: "claude-code" | "codex"; prompt: string; promptSource: "workflow" | "custom" | "none"; mode: "simulated" | "real"; repo?: string; branch?: string };
 export type StartedRun = { id: string; startedAt: number; inputs: Record<string, string | number | boolean>; done: Promise<RunResult> };
 
@@ -19,7 +24,8 @@ export function startWorkflowRun(
   const { workflow: wf, hash } = loaded;
   if (approvalState(db, who.tenantId, loaded).status !== "approved") throw new WorkflowNotApprovedError(wf.name, hash);
   const inputs = opts.inputs ?? resolveInputs(wf, rawInputs);
-  const meta = opts.meta ? { ...opts.meta } : undefined;
+  // Only agent workflows carry engine/mode/repo/prompt, a branch and the "run" header event.
+  const meta = opts.meta && hasAgentStep(wf) ? { ...opts.meta } : undefined;
   const startedAt = opts.now ?? Date.now();
   const id = `${opts.idPrefix ?? "run_"}${startedAt.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   if (meta?.mode === "real" && !meta.branch) meta.branch = `cobra/${id}`;

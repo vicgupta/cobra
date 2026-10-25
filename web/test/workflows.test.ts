@@ -261,7 +261,7 @@ test("service: approve/reject/run/view enforce permissions; run log is recorded 
   const r = getRunDetail(db, res.run!.id)!;
   assert.equal(r.status, "failed");
   assert.deepEqual(r.events.map((e) => `${e.stepId}:${e.status}`), [
-    "run:succeeded", "hello:pending", "fail:pending", "never:pending", "hello:running", "hello:succeeded", "fail:running", "fail:failed", "never:skipped",
+    "hello:pending", "fail:pending", "never:pending", "hello:running", "hello:succeeded", "fail:running", "fail:failed", "never:skipped",
   ]);
   const all = JSON.stringify(r);
   assert.ok(!all.includes(secret), "secret redacted everywhere");

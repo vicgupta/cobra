@@ -17,7 +17,7 @@ type D = {
   can: { approve: boolean; edit: boolean; run: boolean };
   storage: { kind: string; repo?: string; path?: string; branch?: string; sha?: string | null; syncedAt?: number | null } | null;
   instances: Array<{ name: string; templateHash: string | null; storage: string; createdAt: number; fromCurrentVersion: boolean }>;
-  engine: string; prompt: string | null; repo: string | null; teamRepos: string[];
+  engine: string; prompt: string | null; repo: string | null; teamRepos: string[]; hasAgentStep: boolean;
   createdFrom: { name: string | null; hash: string | null } | null; runs: Array<{ id: string; status: string | null; startedAt: number; workflowHash: string }>;
 };
 
@@ -89,7 +89,7 @@ function Detail({ user, name }: { user: SessionUser; name: string }) {
       {!d.template && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card title="Run">
-            <RunForm name={d.name} inputs={d.inputs} enabled={d.can.run} flow={{ engine: d.engine, prompt: d.prompt, repo: d.repo, repos: d.teamRepos }}
+            <RunForm name={d.name} inputs={d.inputs} enabled={d.can.run} hasAgentStep={d.hasAgentStep} flow={{ engine: d.engine, prompt: d.prompt, repo: d.repo, repos: d.teamRepos }}
               reason={d.approval.status !== "approved" ? "Runs are enabled once this exact version is approved." : "Templates can't be run; create a workflow from it first."} />
           </Card>
           <Card title="Recent runs">

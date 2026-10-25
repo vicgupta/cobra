@@ -14,7 +14,8 @@
     "workflow:validate": "tsx scripts/workflow.mts validate",
     "workflow:approve": "tsx scripts/workflow.mts approve",
     "workflow:reject": "tsx scripts/workflow.mts reject",
-    "workflow:schema": "tsx scripts/workflow.mts schema"
+    "workflow:schema": "tsx scripts/workflow.mts schema",
+    "runs:cleanup-non-agent": "tsx scripts/cleanup-non-agent-runs.mts"
   },
   "dependencies": {
     "next": "16.4.3",

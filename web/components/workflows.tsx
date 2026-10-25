@@ -134,7 +134,9 @@ export type InputDef = { type: "string" | "number" | "boolean" | "choice"; descr
 export type RunFlow = { engine: string; prompt: string | null; repo: string | null; repos: string[] };
 
 /** Run flow: repo → engine → prompt (workflow template or free-form) → mode → inputs → Run. */
-export function RunForm({ name, inputs, enabled, reason, flow }: { name: string; inputs: Record<string, InputDef>; enabled: boolean; reason?: string; flow?: RunFlow }) {
+export function RunForm({ name, inputs, enabled, reason, flow: flowProp, hasAgentStep = false }: { name: string; inputs: Record<string, InputDef>; enabled: boolean; reason?: string; flow?: RunFlow; hasAgentStep?: boolean }) {
+  // Repo, engine, mode and prompt only apply to workflows with a `uses: agent` step.
+  const flow = hasAgentStep ? flowProp : undefined;
   const [values, setValues] = useState<Record<string, string | boolean>>(() =>
     Object.fromEntries(Object.entries(inputs).map(([k, d]) => [k, d.type === "boolean" ? Boolean(d.default) : d.default === undefined ? "" : String(d.default)])));
   const [repo, setRepo] = useState(flow?.repo ?? "");

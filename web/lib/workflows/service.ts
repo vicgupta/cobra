@@ -7,7 +7,7 @@ import { interpolate } from "./expr";
 import { ENGINES, type Engine } from "./schema";
 import { checkTeamRepo, listTeamRepos } from "../repos";
 import type { LoadedWorkflow } from "./loader";
-import { canViewRun, getRunDetail, listWorkflowRuns, startWorkflowRun, type RunMeta } from "./runner";
+import { canViewRun, getRunDetail, hasAgentStep, listWorkflowRuns, startWorkflowRun, type RunMeta } from "./runner";
 import { attachedRepo, canEdit, canRun, findWorkflow, freeName, instancesOf, listAll, saveTenantWorkflow, SaveError, storageOf, syncFromGitHub, systemTemplates, templateCopySource, type Actor, type Storage } from "./store";
 import type { GitHubFiles } from "./github-files";
 
@@ -58,6 +58,7 @@ export function workflowDetail(db: DB, user: Actor, name: string, dir?: string):
     prompt: w.workflow.prompt ?? null,
     repo: w.origin === "tenant" ? attachedRepo(db, user.tenantId, name) : null,
     teamRepos: listTeamRepos(db, user.tenantId).map((r) => r.repo),
+    hasAgentStep: hasAgentStep(w.workflow),
     createdFrom: w.origin === "tenant" ? ({ ...(db.prepare("SELECT template_name AS name, template_hash AS hash FROM tenant_workflows WHERE tenant_id = ? AND name = ?").get(user.tenantId, name) as { name: string | null; hash: string | null }) }) : null,
   });
 }
@@ -119,7 +120,9 @@ export function decide(db: DB, user: Actor, name: string, body: { decision?: unk
 export type StartBody = { inputs?: unknown; engine?: unknown; promptMode?: unknown; prompt?: unknown; repo?: unknown; mode?: unknown };
 
 /** Resolves engine / prompt / repo / mode for a run: workflow defaults, overridable per run. */
-export function resolveRunMeta(db: DB, user: Actor, w: LoadedWorkflow, body: StartBody | null, inputs: Record<string, string | number | boolean>): { meta?: RunMeta; error?: string } {
+/** Agent fields for a run. Workflows without a `uses: agent` step ignore repo/engine/mode/prompt in the request (meta: null). */
+export function resolveRunMeta(db: DB, user: Actor, w: LoadedWorkflow, body: StartBody | null, inputs: Record<string, string | number | boolean>): { meta?: RunMeta | null; error?: string } {
+  if (!hasAgentStep(w.workflow)) return { meta: null };
   const b = body ?? {};
   const engine = (str(b.engine) ?? w.workflow.engine ?? "claude-code") as Engine;
   if (!ENGINES.includes(engine)) return { error: `engine must be one of ${ENGINES.join(", ")}` };
@@ -153,10 +156,11 @@ export function startRun(db: DB, user: Actor, name: string, body: StartBody | nu
   try {
     const inputs = resolveInputs(w.workflow, raw);
     const r = resolveRunMeta(db, user, w, body, inputs);
-    if (!r.meta) return err(400, r.error!);
+    if (r.error) return err(400, r.error);
+    const meta = r.meta ?? undefined;
     const run = startWorkflowRun(db, { tenantId: user.tenantId, userId: user.id }, w, raw,
-      { handlers: deps.handlers, resolveSecret: deps.resolveSecret, redact: deps.redact(), idPrefix: extra.idPrefix, meta: r.meta, inputs });
-    return { ...ok({ id: run.id, startedAt: run.startedAt, inputs: run.inputs, workflow: name, engine: r.meta.engine, promptSource: r.meta.promptSource, mode: r.meta.mode, repo: r.meta.repo ?? null }, 201), run };
+      { handlers: deps.handlers, resolveSecret: deps.resolveSecret, redact: deps.redact(), idPrefix: extra.idPrefix, meta, inputs });
+    return { ...ok({ id: run.id, startedAt: run.startedAt, inputs: run.inputs, workflow: name, engine: meta?.engine ?? null, promptSource: meta?.promptSource ?? null, mode: meta?.mode ?? null, repo: meta?.repo ?? null }, 201), run };
   } catch (e) {
     if (e instanceof WorkflowNotApprovedError) return err(409, e.message);
     if (e instanceof InputError) return err(400, e.errors[0], e.errors);

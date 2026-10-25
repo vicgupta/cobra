@@ -12,7 +12,8 @@ import { parseWorkflow } from "../lib/workflows/loader";
 import { recordDecision } from "../lib/workflows/approvals";
 import { builtinHandlers, github } from "../lib/workflows/handlers";
 import { localRunner } from "../lib/workflows/local-runner";
-import { getRunDetail, listWorkflowRuns } from "../lib/workflows/runner";
+import { getRunDetail, hasAgentStep, listWorkflowRuns } from "../lib/workflows/runner";
+import { cleanupNonAgentRuns } from "../lib/workflows/cleanup";
 import { findWorkflow, instancesOf, seedTemplates, type Actor } from "../lib/workflows/store";
 import { attachTemplate, saveWorkflow, startRun, workflowDetail, type RunDeps } from "../lib/workflows/service";
 
@@ -211,4 +212,49 @@ test("local runner: clones a team repo, runs the engine CLI, streams logs, pushe
   const t = localRunner({ root: path.join(tmp, "ws"), resolveSecret: () => undefined, checkRepo: () => null, codexBin: slow });
   await assert.rejects(t({ runId: "run_t4", driver: "codex", with: { prompt: "p" }, secrets: {}, signal: new AbortController().signal, timeoutMs: 300, log: () => {} }), /exited/);
   assert.ok(readFileSync(path.join(tmp, "ws/run_t1/HELLO.md"), "utf8").includes("hello"));
+});
+
+test("non-agent workflows ignore agent fields: no engine/mode/repo/prompt, no branch, no run header; agent-run keeps them; cleanup fixes old rows", async () => {
+  const { db, a } = setup();
+  addTeamRepo(db, a, "vicgupta/factory-demo-app");
+  const plain = await approved(db, a, `name: plain-hello
+version: 1
+governance:
+  owner: admin@a.com
+  approvers: [{ role: admin }]
+steps:
+  - id: greet
+    uses: simulate
+    with: { duration_ms: 1, message: hi }
+`);
+  assert.equal(hasAgentStep(findWorkflow(db, a.tenantId, plain)!.workflow), false);
+  const d = deps(db, a.tenantId);
+  const r = startRun(db, a, plain, { engine: "codex", mode: "real", repo: "vicgupta/factory-demo-app", promptMode: "custom", prompt: "x" }, d);
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  assert.deepEqual([(r.body as { engine: unknown }).engine, (r.body as { mode: unknown }).mode], [null, null]);
+  await r.run!.done;
+  const x = getRunDetail(db, r.run!.id)!;
+  assert.deepEqual([x.engine, x.mode, x.promptSource, x.repo, x.branch, x.prompt], [null, null, null, null, null, null]);
+  assert.deepEqual(x.events.map((e) => e.stepId).filter((s, i, l) => l.indexOf(s) === i), ["greet"]);
+  assert.equal((workflowDetail(db, a, plain).body as { hasAgentStep: boolean }).hasAgentStep, false);
+
+  const agent = await approved(db, a, wfYaml("agentful", "engine: codex\nprompt: 'Task: ${{ inputs.task }}'\n"));
+  assert.equal((workflowDetail(db, a, agent).body as { hasAgentStep: boolean }).hasAgentStep, true);
+  const r2 = startRun(db, a, agent, { mode: "simulated", repo: "vicgupta/factory-demo-app" }, d);
+  await r2.run!.done;
+  const y = getRunDetail(db, r2.run!.id)!;
+  assert.deepEqual([y.engine, y.mode, y.repo], ["codex", "simulated", "vicgupta/factory-demo-app"]);
+  assert.equal(y.events[0].stepId, "run");
+
+  // cleanup: simulate an old buggy row for the plain workflow
+  db.prepare("UPDATE runs SET engine='claude-code', mode='real', prompt_source='custom', repo='vicgupta/factory-demo-app', agent='claude-code', branch='cobra/x' WHERE id = ?").run(r.run!.id);
+  db.prepare("INSERT INTO run_step_events (run_id, tenant_id, step_id, status, attempt, output, truncated, at) VALUES (?, ?, 'run', 'succeeded', 0, 'engine: claude-code', 0, 0)").run(r.run!.id, a.tenantId);
+  assert.equal(cleanupNonAgentRuns(db, { dryRun: true }).length, 1);
+  const fixed = cleanupNonAgentRuns(db);
+  assert.deepEqual(fixed.map((f) => [f.id, f.headerEvents, f.clearedLegacy]), [[r.run!.id, 1, true]]);
+  const z = getRunDetail(db, r.run!.id)!;
+  assert.deepEqual([z.engine, z.mode, z.promptSource, z.repo, z.branch], [null, null, null, null, null]);
+  assert.ok(!z.events.some((e) => e.stepId === "run"));
+  assert.equal(getRunDetail(db, r2.run!.id)!.engine, "codex", "agent runs untouched");
+  assert.equal(cleanupNonAgentRuns(db).length, 0, "idempotent");
 });
