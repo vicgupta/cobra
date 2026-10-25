@@ -45,7 +45,7 @@ async function DashboardBody({ user }: { user: SessionUser }) {
           <h1 className="text-2xl font-semibold tracking-tight">Factory output</h1>
           <p className="text-sm text-zinc-400">Approved issues → agent PRs → human review. Nothing auto-merges.</p>
         </div>
-        <Link href="/runs/new" className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400">New test run</Link>
+        <Link href="/settings/test-run" className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400">New test run</Link>
       </div>
 
       {(
@@ -58,7 +58,7 @@ async function DashboardBody({ user }: { user: SessionUser }) {
 
           <Card title="Recent runs" subtitle="Simulated test runs so far; real agent runs will appear here">
             {runs.length === 0 ? (
-              <p className="py-6 text-center text-sm text-zinc-500">No runs yet.{shared && <> <Link href="/runs/new" className="text-emerald-400 hover:underline">Start a test run</Link>.</>}</p>
+              <p className="py-6 text-center text-sm text-zinc-500">No runs yet.{shared && <> <Link href="/settings/test-run" className="text-emerald-400 hover:underline">Start a test run</Link>.</>}</p>
             ) : (
               <ul className="divide-y divide-zinc-800">
                 {runs.slice(0, 15).map((r) => (

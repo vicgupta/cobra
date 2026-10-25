@@ -11,7 +11,6 @@ const userLinks = [
   { href: "/agents", label: "Agents" },
   { href: "/issues", label: "Issues" },
   { href: "/pulls", label: "Pull requests" },
-  { href: "/runs/new", label: "Test run" },
   { href: "/settings", label: "Settings" },
 ];
 const adminLink = { href: "/admin", label: "Admin" };

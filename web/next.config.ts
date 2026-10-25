@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
     return [
       { source: "/team", destination: "/settings/team", permanent: false },
       { source: "/repos", destination: "/settings/repos", permanent: false },
+      // Job 24: Test run moved under Settings (run detail pages /runs/<id> stay put).
+      { source: "/runs/new", destination: "/settings/test-run", permanent: false },
     ];
   },
   turbopack: {
