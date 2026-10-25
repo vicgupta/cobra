@@ -42,4 +42,3 @@ export async function apiGuard(req: Request, opts: { sharedConfig?: boolean } = 
 }
 
 export const secureCookies = () => process.env.NODE_ENV === "production";
-export const signupAllowed = () => !/^(0|false|no|off)$/i.test(process.env.ALLOW_SIGNUP ?? "true");

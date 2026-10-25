@@ -10,16 +10,16 @@ const ip = (req: Request) => req.headers.get("x-real-ip") ?? req.headers.get("x-
 
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return NextResponse.json({ error: "Bad origin" }, { status: 403 });
-  const b = (await req.json().catch(() => null)) as { login?: unknown; password?: unknown } | null;
-  if (!b || typeof b.login !== "string" || typeof b.password !== "string" || !b.login || !b.password)
-    return NextResponse.json({ error: "Enter your email or username and password" }, { status: 400 });
-  const keys = [`ip:${ip(req)}`, `acct:${b.login.trim().toLowerCase()}`];
+  const b = (await req.json().catch(() => null)) as { email?: unknown; password?: unknown } | null;
+  if (!b || typeof b.email !== "string" || typeof b.password !== "string" || !b.email || !b.password)
+    return NextResponse.json({ error: "Enter your email and password" }, { status: 400 });
+  const keys = [`ip:${ip(req)}`, `acct:${b.email.trim().toLowerCase()}`];
   if (keys.some((k) => isLimited(k))) return NextResponse.json({ error: "Too many attempts. Try again in 15 minutes." }, { status: 429 });
   const db = getDb();
-  const userId = authenticate(db, b.login, b.password);
+  const userId = authenticate(db, b.email, b.password);
   if (!userId) {
     keys.forEach((k) => recordFailure(k));
-    return NextResponse.json({ error: "Wrong email/username or password" }, { status: 401 });
+    return NextResponse.json({ error: "Wrong email or password" }, { status: 401 });
   }
   keys.forEach(clearFailures);
   const { token, expiresAt } = createSession(db, userId);

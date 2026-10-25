@@ -6,7 +6,7 @@ export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const SESSION_COOKIE = "cobra_session";
 
 export type SessionUser = {
-  id: number; email: string; username: string | null; name: string; role: "admin" | "member";
+  id: number; email: string; name: string; role: "admin" | "member";
   tenantId: number; tenantName: string; tenantSlug: string;
 };
 
@@ -23,7 +23,7 @@ export function createSession(db: DB, userId: number, now = Date.now()): { token
 export function getSessionUser(db: DB, token: string | undefined, now = Date.now()): SessionUser | null {
   if (!token) return null;
   const row = db.prepare(`
-    SELECT u.id, u.email, u.username, u.name, u.role, t.id AS tenantId, t.name AS tenantName, t.slug AS tenantSlug, s.expires_at AS expiresAt
+    SELECT u.id, u.email, u.name, u.role, t.id AS tenantId, t.name AS tenantName, t.slug AS tenantSlug, s.expires_at AS expiresAt
     FROM sessions s JOIN users u ON u.id = s.user_id JOIN tenants t ON t.id = u.tenant_id WHERE s.id = ?`).get(hashToken(token)) as
     (SessionUser & { expiresAt: number }) | undefined;
   if (!row) return null;

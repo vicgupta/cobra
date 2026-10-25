@@ -13,7 +13,7 @@ const links = [
 
 export function Nav({ userMenu }: { userMenu?: ReactNode }) {
   const pathname = usePathname();
-  const authPage = pathname === "/login" || pathname === "/signup";
+  const authPage = pathname === "/login";
   return (
     <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8">

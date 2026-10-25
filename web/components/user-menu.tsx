@@ -8,7 +8,7 @@ export async function UserMenu() {
   return (
     <div className="ml-auto flex items-center gap-3 text-sm">
       <span className="hidden text-right leading-tight sm:block">
-        <span className="block text-zinc-200">{u.username ?? u.email}</span>
+        <span className="block text-zinc-200">{u.email}</span>
         <span className="block text-xs text-zinc-500">{u.tenantName}</span>
       </span>
       <LogoutButton />

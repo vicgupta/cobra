@@ -49,15 +49,34 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     );
     CREATE INDEX runs_tenant ON runs(tenant_id, started_at DESC);
   `),
+  // 3: email is the only user ID. Rebuild users without the username column,
+  // keeping ids so sessions/runs FKs and tenant links stay valid.
+  (db) => db.exec(`
+    CREATE TABLE users_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      email TEXT NOT NULL UNIQUE CHECK (email = lower(email)),
+      name TEXT NOT NULL DEFAULT '',
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin','member')),
+      created_at INTEGER NOT NULL
+    );
+    INSERT INTO users_new (id, tenant_id, email, name, password_hash, role, created_at)
+      SELECT id, tenant_id, lower(email), name, password_hash, role, created_at FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_new RENAME TO users;
+  `),
 ];
 
 export function migrate(db: DB): void {
-  db.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
+  // Foreign keys are off while migrating (needed for table rebuilds) and checked before commit.
+  db.exec("PRAGMA foreign_keys = OFF; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;");
   const { user_version: v } = db.prepare("PRAGMA user_version").get() as { user_version: number };
   for (let i = v; i < MIGRATIONS.length; i++) {
     db.exec("BEGIN");
     try {
       MIGRATIONS[i](db);
+      if (db.prepare("PRAGMA foreign_key_check").all().length) throw new Error(`Migration ${i + 1} broke foreign keys`);
       db.exec(`PRAGMA user_version = ${i + 1}`);
       db.exec("COMMIT");
     } catch (e) {
@@ -65,6 +84,7 @@ export function migrate(db: DB): void {
       throw e;
     }
   }
+  db.exec("PRAGMA foreign_keys = ON");
 }
 
 export function openDb(file: string): DB {

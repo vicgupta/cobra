@@ -34,8 +34,8 @@ async function DashboardBody({ user }: { user: SessionUser }) {
   const { now, runs } = shared ? listRunsWithTime(user.tenantId) : { now: 0, runs: [] };
   const week = runs.filter((r) => now - r.startedAt < WEEK);
   const modes = shared ? await agentModes() : null;
-  const team = getDb().prepare("SELECT name, email, username, role FROM users WHERE tenant_id = ? ORDER BY created_at").all(user.tenantId) as
-    Array<{ name: string; email: string; username: string | null; role: string }>;
+  const team = getDb().prepare("SELECT name, email, role FROM users WHERE tenant_id = ? ORDER BY created_at").all(user.tenantId) as
+    Array<{ name: string; email: string; role: string }>;
 
   return (
     <div className="space-y-6">
@@ -104,10 +104,10 @@ async function DashboardBody({ user }: { user: SessionUser }) {
             {team.map((m) => (
               <li key={m.email} className="flex items-center gap-3 py-2.5">
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800 text-xs font-semibold">
-                  {(m.name || m.username || m.email).split(/\s+/).map((p) => p[0]?.toUpperCase()).join("").slice(0, 2)}
+                  {(m.name || m.email).split(/\s+/).map((p) => p[0]?.toUpperCase()).join("").slice(0, 2)}
                 </span>
                 <div className="flex-1">
-                  <p className="text-sm font-medium">{m.name || m.username || m.email}</p>
+                  <p className="text-sm font-medium">{m.name || m.email}</p>
                   <p className="text-xs text-zinc-500">{m.role}</p>
                 </div>
               </li>

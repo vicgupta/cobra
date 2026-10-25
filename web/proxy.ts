@@ -2,7 +2,7 @@
 // Every page and route also validates the session server-side.
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC = ["/login", "/signup", "/api/auth/login", "/api/auth/signup"];
+const PUBLIC = ["/login", "/api/auth/login"];
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;

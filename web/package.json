@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "tsx --test test/*.test.ts",
-    "seed:admin": "tsx scripts/seed-admin.mts"
+    "user:create": "tsx scripts/user.mts create",
+    "user:reset-password": "tsx scripts/user.mts reset-password"
   },
   "dependencies": {
     "next": "16.4.3",
