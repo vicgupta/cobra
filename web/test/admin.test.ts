@@ -29,13 +29,13 @@ test("matchesAdmin: case-insensitive exact match; blank means nobody", () => {
   assert.ok(!matchesAdmin(null, "boss@example.com"));
 });
 
-test("gate: admin, non-admin, blank env, missing file; re-read on every call", () => {
+test("gate: admin gets regular app + /admin, non-admin 404 on /admin, blank env, missing file; re-read on every call", () => {
   const d = tmp();
   try {
     const f = join(d, "cobra.env");
     writeFileSync(f, 'COBRA_ENV_FILE="x"\nCOBRA_ADMIN_EMAIL="Boss@Example.com"\n');
     assert.equal(gate("boss@example.com", "admin", f), "ok");
-    assert.equal(gate("BOSS@example.com", "user", f), "admin-only");
+    assert.equal(gate("BOSS@example.com", "user", f), "ok"); // admin keeps the regular app
     assert.equal(gate("member@example.com", "admin", f), "not-found");
     assert.equal(gate("member@example.com", "user", f), "ok");
     // Changing the file applies immediately (no restart, no cache).

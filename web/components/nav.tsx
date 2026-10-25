@@ -11,16 +11,16 @@ const userLinks = [
   { href: "/templates", label: "Templates" },
   { href: "/runs/new", label: "Test run" },
 ];
-const adminLinks = [{ href: "/admin", label: "Admin" }];
+const adminLink = { href: "/admin", label: "Admin" };
 
 export function Nav({ userMenu, admin }: { userMenu?: ReactNode; admin?: boolean }) {
   const pathname = usePathname();
-  const links = admin ? adminLinks : userLinks;
+  const links = admin ? [...userLinks, adminLink] : userLinks;
   const authPage = pathname === "/login";
   return (
     <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8">
-        <Link href={admin ? "/admin" : "/"} className="flex items-center gap-2 font-semibold tracking-tight">
+        <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
           <CobraLogo className="h-6 w-6 text-emerald-400" />
           <span>Cobra</span>
           <span className="hidden text-xs font-normal text-zinc-500 sm:inline">software factory</span>

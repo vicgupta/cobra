@@ -13,11 +13,10 @@ export async function currentUser(): Promise<SessionUser | null> {
   return getSessionUser(getDb(), token);
 }
 
-/** For pages: redirect to /login when signed out; the system admin account only gets /admin. */
+/** For pages: redirect to /login when signed out. */
 export async function requireUser(): Promise<SessionUser> {
   const u = await currentUser();
   if (!u) redirect("/login");
-  if (gate(u.email, "user") === "admin-only") redirect("/admin");
   return u;
 }
 
@@ -48,9 +47,8 @@ export async function apiGuard(req: Request, opts: { sharedConfig?: boolean; adm
   if (req.method !== "GET" && req.method !== "HEAD" && !sameOrigin(req)) return { error: NextResponse.json({ error: "Bad origin" }, { status: 403 }) };
   const user = await currentUser();
   if (!user) return { error: NextResponse.json({ error: "Not signed in" }, { status: 401 }) };
-  // Admin APIs are invisible to everyone else; the admin account can't use regular APIs.
+  // Admin APIs are invisible to everyone but the system admin.
   if (opts.admin) return gate(user.email, "admin") === "ok" ? { user } : { error: NextResponse.json({ error: "Not found" }, { status: 404 }) };
-  if (gate(user.email, "user") === "admin-only") return { error: NextResponse.json({ error: "The admin account can only use the admin dashboard" }, { status: 403 }) };
   if (opts.sharedConfig && !canUseSharedConfig(user)) return { error: NextResponse.json({ error: "Only admins of the default workspace can use this for now" }, { status: 403 }) };
   return { user };
 }

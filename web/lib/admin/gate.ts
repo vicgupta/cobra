@@ -37,14 +37,13 @@ export function isSystemAdmin(email: string | null | undefined, file = adminEnvF
   return matchesAdmin(email, adminEmailFrom(text));
 }
 
-export type GateResult = "ok" | "not-found" | "admin-only";
+export type GateResult = "ok" | "not-found";
 /**
- * Access decision used by requireUser/requireAdmin/apiGuard.
- * area "admin": only the system admin ("ok"), everyone else "not-found".
- * area "user": the system admin gets "admin-only" (pages redirect to /admin, APIs 403), others "ok".
+ * Access decision used by proxy/requireAdmin/apiGuard. The system admin keeps the full
+ * regular app ("user" area is "ok" for everyone signed in) and additionally gets /admin;
+ * everyone else gets "not-found" for the admin area.
  */
 export function gate(email: string | null | undefined, area: "admin" | "user", file = adminEnvFilePath()): GateResult {
-  const admin = isSystemAdmin(email, file);
-  if (area === "admin") return admin ? "ok" : "not-found";
-  return admin ? "admin-only" : "ok";
+  if (area === "user") return "ok";
+  return isSystemAdmin(email, file) ? "ok" : "not-found";
 }

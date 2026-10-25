@@ -11,9 +11,9 @@ export async function UserMenu() {
     <div className="ml-auto flex items-center gap-3 text-sm">
       <span className="hidden text-right leading-tight sm:block">
         <span className="block text-zinc-200">{u.email}</span>
-        <span className="block text-xs text-zinc-500">{admin ? "System admin" : u.tenantName}</span>
+        <span className="block text-xs text-zinc-500">{u.tenantName}{admin ? " · System admin" : ""}</span>
       </span>
-      {!admin && <a href="/account/sessions" className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:bg-zinc-900">Sessions</a>}
+      <a href="/account/sessions" className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:bg-zinc-900">Sessions</a>
       <LogoutButton />
     </div>
   );
