@@ -4,7 +4,6 @@ import { AuthBadge } from "@/components/badges";
 import { Card, Stat } from "@/components/ui";
 import { AuthGate } from "@/components/auth-gate";
 import { canUseSharedConfig, type SessionUser } from "@/lib/auth/sessions";
-import { getDb } from "@/lib/db";
 import { agentModes } from "@/lib/env-file";
 import { listRecentRunRows, listRunsWithTime } from "@/lib/runs-db";
 import { RecentRunsTable } from "@/components/recent-runs-table";
@@ -42,8 +41,6 @@ async function DashboardBody({ user }: { user: SessionUser }) {
   const real = runs.filter((r) => !isLegacyTestRun(r));
   const week = real.filter((r) => now - r.startedAt < WEEK);
   const modes = shared ? await agentModes() : null;
-  const team = getDb().prepare("SELECT name, email, role FROM users WHERE tenant_id = ? ORDER BY created_at").all(user.tenantId) as
-    Array<{ name: string; email: string; role: string }>;
 
   return (
     <div className="space-y-6">
@@ -73,8 +70,8 @@ async function DashboardBody({ user }: { user: SessionUser }) {
         </>
       )}
 
+      {shared && modes && (
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {shared && modes && (
           <Card title="Agents" subtitle="Sign-in mode from the server environment file">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {AGENTS.map((a) => {
@@ -94,24 +91,8 @@ async function DashboardBody({ user }: { user: SessionUser }) {
               })}
             </div>
           </Card>
-        )}
-
-        <Card title="Team" subtitle={`Members of ${user.tenantName}`}>
-          <ul className="divide-y divide-border">
-            {team.map((m) => (
-              <li key={m.email} className="flex items-center gap-3 py-2.5">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-2 text-xs font-semibold">
-                  {(m.name || m.email).split(/\s+/).map((p) => p[0]?.toUpperCase()).join("").slice(0, 2)}
-                </span>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{m.name || m.email}</p>
-                  <p className="text-xs text-subtle">{m.role}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </Card>
       </div>
+      )}
     </div>
   );
 }
