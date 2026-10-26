@@ -22,7 +22,7 @@ export default function SkillDocsPage() {
     <ul className={li}>
       <li>Real runs need an approval of the current effective hash: the skill&apos;s own SOP+plan, every composed skill and every referenced agent. Any change to any of them returns it to pending.</li>
       <li>Approvers: system admins and team leads of the skill&apos;s team; an author&apos;s own approval only counts for an admin. One approval approves; any reject blocks.</li>
-      <li>Simulated runs are dry runs and need no approval: agent and GitHub steps are simulated, shell commands are not executed (reported as would-run), approval steps auto-pass.</li>
+      <li>Simulated runs are dry runs and need no approval: agent steps are simulated, GitHub steps are never sent to GitHub and shell commands are not executed (both reported as would-run), approval steps auto-pass.</li>
     </ul>
     <h2 className="mt-8 text-lg font-semibold">Review</h2>
     <ul className={li}>

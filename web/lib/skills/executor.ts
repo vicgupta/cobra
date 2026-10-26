@@ -165,6 +165,8 @@ async function runStep(db: DB, who: Who, skill: Skill, step: PlanStep, vars: Rec
     if (w.mode === undefined || w.mode === "") w.mode = run.mode;
     if (sim) w.mode = "simulated";
     if (w.repo === undefined || w.repo === "") w.repo = run.repo;
+    // Dry run: never call GitHub (not every handler action honours mode=simulated, e.g. create-pr).
+    if (sim) { log(`simulated: would run github ${String(w.action ?? "")} on ${String(w.repo || "(no repo)")}\n`); return { simulated: true, action: String(w.action ?? ""), number: 0, url: "", branch: "" }; }
   }
   if (step.action === "agent") {
     if (w.mode === undefined || w.mode === "") w.mode = run.mode;

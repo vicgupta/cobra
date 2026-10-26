@@ -245,10 +245,14 @@ test("huge skill: 1000+ line body, 200+ steps, section extraction, handoffs and 
   for (const n of [1, 30000, 300000]) assert.equal(svc.create(db, member, { name: `len-${n}`, body: "x".repeat(n) }).status, 201);
 });
 
-test("github steps default to the run's repo and mode (simulated runs stay simulated)", async () => {
+test("github steps: default to the run's repo/mode; simulated runs never call GitHub (create-pr included)", async () => {
   const { db, member } = setup();
-  const s = createSkill(db, member, { name: "gh", description: "d", plan: { steps: [{ id: "issue", action: "github", with: { action: "issue_create", title: "t", body: "b" }, on_failure: "stop", outputs: { n: "result.number" } }] } });
-  const r = await startSkillRun(db, who(member), s, {}, deps, { repo: "acme/app" }).done;
+  const s = createSkill(db, member, { name: "gh", description: "d", plan: { steps: [
+    { id: "issue", action: "github", with: { action: "issue_create", title: "t", body: "b" }, on_failure: "stop", outputs: { n: "result.number" } },
+    { id: "pr", action: "github", with: { action: "create-pr", title: "t", head: "x", base: "main" }, on_failure: "stop", outputs: { u: "result.url" } }] } });
+  let called = 0;
+  const spy: SkillDeps = { ...deps, handlers: { ...deps.handlers, github: async () => { called++; return {}; } } };
+  const r = await startSkillRun(db, who(member), s, {}, spy, { repo: "acme/app" }).done;
   assert.equal(r.status, "succeeded", r.error);
-  assert.ok(r.outputs !== undefined);
+  assert.equal(called, 0, "simulated runs never call GitHub");
 });

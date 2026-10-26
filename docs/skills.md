@@ -35,7 +35,7 @@ Each team has a built-in `workflow` skill (kind `master`). It is an ordinary ski
 
 - Real runs require an approval of the **effective hash** (own SOP+plan + every composed skill, recursively + every referenced agent's content hash). Any change returns the skill to pending; an unknown agent keeps it pending.
 - Approvers: system admins and team leads of the skill's team. An author's approval counts only if they are an admin. One approval approves; any reject blocks.
-- **Simulated runs are dry runs and need no approval**: agent and GitHub steps run in simulated mode, shell commands are not executed (result `would_run`), approval steps auto-pass.
+- **Simulated runs are dry runs and need no approval**: agent steps run in simulated mode, GitHub steps are never sent to GitHub (logged as would-run), shell commands are not executed (result `would_run`), approval steps auto-pass.
 
 ## Review
 
