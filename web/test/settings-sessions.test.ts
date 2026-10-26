@@ -30,10 +30,10 @@ test("Sessions is a Settings tab for every user, not in the header menu", () => 
   assert.doesNotMatch(page, /isSystemAdmin/);
 });
 
-test("theme switcher is icon-only with tooltip and aria-label", () => {
+test("theme toggle (Job 7b): single sun/moon button, no system icon, hydration-safe", () => {
   const t = src("components/theme-toggle.tsx");
-  assert.match(t, /title=\{LABEL\[t\]\}/);
-  assert.match(t, /aria-label=\{`\$\{LABEL\[t\]\} theme`\}/);
-  assert.match(t, /aria-checked=\{theme === t\}/);
-  assert.doesNotMatch(t, /\{LABEL\[t\]\}<\/span>/);
+  assert.match(t, /title=\{l\.title\} aria-label=\{l\.aria\}/);
+  assert.match(t, /dark \? <Sun \/> : <Moon \/>/);
+  assert.doesNotMatch(t, /monitor|rect x=|role="radio"|THEMES\.map/);
+  assert.match(t, /\(\) => null\)/, "server snapshot is null (placeholder), so no hydration mismatch");
 });

@@ -24,3 +24,8 @@ export const themeCookieString = (t: Theme) => `${THEME_COOKIE}=${t}; Path=/; Ma
  * prefers-color-scheme and sets <html class="dark|light" data-theme="...">. No flash.
  */
 export const THEME_INIT_SCRIPT = `(function(){try{var m=document.cookie.match(/(?:^|; )${THEME_COOKIE}=(light|dark|system)/);var t=m?m[1]:"system";var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);var e=document.documentElement;e.classList.remove("light","dark");e.classList.add(d?"dark":"light");e.dataset.theme=t;}catch(_){}})();`;
+
+/** Job 7b single toggle: what clicking switches to, given the resolved (painted) theme. Never "system". */
+export const toggleTarget = (resolvedDark: boolean): "light" | "dark" => (resolvedDark ? "light" : "dark");
+/** The toggle's label/tooltip: it names the theme a click switches to. */
+export const toggleLabel = (resolvedDark: boolean) => (resolvedDark ? { title: "Light", aria: "Switch to light theme" } : { title: "Dark", aria: "Switch to dark theme" });

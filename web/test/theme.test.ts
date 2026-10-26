@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { migrate, openDb } from "../lib/db";
 import { createUser } from "../lib/auth/users";
 import { getUserTheme, setUserTheme } from "../lib/auth/theme-db";
-import { effectiveTheme, nextTheme, parseTheme, THEME_COOKIE, THEME_INIT_SCRIPT, themeCookieString } from "../lib/theme";
+import { toggleLabel, toggleTarget, effectiveTheme, nextTheme, parseTheme, THEME_COOKIE, THEME_INIT_SCRIPT, themeCookieString } from "../lib/theme";
 
 test("theme: parse accepts only light/dark/system", () => {
   assert.equal(parseTheme("dark"), "dark");
@@ -49,4 +49,14 @@ test("theme preference API helpers: save, read back, reject invalid, per user", 
   assert.equal(getUserTheme(db, a), "dark");
   setUserTheme(db, a, "system");
   assert.equal(effectiveTheme(getUserTheme(db, a), "light"), "system");
+});
+
+test("single toggle: switches to the opposite of the painted theme, never system; labels", () => {
+  assert.equal(toggleTarget(true), "light");
+  assert.equal(toggleTarget(false), "dark");
+  assert.deepEqual(toggleLabel(true), { title: "Light", aria: "Switch to light theme" });
+  assert.deepEqual(toggleLabel(false), { title: "Dark", aria: "Switch to dark theme" });
+  // no saved choice: system (prefers-color-scheme), resolved before paint
+  assert.equal(effectiveTheme(null, null), "system");
+  assert.match(THEME_INIT_SCRIPT, /prefers-color-scheme: dark/);
 });
