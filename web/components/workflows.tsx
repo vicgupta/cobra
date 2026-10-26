@@ -10,7 +10,7 @@ const input = "w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 te
 const button = "rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50";
 const ghost = "rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50";
 
-const STATUS_TONE: Record<string, Tone> = { approved: "green", pending: "amber", rejected: "red", running: "blue", succeeded: "green", failed: "red", skipped: "gray" };
+const STATUS_TONE: Record<string, Tone> = { approved: "green", pending: "amber", rejected: "red", running: "blue", succeeded: "green", failed: "red", cancelled: "amber", skipped: "gray" };
 export function StatusBadge({ status }: { status: string | null | undefined }) {
   return <Badge tone={STATUS_TONE[status ?? ""] ?? "gray"} dot>{status ?? "unknown"}</Badge>;
 }

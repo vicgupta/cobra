@@ -9,3 +9,4 @@
 ## Notes
 
 - **Providers (Settings > Providers, migration 14).** Adds `provider_defaults` and `provider_audit`. Empty tables mean no behavior change: runs pass no extra flags until a system admin sets a default model or effort tier. Effort flags: `claude --effort <tier>`, `codex exec -c model_reasoning_effort="<tier>"`; if a CLI upgrade drops these, clear the effort defaults on the page. Agent hashes and workflow approvals are unaffected.
+- **Run history (migration 16).** Adds `runs.triggered_by` (backfilled from `created_by` emails, else `unknown`) and an index on `runs(workflow, started_at)`. Read-only feature; back up the DB first as above.

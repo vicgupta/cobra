@@ -287,6 +287,13 @@ const MIGRATIONS: Array<(db: DB) => void> = [
   `),
   // 15 (Agent description): short plain-language purpose shown on the agent card; NOT part of content_hash
   (db) => db.exec("ALTER TABLE team_agents ADD COLUMN description TEXT;"),
+  // 16 (Run history): who triggered each run (email at trigger time, or "system"/a trigger type when not user-started).
+  // Backfill from created_by where that user still exists; anything else is "unknown" (never guessed).
+  (db) => db.exec(`
+    ALTER TABLE runs ADD COLUMN triggered_by TEXT;
+    UPDATE runs SET triggered_by = coalesce((SELECT email FROM users WHERE users.id = runs.created_by), 'unknown');
+    CREATE INDEX runs_workflow ON runs(workflow, started_at DESC);
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

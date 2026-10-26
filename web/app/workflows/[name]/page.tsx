@@ -5,6 +5,9 @@ import { Badge, Card } from "@/components/ui";
 import { ApprovalPanel, CopyButton, RunForm, StatusBadge, SyncButton, type InputDef } from "@/components/workflows";
 import { actor, getDb } from "@/lib/workflows/server";
 import { workflowDetail } from "@/lib/workflows/service";
+import { RunHistory } from "@/components/run-history";
+import { parseHistoryFilter, parsePage, workflowRunHistory, type HistoryPage } from "@/lib/workflows/run-history";
+import { runDeps } from "@/lib/workflows/server";
 import type { SessionUser } from "@/lib/auth/sessions";
 
 export const metadata = { title: "Workflow · Cobra" };
@@ -22,10 +25,14 @@ type D = {
   createdFrom: { name: string | null; hash: string | null } | null; runs: Array<{ id: string; status: string | null; startedAt: number; workflowHash: string }>;
 };
 
-function Detail({ user, name }: { user: SessionUser; name: string }) {
+type SP = { runs?: string | string[]; page?: string | string[] };
+
+function Detail({ user, name, sp }: { user: SessionUser; name: string; sp: SP }) {
   const r = workflowDetail(getDb(), actor(user), name);
   if (r.status !== 200) return <p className="text-sm text-zinc-400">Workflow not found.</p>;
   const d = r.body as D;
+  // Same server-side scoping as GET /api/workflows/<name>/runs (team; system admins across teams).
+  const h = d.template ? null : workflowRunHistory(getDb(), actor(user), name, { filter: parseHistoryFilter(sp.runs), page: parsePage(sp.page), secrets: runDeps(user.tenantId).redact() });
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
@@ -100,17 +107,14 @@ function Detail({ user, name }: { user: SessionUser; name: string }) {
             <RunForm name={d.name} inputs={d.inputs} enabled={d.can.run} hasAgentStep={d.hasAgentStep} flow={{ engine: d.engine, prompt: d.prompt, repo: d.repo, repos: d.teamRepos }}
               reason={d.approval.status !== "approved" ? "Runs are enabled once this exact version is approved." : "Templates can't be run; create a workflow from it first."} />
           </Card>
-          <Card title="Recent runs">
-            {d.runs.length === 0 ? <p className="text-sm text-zinc-500">No runs yet.</p> : (
-              <ul className="space-y-1 text-sm">
-                {d.runs.map((x) => (
-                  <li key={x.id} className="flex items-center gap-3"><Link className="font-mono text-xs text-emerald-300 hover:underline" href={`/runs/${x.id}`}>{x.id}</Link>
-                    <StatusBadge status={x.status} /><span className="text-xs text-zinc-500">{new Date(x.startedAt).toLocaleString()}</span></li>
-                ))}
-              </ul>
-            )}
-          </Card>
+
         </div>
+      )}
+
+      {h?.status === 200 && (
+        <Card title="Run history" subtitle="Every execution of this workflow, newest first (read-only audit trail; times in your local time zone)">
+          <RunHistory data={h.body as HistoryPage} base={`/workflows/${encodeURIComponent(d.name)}`} />
+        </Card>
       )}
 
       {d.template && (
@@ -128,11 +132,12 @@ function Detail({ user, name }: { user: SessionUser; name: string }) {
   );
 }
 
-async function Body({ params }: { params: Promise<{ name: string }> }) {
+async function Body({ params, searchParams }: { params: Promise<{ name: string }>; searchParams: Promise<SP> }) {
   const { name } = await params;
-  return <AuthGate>{(u) => <Detail user={u} name={decodeURIComponent(name)} />}</AuthGate>;
+  const sp = await searchParams;
+  return <AuthGate>{(u) => <Detail user={u} name={decodeURIComponent(name)} sp={sp} />}</AuthGate>;
 }
 
-export default function WorkflowPage({ params }: { params: Promise<{ name: string }> }) {
-  return <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}><Body params={params} /></Suspense>;
+export default function WorkflowPage({ params, searchParams }: { params: Promise<{ name: string }>; searchParams: Promise<SP> }) {
+  return <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}><Body params={params} searchParams={searchParams} /></Suspense>;
 }

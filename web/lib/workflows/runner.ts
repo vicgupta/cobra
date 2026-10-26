@@ -17,7 +17,8 @@ export type StartedRun = { id: string; startedAt: number; inputs: Record<string,
 
 export function startWorkflowRun(
   db: DB,
-  who: { tenantId: number; userId: number | null },
+  /** triggeredBy: a trigger label for runs not started by a user (default: the user's email, else "system"). */
+  who: { tenantId: number; userId: number | null; triggeredBy?: string },
   loaded: LoadedWorkflow,
   rawInputs: Record<string, unknown>,
   opts: Pick<ExecuteOptions, "handlers" | "resolveSecret" | "redact"> & { idPrefix?: string; now?: number; meta?: RunMeta; inputs?: Record<string, string | number | boolean>;
@@ -36,12 +37,12 @@ export function startWorkflowRun(
   if (meta?.mode === "real" && !meta.branch && wf.steps.filter((s) => s.uses === "agent").length === 1) meta.branch = `cobra/${id}`;
   // Legacy columns (agent/repo/issue/title/prompt) are filled from same-named inputs when present.
   const issue = Number(inputs.issue ?? 0);
-  db.prepare(`INSERT INTO runs (id, tenant_id, created_by, agent, repo, issue, title, prompt, simulated, started_at, workflow, workflow_hash, status, engine, prompt_source, mode, branch)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)`).run(
+  db.prepare(`INSERT INTO runs (id, tenant_id, created_by, agent, repo, issue, title, prompt, simulated, started_at, workflow, workflow_hash, status, engine, prompt_source, mode, branch, triggered_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, coalesce(?, (SELECT email FROM users WHERE id = ?), 'system'))`).run(
     id, who.tenantId, who.userId, String(meta?.engine ?? inputs.agent ?? ""), String(meta?.repo ?? inputs.repo ?? ""), Number.isFinite(issue) ? issue : 0,
     String(inputs.title ?? "") || (issue ? `Issue #${issue}` : wf.name), String(meta?.prompt ?? inputs.prompt ?? ""),
     meta?.mode === "real" ? 0 : meta?.mode === "simulated" || wf.steps.every((s) => s.uses === "simulate" || s.uses === "noop") ? 1 : 0, startedAt, wf.name, hash,
-    meta?.engine ?? null, meta?.promptSource ?? null, meta?.mode ?? null, meta?.branch ?? null,
+    meta?.engine ?? null, meta?.promptSource ?? null, meta?.mode ?? null, meta?.branch ?? null, who.triggeredBy ?? null, who.userId,
   );
   const redactList = opts.redact ?? [];
   const update = db.prepare("UPDATE runs SET status = ?, steps_json = ?, outputs_json = ?, error = ?, ended_at = ? WHERE id = ?");
