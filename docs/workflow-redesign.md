@@ -122,3 +122,16 @@ the merge rule: unless the starter is the team's designated lead or a system adm
 agent. Like every workflow, it must be approved before it runs. The `issue-to-merge` system template is unchanged.
 
 **Per-agent model (Job 23).** `team_agents.model` (migration 12, NULL = the engine's default). The Agents form has a Model select per engine (plus Default); the card and the run header show it: `[agent] name @ hash (engine, model, mode)`. Real runs pass `--model <id>` to `claude -p` and `-m <id>` to `codex exec`. Allowed ids live in `web/lib/agent-models.ts` (sources and date noted there; `COBRA_CLAUDE_MODELS` / `COBRA_CODEX_MODELS` override, comma-separated); anything else is a 400. The model is folded into the agent hash (unchanged when Default, so existing approvals stay valid).
+
+## Settings > Providers (requested by Vic, 2026-10-25 7:58 PM ET)
+
+A Settings sub-tab after Docs (not in the top nav). It lists the coding agents Cobra really runs (`AGENT_ENGINES` in `web/lib/agents.ts`): **Claude Code** (`claude -p`, 2.1.310) and **Codex** (`codex exec`, 0.164.0). "Simulated" is a run mode in which no CLI executes, so it is not listed as a provider.
+
+| Provider | Models (`web/lib/agent-models.ts`, env override) | Effort tiers offered | How passed |
+|---|---|---|---|
+| Claude Code | sonnet, opus, haiku, fable, claude-sonnet-5-5, claude-opus-5-5, claude-haiku-5-5, claude-fable-5-1 (`COBRA_CLAUDE_MODELS`) | low / medium / high | `--model <id>`, `--effort <tier>` |
+| Codex | gpt-6.1-sol, gpt-6-sol, gpt-6-astra, gpt-6-luna, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna (`COBRA_CODEX_MODELS`) | low / medium / high | `-m <id>`, `-c model_reasoning_effort="<tier>"` |
+
+Verified on nova: `claude --help` lists `--effort <level>` (low, medium, high, xhigh, max). `codex exec --help` has no effort flag; `-c, --config <key=value>` overrides `~/.codex/config.toml`, and the key is `model_reasoning_effort` (every listed model in `~/.codex/models_cache.json` supports low…max, some also ultra). Cobra offers the three tiers both accept for every model. A provider without tiers would show "Not supported".
+
+Configuration (`web/lib/providers.ts`, `PUT /api/providers/<engine>` with `{ model?, effort? }`, `"default"`/null clears): system admins only (403 otherwise); models are validated against the provider's list and tiers against low/medium/high (400). Stored in `provider_defaults` (migration 14), every change audited in `provider_audit` and shown to admins on the page. At run time (`localRunner` `providerDefaults`) an agent with no model uses the provider default model (the agent's own model wins) and the default tier is passed as the flag; the run log says `model: X (provider default), effort: Y`. Defaults are not in the agent hash, so existing hashes and workflow approvals are unchanged.

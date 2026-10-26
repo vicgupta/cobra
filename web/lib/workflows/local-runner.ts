@@ -9,6 +9,7 @@ import { mkdirSync, readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import type { AgentRunner, RepoCheck } from "./handlers";
 import { modelArgs } from "../agent-models";
+import { effortArgs, type ProviderDefaults } from "../providers";
 
 type Env = Record<string, string | undefined>;
 
@@ -28,6 +29,8 @@ export type LocalRunnerOptions = {
   /** Clone URL base (tests point this at a local directory). */
   remoteBase?: string;
   defaultTimeoutMs?: number;
+  /** Settings > Providers defaults, read at run time: model when the agent has none, and the effort tier. */
+  providerDefaults?: (driver: "claude-code" | "codex") => ProviderDefaults;
 };
 
 export const workspacesDir = () => process.env.COBRA_WORKSPACES_DIR || "/home/cobra/workspaces";
@@ -89,7 +92,10 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     const env: Env = cloned && token ? { ...gitEnv, GH_TOKEN: token, GITHUB_TOKEN: token } : { ...base };
     const ghNote = cloned && token ? `\n\n[Cobra] GitHub access for ${repo} is in $GH_TOKEN (also $GITHUB_TOKEN). If the gh CLI is not installed, call the GitHub REST API (https://api.github.com) with curl and "Authorization: Bearer $GH_TOKEN". Never print the token.` : "";
     const lastFile = path.join(dir, ".git", "cobra-last-message.txt");
-    const model = typeof w.model === "string" && w.model.trim() ? w.model.trim() : null;
+    const pd = opts.providerDefaults?.(driver) ?? { model: null, effort: null };
+    const own = typeof w.model === "string" && w.model.trim() ? w.model.trim() : null;
+    const model = own ?? pd.model;
+    const effort = pd.effort;
     let cmd: string, args: string[];
     if (driver === "codex") {
       cmd = opts.codexBin ?? "codex";
@@ -98,16 +104,16 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       // confined to its own throwaway clone. COBRA_CODEX_SANDBOX=workspace-write (etc.) opts back in.
       const sandbox = (opts.codexSandbox ?? process.env.COBRA_CODEX_SANDBOX ?? "").trim();
       const mode = sandbox ? ["--sandbox", sandbox] : ["--dangerously-bypass-approvals-and-sandbox"];
-      args = ["exec", "--skip-git-repo-check", ...modelArgs("codex", model), ...mode, "--output-last-message", lastFile, prompt + ghNote];
+      args = ["exec", "--skip-git-repo-check", ...modelArgs("codex", model), ...effortArgs("codex", effort), ...mode, "--output-last-message", lastFile, prompt + ghNote];
     } else {
       const oauth = opts.resolveSecret("CLAUDE_CODE_OAUTH_TOKEN");
       if (oauth) env.CLAUDE_CODE_OAUTH_TOKEN = oauth;
       const key = opts.resolveSecret("ANTHROPIC_API_KEY");
       if (!oauth && key) env.ANTHROPIC_API_KEY = key;
       cmd = opts.claudeBin ?? "claude";
-      args = ["-p", prompt + ghNote, ...modelArgs("claude-code", model), "--dangerously-skip-permissions", "--output-format", "text"];
+      args = ["-p", prompt + ghNote, ...modelArgs("claude-code", model), ...effortArgs("claude-code", effort), "--dangerously-skip-permissions", "--output-format", "text"];
     }
-    note(`running ${driver} headless (model: ${model ?? "default"})`);
+    note(`running ${driver} headless (model: ${model ?? "default"}${!own && model ? " (provider default)" : ""}, effort: ${effort ?? "default"})`);
     const limit = timeoutMs ?? opts.defaultTimeoutMs ?? 10 * 60_000;
     const r = await run(cmd, args, { cwd: dir, env, signal, log, timeoutMs: limit });
     if (r.code !== 0) throw new Error(`${driver} exited with code ${r.code}`);

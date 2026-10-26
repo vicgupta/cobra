@@ -12,6 +12,7 @@ import { checkTeamRepo, teamPatSecrets, teamRepo, tokenFor } from "../repos";
 import { githubFiles } from "./github-files";
 import { githubApi } from "../github-api";
 import type { RunDeps } from "./service";
+import { getProviderDefaults } from "../providers";
 
 export const actor = (u: SessionUser): Actor => ({ id: u.id, email: u.email, role: u.role, tenantId: u.tenantId, name: u.name });
 
@@ -29,7 +30,7 @@ export const runDeps = (tenantId: number, user?: Actor): RunDeps => {
   // One resolver for every GitHub touch (Job 20): the repo's PAT, else GITHUB_TOKEN.
   const token = githubTokenFor(tenantId);
   return {
-    handlers: builtinHandlers({ checkRepo, tokenFor: token, collab: user ? collabHooks(db, user) : undefined, agentRunner: localRunner({ resolveSecret: secret, checkRepo, githubToken: token, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch }) }),
+    handlers: builtinHandlers({ checkRepo, tokenFor: token, collab: user ? collabHooks(db, user) : undefined, agentRunner: localRunner({ resolveSecret: secret, checkRepo, githubToken: token, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch, providerDefaults: (d) => getProviderDefaults(db, d) }) }),
     resolveSecret: secret,
     // Every env-file value and every team PAT (plus its git header form) is redacted from run logs and errors.
     redact: () => [...Object.values(envFile()), ...teamPatSecrets(db, tenantId, secret("COBRA_SECRET_KEY"))],

@@ -267,6 +267,24 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     );
     CREATE INDEX team_audit_tenant ON team_audit(tenant_id, at);
   `),
+  // 14 (Providers): system-wide default model and effort tier per provider (NULL = the CLI's own default), and their audit trail
+  (db) => db.exec(`
+    CREATE TABLE provider_defaults (
+      engine TEXT PRIMARY KEY CHECK (engine IN ('claude-code','codex')),
+      model TEXT,
+      effort TEXT CHECK (effort IS NULL OR effort IN ('low','medium','high')),
+      updated_at INTEGER NOT NULL,
+      updated_by TEXT
+    );
+    CREATE TABLE provider_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email TEXT NOT NULL,
+      engine TEXT NOT NULL,
+      old_model TEXT, new_model TEXT, old_effort TEXT, new_effort TEXT,
+      at INTEGER NOT NULL
+    );
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

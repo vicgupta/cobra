@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const TABS = [["/settings/templates", "Templates"], ["/settings/team", "Team"], ["/settings/repos", "Repos"], ["/settings/test-run", "Test run"], ["/settings/docs", "Docs"]] as const;
+const TABS = [["/settings/templates", "Templates"], ["/settings/team", "Team"], ["/settings/repos", "Repos"], ["/settings/test-run", "Test run"], ["/settings/docs", "Docs"], ["/settings/providers", "Providers"]] as const;
 
 export function SettingsTabs() {
   const pathname = usePathname();

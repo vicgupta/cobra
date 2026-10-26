@@ -11,5 +11,7 @@ export default function DocsPage() {
       <li><Link className="text-sky-400 hover:underline" href="/settings/docs/workflows">Workflows</Link> — fields, step handlers, expressions, ordering, approval and examples.</li>
       <li><Link className="text-sky-400 hover:underline" href="/settings/docs/templates">Templates</Link> — what a template is, how it differs from a workflow, and examples.</li>
     </ul>
+    <h2 className="mt-6 text-lg font-semibold">Providers</h2>
+    <p className="mt-2 text-sm text-zinc-300"><Link className="text-sky-400 hover:underline" href="/settings/providers">Settings &gt; Providers</Link> lists the coding agents Cobra runs: Claude Code (<code>claude -p</code>) and Codex (<code>codex exec</code>), each with its models and effort tiers (low / medium / high). Simulated runs are a run mode, not a provider. System admins can set a default model and a default effort tier per provider; everyone else sees them read-only. On real runs an agent whose Model is Default uses the provider&apos;s default model, and the effort tier is passed as <code>--effort &lt;tier&gt;</code> (Claude Code) or <code>-c model_reasoning_effort=&quot;&lt;tier&gt;&quot;</code> (Codex). Defaults are not part of an agent&apos;s hash, so changing them never invalidates workflow approvals. Every change is audited.</p>
   </DocsShell>;
 }
