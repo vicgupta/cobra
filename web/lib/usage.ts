@@ -79,24 +79,30 @@ const plain = <T>(rows: unknown[]): T[] => rows.map((r) => ({ ...(r as object) }
 const SUMS = "sum(u.input_tokens) input_tokens, sum(u.output_tokens) output_tokens, sum(u.cached_tokens) cached_tokens, sum(u.cost_usd) cost_usd, count(u.id) steps";
 export type Sums = { input_tokens: number | null; output_tokens: number | null; cached_tokens: number | null; cost_usd: number | null; steps: number };
 
-/** Cross-team usage for the system admin. Runs in range are counted by started_at (UTC ms). */
-export function usageReport(db: DB, range: Range, opts: { now?: number; page?: number; pageSize?: number } = {}) {
+/** The viewer's scope: system admins (role admin) see every team (null); everyone else only their own team. */
+export const usageScope = (u: { role: string; tenantId: number }): number | null => (u.role === "admin" ? null : u.tenantId);
+
+/** Usage report. tenantId null = all teams (system admin only, via usageScope); otherwise every query is
+ *  filtered to that team in SQL. Runs in range are counted by started_at (UTC ms). */
+export function usageReport(db: DB, range: Range, opts: { now?: number; page?: number; pageSize?: number; tenantId?: number | null } = {}) {
   const from = since(range, opts.now ?? Date.now());
+  const tid = opts.tenantId ?? null;
+  const T = "(? IS NULL OR r.tenant_id = ?)";
   const pageSize = opts.pageSize ?? 25;
   const page = Math.max(1, Math.floor(opts.page ?? 1));
-  const totals = { ...(db.prepare(`SELECT ${SUMS}, count(DISTINCT u.run_id) runs_with_usage, (SELECT count(*) FROM runs WHERE started_at >= ?) runs FROM run_usage u JOIN runs r ON r.id = u.run_id WHERE r.started_at >= ?`).get(from, from) as object) } as Sums & { runs: number; runs_with_usage: number };
+  const totals = { ...(db.prepare(`SELECT ${SUMS}, count(DISTINCT u.run_id) runs_with_usage, (SELECT count(*) FROM runs r WHERE r.started_at >= ? AND ${T}) runs FROM run_usage u JOIN runs r ON r.id = u.run_id WHERE r.started_at >= ? AND ${T}`).get(from, tid, tid, from, tid, tid) as object) } as Sums & { runs: number; runs_with_usage: number };
   const runCount = totals.runs;
   const runs = plain<Sums & { id: string; workflow: string | null; tenant: string; started_at: number; status: string | null; providers: string | null }>(db.prepare(`
     SELECT r.id, r.workflow, t.name tenant, r.started_at, r.status, group_concat(DISTINCT u.provider) providers, ${SUMS}
     FROM runs r JOIN tenants t ON t.id = r.tenant_id LEFT JOIN run_usage u ON u.run_id = r.id
-    WHERE r.started_at >= ? GROUP BY r.id ORDER BY r.started_at DESC, r.id DESC LIMIT ? OFFSET ?`).all(from, pageSize, (page - 1) * pageSize));
+    WHERE r.started_at >= ? AND ${T} GROUP BY r.id ORDER BY r.started_at DESC, r.id DESC LIMIT ? OFFSET ?`).all(from, tid, tid, pageSize, (page - 1) * pageSize));
   const teams = plain<Sums & { tenant: string; runs: number }>(db.prepare(`
     SELECT t.name tenant, count(DISTINCT r.id) runs, ${SUMS}
     FROM runs r JOIN tenants t ON t.id = r.tenant_id LEFT JOIN run_usage u ON u.run_id = r.id
-    WHERE r.started_at >= ? GROUP BY t.id ORDER BY t.name`).all(from));
+    WHERE r.started_at >= ? AND ${T} GROUP BY t.id ORDER BY t.name`).all(from, tid, tid));
   const providers = plain<Sums & { provider: string; model: string | null; runs: number }>(db.prepare(`
     SELECT u.provider, u.model, count(DISTINCT u.run_id) runs, ${SUMS}
     FROM run_usage u JOIN runs r ON r.id = u.run_id
-    WHERE r.started_at >= ? GROUP BY u.provider, u.model ORDER BY u.provider, u.model`).all(from));
-  return { range, page, pageSize, pages: Math.max(1, Math.ceil(runCount / pageSize)), totals, runs, teams, providers };
+    WHERE r.started_at >= ? AND ${T} GROUP BY u.provider, u.model ORDER BY u.provider, u.model`).all(from, tid, tid));
+  return { range, scope: tid, page, pageSize, pages: Math.max(1, Math.ceil(runCount / pageSize)), totals, runs, teams, providers };
 }

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { openDb, type DB } from "../lib/db";
 import { createUser } from "../lib/auth/users";
-import { usageCollector, recordUsage, usageReport, parseRange } from "../lib/usage";
+import { usageCollector, recordUsage, usageReport, parseRange, usageScope } from "../lib/usage";
 import { localRunner } from "../lib/workflows/local-runner";
 import { gate } from "../lib/admin/gate";
 
@@ -90,4 +90,31 @@ test("usage: admin page is system-admin only (others 404) and never selects secr
   assert.match(page, /\["usage", "Usage"\]/);
   const lib = readFileSync(path.join(__dirname, "../lib/usage.ts"), "utf8");
   assert.doesNotMatch(lib, /sessions|password|_enc|pat_/);
+});
+
+test("usage scoping: member/lead see only their team, no cross-team leak; admin sees all", () => {
+  const { db, ta, tb } = setup();
+  const now = 100 * 86_400_000;
+  addRun(db, "run_a1", ta, now - 1000); addRun(db, "run_b1", tb, now - 2000);
+  const u = (p: string, i: number, c: number | null) => ({ provider: p, model: "m-" + p, input_tokens: i, output_tokens: 1, cached_tokens: null, cost_usd: c, cost_source: c == null ? null : "reported" as const });
+  recordUsage(db, "run_a1", u("claude-code", 100, 1.5));
+  recordUsage(db, "run_b1", u("codex", 7, null));
+  const member = { role: "member", tenantId: tb }, lead = { role: "team_lead", tenantId: tb }, admin = { role: "admin", tenantId: ta };
+  for (const v of [member, lead]) {
+    const r = usageReport(db, "all", { now, tenantId: usageScope(v) });
+    assert.equal(r.scope, tb);
+    assert.deepEqual(r.runs.map((x) => x.id), ["run_b1"]);
+    assert.deepEqual(r.teams.map((x) => x.tenant), ["Team other"]);
+    assert.deepEqual(r.providers.map((x) => x.provider), ["codex"]);
+    assert.equal(r.totals.input_tokens, 7); assert.equal(r.totals.cost_usd, null); assert.equal(r.totals.runs, 1);
+    assert.doesNotMatch(JSON.stringify(r), /run_a1|claude-code|1\.5/);
+  }
+  const all = usageReport(db, "all", { now, tenantId: usageScope(admin) });
+  assert.equal(all.scope, null);
+  assert.deepEqual(all.runs.map((x) => x.id), ["run_a1", "run_b1"]);
+  assert.equal(all.teams.length, 2); assert.equal(all.totals.input_tokens, 107); assert.equal(all.totals.cost_usd, 1.5);
+  // the Settings page takes the scope from the session only, never from query params
+  const page = readFileSync(path.join(__dirname, "../app/settings/usage/page.tsx"), "utf8");
+  assert.match(page, /tenantId=\{scope\}/); assert.doesNotMatch(page, /sp\.(team|tenant)/);
+  assert.match(readFileSync(path.join(__dirname, "../components/settings-tabs.tsx"), "utf8"), /\/settings\/usage/);
 });
