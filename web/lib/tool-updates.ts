@@ -274,8 +274,14 @@ export function startManualRun(db: DB, u: Admin, ops: Ops, now = Date.now()): nu
   if (updating() || db.prepare("SELECT 1 FROM update_runs WHERE status = 'running' AND started_at >= ?").get(now - STALE_MS)) throw new CollabError(409, "an update is already running");
   const n = activeAgentRuns(db);
   if (n > 0) throw new CollabError(409, `${n} agent run(s) in progress; try again when they finish`);
-  const id = Number(db.prepare("INSERT INTO update_runs (kind, run_date, status, triggered_by, created_at, started_at, attempts) VALUES ('manual', ?, 'running', ?, ?, ?, 1)").run(nyClock(now).date, u.email, now, now).lastInsertRowid);
-  audit(db, u, "updates_run_now", `manual tool update #${id}`, now);
+  // Claim + audit together, so a failed audit never leaves a phantom "running" row.
+  db.exec("BEGIN IMMEDIATE");
+  let id: number;
+  try {
+    id = Number(db.prepare("INSERT INTO update_runs (kind, run_date, status, triggered_by, created_at, started_at, attempts) VALUES ('manual', ?, 'running', ?, ?, ?, 1)").run(nyClock(now).date, u.email, now, now).lastInsertRowid);
+    audit(db, u, "updates_run_now", `manual tool update #${id}`, now);
+    db.exec("COMMIT");
+  } catch (e) { db.exec("ROLLBACK"); throw e; }
   void executeRun(db, id, ops);
   return id;
 }

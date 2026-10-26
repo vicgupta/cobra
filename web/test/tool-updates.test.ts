@@ -164,6 +164,8 @@ test("admin: toggle (audited, default on), run now (admin only, refuses during a
   for (let i = 0; i < 50 && U.updating(); i++) await new Promise((r) => setImmediate(r));
   const v = U.getUpdateRun(db, id)!;
   assert.equal(v.kind, "manual"); assert.ok(v.items.length >= 8);
+  assert.throws(() => U.startManualRun(db, { id: 999, email: "ghost", role: "admin" }, ops));
+  assert.equal(U.listUpdateRuns(db).filter((r) => r.status === "running").length, 0, "no phantom running row when the audit fails");
   const acts = (db.prepare("SELECT action FROM notification_audit ORDER BY id").all() as { action: string }[]).map((a) => a.action);
   assert.deepEqual(acts, ["updates_toggle", "updates_run_now"]);
 });
