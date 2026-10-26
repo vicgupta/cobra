@@ -128,6 +128,15 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     } else note("no repo selected; running in an empty scratch repo");
     if (!cloned) await g(["init", "-q"]);
     await g(["checkout", "-q", "-b", branch]);
+    // SOP skills: the full SOP body as a workspace file, kept out of commits via .git/info/exclude.
+    if (typeof w.sop_body === "string" && w.sop_body) {
+      mkdirSync(path.join(dir, ".cobra"), { recursive: true, mode: 0o700 });
+      writeFileSync(path.join(dir, ".cobra", "SOP.md"), w.sop_body, { mode: 0o600 });
+      mkdirSync(path.join(dir, ".git", "info"), { recursive: true });
+      const ex = path.join(dir, ".git", "info", "exclude");
+      writeFileSync(ex, `${existsSync(ex) ? readFileSync(ex, "utf8") : ""}\n.cobra/\n`);
+      note("wrote the SOP to .cobra/SOP.md (excluded from git)");
+    }
 
     const prompt = String(w.prompt ?? "").trim();
     if (!prompt) throw new Error("the run has no prompt");

@@ -356,6 +356,102 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     );
     CREATE INDEX run_usage_run ON run_usage(run_id);
   `),
+  // 20 (SOP skills): team-scoped skills with a JSON plan (no YAML), version history, approvals by content
+  // hash, the admin rulebook, automatic reviews, opt-in review cycles and an audit log. Existing workflow
+  // tables are untouched (nothing is converted).
+  (db) => db.exec(`
+    CREATE TABLE skills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      description TEXT NOT NULL DEFAULT '',
+      kind TEXT NOT NULL CHECK (kind IN ('sop','master')),
+      body TEXT NOT NULL DEFAULT '',
+      plan_json TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      builtin INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE (tenant_id, name)
+    );
+    CREATE TABLE skill_versions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+      version INTEGER NOT NULL,
+      description TEXT NOT NULL,
+      body TEXT NOT NULL,
+      plan_json TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      saved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      saved_at INTEGER NOT NULL,
+      note TEXT
+    );
+    CREATE INDEX skill_versions_skill ON skill_versions(skill_id, version);
+    CREATE TABLE skill_approvals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+      content_hash TEXT NOT NULL,
+      approver_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      decision TEXT NOT NULL CHECK (decision IN ('approve','reject')),
+      comment TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX skill_approvals_hash ON skill_approvals(skill_id, content_hash);
+    CREATE TABLE skill_review_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      kind TEXT NOT NULL CHECK (kind IN ('code','llm')),
+      weight INTEGER NOT NULL DEFAULT 1 CHECK (weight BETWEEN 0 AND 10),
+      advisory INTEGER NOT NULL DEFAULT 0,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      config_json TEXT NOT NULL DEFAULT '{}',
+      updated_by TEXT,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE skill_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+      content_hash TEXT NOT NULL,
+      rules_version TEXT NOT NULL,
+      score INTEGER NOT NULL,
+      results_json TEXT NOT NULL,
+      trigger TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX skill_reviews_skill ON skill_reviews(skill_id, id);
+    CREATE TABLE skill_review_cycles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      skill_id INTEGER NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+      content_hash TEXT NOT NULL,
+      review_id INTEGER REFERENCES skill_reviews(id) ON DELETE SET NULL,
+      requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      pros_json TEXT NOT NULL,
+      cons_json TEXT NOT NULL,
+      corrections_json TEXT NOT NULL,
+      narrative TEXT,
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE skill_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER,
+      actor_id INTEGER,
+      actor_email TEXT NOT NULL,
+      action TEXT NOT NULL,
+      skill_id INTEGER,
+      detail TEXT NOT NULL DEFAULT '',
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX skill_audit_skill ON skill_audit(skill_id, at);
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

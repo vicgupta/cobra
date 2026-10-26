@@ -8,12 +8,12 @@ const P = ({ children }: { children: ReactNode }) => <p className="mt-2 text-sm 
 const C = ({ children }: { children: ReactNode }) => <code className="rounded bg-surface-2 px-1 text-[0.85em]">{children}</code>;
 const Note = ({ children }: { children: ReactNode }) => <p className="mt-2 rounded border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning">{children}</p>;
 
-export function DocsNav({ active }: { active: "overview" | "workflows" | "templates" }) {
+export function DocsNav({ active }: { active: "overview" | "workflows" | "templates" | "skills" }) {
   const l = (href: string, label: string, k: string) => <Link href={href} className={`rounded px-2 py-1 text-sm ${active === k ? "bg-surface-2 text-fg" : "text-muted hover:text-fg"}`}>{label}</Link>;
-  return <nav className="flex gap-2" aria-label="Docs sections">{l("/settings/docs", "Overview", "overview")}{l("/settings/docs/workflows", "Workflows", "workflows")}{l("/settings/docs/templates", "Templates", "templates")}</nav>;
+  return <nav className="flex gap-2" aria-label="Docs sections">{l("/settings/docs", "Overview", "overview")}{l("/settings/docs/workflows", "Workflows", "workflows")}{l("/settings/docs/templates", "Templates", "templates")}{l("/settings/docs/skills", "Skills", "skills")}</nav>;
 }
 
-export function DocsShell({ active, children }: { active: "overview" | "workflows" | "templates"; children: ReactNode }) {
+export function DocsShell({ active, children }: { active: "overview" | "workflows" | "templates" | "skills"; children: ReactNode }) {
   return <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><AuthGate><div className="space-y-4"><DocsNav active={active} /><article className="max-w-5xl">{children}</article></div></AuthGate></Suspense>;
 }
 
