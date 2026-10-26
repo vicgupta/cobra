@@ -30,7 +30,7 @@ function ConfirmDelete({ what, busy, onConfirm }: { what: string; busy: boolean;
 }
 
 /** One masked credential slot: enter / replace / delete. The value is write-only. Team members only, own team (server-enforced). */
-export function CredentialForm({ engine, name, label, help, set, stored }: { engine: string; name: string; label: string; help: string; set: boolean; stored: boolean }) {
+export function CredentialForm({ engine, name, label, stored }: { engine: string; name: string; label: string; stored: boolean }) {
   const router = useRouter();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
@@ -45,10 +45,9 @@ export function CredentialForm({ engine, name, label, help, set, stored }: { eng
   };
   return (
     <form className="flex flex-wrap items-center gap-2" data-credential={name} onSubmit={(e) => { e.preventDefault(); if (value.trim()) void send(value.trim()); }}>
-      <input aria-label={`${engine} ${name}`} type="password" autoComplete="off" spellCheck={false} className={`${input} min-w-64`} value={value} onChange={(e) => setValue(e.target.value)} placeholder={stored ? "Type a new value to replace" : set ? "Set in server env; type to override" : `Paste ${label}`} />
+      <input aria-label={`${engine} ${name}`} type="password" autoComplete="off" spellCheck={false} className={`${input} min-w-64`} value={value} onChange={(e) => setValue(e.target.value)} placeholder={label} />
       <button className={button} disabled={busy || !value.trim()}>{stored ? "Replace" : "Save"}</button>
       {stored && <ConfirmDelete what={name} busy={busy} onConfirm={() => void send(null)} />}
-      <p className="w-full text-xs text-subtle">{help} Stored encrypted; never shown again.</p>
       <Note msg={msg} />
     </form>
   );

@@ -96,3 +96,13 @@ test("providers: effort flags and defaults reach the CLI; agent model wins; hash
   a = args();
   assert.ok(!a.includes("--effort") && !a.includes("--model"), "defaults cleared: no flags");
 });
+
+test("Settings > Providers UI: no helper copy, Sources or Recent provider changes; audit API kept", async () => {
+  const { readFileSync } = await import("node:fs");
+  const v = readFileSync(new URL("../components/providers.tsx", import.meta.url), "utf8");
+  const f = readFileSync(new URL("../components/provider-credentials-form.tsx", import.meta.url), "utf8");
+  for (const s of ["The coding agents Cobra can run", "data-read-only-note", "data-no-subscription", "data-codex-login", 'title="Sources"', "Recent provider changes", "listProviderAudit", "AES-256-GCM", "subtitle="]) assert.ok(!v.includes(s), s);
+  for (const s of ["Stored encrypted; never shown again", "Set in server env"]) assert.ok(!f.includes(s), s);
+  assert.ok(v.includes("data-credentials-manager") && f.includes("aria-label="));
+  assert.match(readFileSync(new URL("../lib/providers.ts", import.meta.url), "utf8"), /export function listProviderAudit/);
+});
