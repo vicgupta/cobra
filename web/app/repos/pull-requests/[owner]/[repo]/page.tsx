@@ -10,13 +10,13 @@ async function RepoPullsBody({ params, searchParams }: { params: Promise<{ owner
   const p = await params, full = `${p.owner}/${p.repo}`;
   const state = (await searchParams).state === "closed" ? "closed" : "open";
   return (
-    <CollabPage title={`Pull requests · ${full}`} crumbs={<><Link href="/pulls" className="underline">Pull requests</Link> · <Link href={`/issues/${full}`} className="underline">Issues</Link></>}>
+    <CollabPage title={`Pull requests · ${full}`} crumbs={<><Link href="/repos/pull-requests" className="underline">Pull requests</Link> · <Link href={`/repos/issues/${full}`} className="underline">Issues</Link></>}>
       {(u) => <WithRepo u={u} repo={full} render={async ({ gh, repo }) => {
         const pulls = await gh.listPulls(repo, state);
         return (
-          <Card title={`${state === "open" ? "Open" : "Closed"} pull requests (${pulls.length})`} action={<Link className="text-xs underline" href={`/pulls/${repo}${state === "open" ? "?state=closed" : ""}`}>{state === "open" ? "Show closed" : "Show open"}</Link>}>
+          <Card title={`${state === "open" ? "Open" : "Closed"} pull requests (${pulls.length})`} action={<Link className="text-xs underline" href={`/repos/pull-requests/${repo}${state === "open" ? "?state=closed" : ""}`}>{state === "open" ? "Show closed" : "Show open"}</Link>}>
             {pulls.length === 0 ? <p className="text-sm text-zinc-500">None.</p> : <ul className="divide-y divide-zinc-800">{pulls.map((x) => (
-              <li key={x.number} className="py-2"><Link className="text-zinc-100 hover:underline" href={`/pulls/${repo}/${x.number}`}>#{x.number} {x.title}</Link>
+              <li key={x.number} className="py-2"><Link className="text-zinc-100 hover:underline" href={`/repos/pull-requests/${repo}/${x.number}`}>#{x.number} {x.title}</Link>
                 <span className="ml-2 text-xs text-zinc-500">{x.head.ref} → {x.base.ref} · {x.user?.login} · {ghDate(x.created_at)}</span>{x.merged_at && <span className="ml-1"><Badge tone="violet">merged</Badge></span>}</li>
             ))}</ul>}
           </Card>

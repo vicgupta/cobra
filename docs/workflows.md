@@ -31,10 +31,10 @@ outputs:
 ```
 Expressions: `${{ }}` with dotted paths, comparison, `&&`, `||`, `!` (no parentheses, no function calls). Secrets are resolved at run time from the env file (`COBRA_ENV_FILE`, `/etc/cobra/cobra.env`, or `web/data/cobra.env`) with process.env fallback, and every env-file value is redacted from logs. Secrets are never stored in YAML.
 
-The engine runs steps sequentially in topological order, with retries and timeouts. Step output is capped at 16,000 chars. The `github` step, GitHub file storage and agent clones are restricted to the **team's registered repos** (`team_repos`, managed on `/repos`); `COBRA_GITHUB_ALLOWED_REPOS`, if set, is an extra global ceiling (a repo must be in both). Both fields are optional, so older YAML is unchanged.
+The engine runs steps sequentially in topological order, with retries and timeouts. Step output is capped at 16,000 chars. The `github` step, GitHub file storage and agent clones are restricted to the **team's registered repos** (`team_repos`, managed on `/settings/repos`); `COBRA_GITHUB_ALLOWED_REPOS`, if set, is an extra global ceiling (a repo must be in both). Both fields are optional, so older YAML is unchanged.
 
 ## Repos, engine, prompt, runs (Job 11; design in docs/workflow-redesign.md)
-- `/repos` (`GET|POST /api/repos`, `DELETE /api/repos?repo=`): team admins and team leads add/remove; members view. The default team is seeded with `vicgupta/cobra-sandbox` and `vicgupta/factory-demo-app` (main) by migration 8.
+- `/settings/repos` (`GET|POST /api/repos`, `DELETE /api/repos?repo=`): team admins and team leads add/remove; members view. The default team is seeded with `vicgupta/cobra-sandbox` and `vicgupta/factory-demo-app` (main) by migration 8.
 - Repo fields in the UI are dropdowns of the team's repos.
 - `/workflows/new` → "From a template": pick a template (system or team) and a team repo → `POST /api/templates/[name]/attach` creates an instance with `tenant_workflows.repo`.
 - Run flow on `/workflows/[name]`: repo → engine → prompt (workflow template or free-form) → mode → inputs → Run. `POST /api/workflows/[name]/runs` body: `{ inputs, repo?, engine?, promptMode?: workflow|custom|none, prompt?, mode?: simulated|real }`. The run stores `agent` (engine), `prompt` (final text), `prompt_source`, `mode`, `repo`, `branch`; the run page shows them and the first log entry (`run`) records them.
@@ -67,7 +67,7 @@ Each tenant workflow has `storage`:
 `runs` (workflow, workflow_hash, status, outputs, error) plus `run_step_events` (run_id, step_id, status, attempt, output, truncated, at). View it at `/runs/<id>` or `GET /api/runs/<id>`. Only the runner and admins of the same tenant can see it; anyone else gets 404.
 
 ## UI / API / CLI
-- Pages: `/repos`, `/workflows`, `/workflows/new`, `/workflows/[name]`, `/workflows/[name]/edit`, `/templates`, `/runs/[id]`.
+- Pages: `/settings/repos`, `/repos/*` (Overview, Issues, Pull Requests, Branches, Activity), `/workflows`, `/workflows/new`, `/workflows/[name]`, `/workflows/[name]/edit`, `/templates`, `/runs/[id]`.
 - API: `GET|POST /api/workflows`, `GET /api/workflows/[name]`, `POST /api/workflows/[name]/approval|runs|sync`, `GET /api/templates/[name]/copy`, `POST /api/templates/[name]/attach`, `GET|POST|DELETE /api/repos`, `GET /api/runs/[id]`.
 - CLI: `web/scripts/workflow.mts` (validate, list, approve, schema).
 

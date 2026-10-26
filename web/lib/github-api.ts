@@ -33,13 +33,14 @@ export function githubApi(source: TokenSource, fetchImpl: typeof fetch = fetch) 
   };
   const R = (repo: string) => `/repos/${repo.split("/").map(encodeURIComponent).join("/")}`;
   return {
-    repoInfo: (repo: string) => call<{ default_branch: string; permissions?: Record<string, boolean>; allow_merge_commit?: boolean }>("GET", R(repo)),
+    repoInfo: (repo: string) => call<{ default_branch: string; open_issues_count?: number; permissions?: Record<string, boolean>; allow_merge_commit?: boolean }>("GET", R(repo)),
     listIssues: async (repo: string, state = "open") => (await call<GhIssue[]>("GET", `${R(repo)}/issues?state=${state}&per_page=50`)).filter((i) => !i.pull_request),
     getIssue: (repo: string, n: number) => call<GhIssue>("GET", `${R(repo)}/issues/${n}`),
     createIssue: (repo: string, title: string, body: string) => call<GhIssue>("POST", `${R(repo)}/issues`, { title, body }),
     issueComments: (repo: string, n: number) => call<GhComment[]>("GET", `${R(repo)}/issues/${n}/comments?per_page=100`),
     comment: (repo: string, n: number, body: string) => call<GhComment>("POST", `${R(repo)}/issues/${n}/comments`, { body }),
     listPulls: (repo: string, state = "open") => call<GhPull[]>("GET", `${R(repo)}/pulls?state=${state}&per_page=50`),
+    listBranches: (repo: string) => call<Array<{ name: string; protected: boolean; commit: { sha: string } }>>("GET", `${R(repo)}/branches?per_page=100`),
     getPull: (repo: string, n: number) => call<GhPull>("GET", `${R(repo)}/pulls/${n}`),
     pullReviews: (repo: string, n: number) => call<GhReview[]>("GET", `${R(repo)}/pulls/${n}/reviews?per_page=100`),
     reviewComments: (repo: string, n: number) => call<GhComment[]>("GET", `${R(repo)}/pulls/${n}/comments?per_page=100`),

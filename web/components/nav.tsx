@@ -9,8 +9,7 @@ const userLinks = [
   { href: "/", label: "Dashboard" },
   { href: "/workflows", label: "Workflows" },
   { href: "/agents", label: "Agents" },
-  { href: "/issues", label: "Issues" },
-  { href: "/pulls", label: "Pull requests" },
+  { href: "/repos", label: "Repos" },
   { href: "/settings", label: "Settings" },
 ];
 const adminLink = { href: "/admin", label: "Admin" };
@@ -29,7 +28,7 @@ export function Nav({ userMenu, admin }: { userMenu?: ReactNode; admin?: boolean
         </Link>
         {!authPage && <nav className="flex gap-1 text-sm">
           {links.map((l) => {
-            const active = l.href === "/" ? pathname === "/" : pathname.startsWith(l.href);
+            const active = l.href === "/" ? pathname === "/" : pathname === l.href || pathname.startsWith(`${l.href}/`);
             return (
               <Link
                 key={l.href}

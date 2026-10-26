@@ -46,7 +46,7 @@ export function NewIssueForms({ repo, agents }: { repo: string; agents: AgentCho
   const [who, setWho] = useState("engine:claude-code"), [prompt, setPrompt] = useState(""), [mode, setMode] = useState("simulated");
   return (
     <div className="grid gap-6 md:grid-cols-2">
-      <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); void m.run(() => call(`/api/github/${repo}/issues`, "POST", { title, body }), (d) => { setTitle(""); setBody(""); router.refresh(); return <>Opened <Link className="underline" href={`/issues/${repo}/${String(d.number)}`}>#{String(d.number)}</Link></>; }); }}>
+      <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); void m.run(() => call(`/api/github/${repo}/issues`, "POST", { title, body }), (d) => { setTitle(""); setBody(""); router.refresh(); return <>Opened <Link className="underline" href={`/repos/issues/${repo}/${String(d.number)}`}>#{String(d.number)}</Link></>; }); }}>
         <h3 className="text-sm font-medium">New issue</h3>
         <input aria-label="Title" className={input} placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
         <textarea aria-label="Body" className={`${input} h-24`} placeholder="Describe the issue (markdown)" value={body} onChange={(e) => setBody(e.target.value)} />

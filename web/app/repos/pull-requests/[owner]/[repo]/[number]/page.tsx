@@ -11,7 +11,7 @@ export const metadata = { title: "Pull request · Cobra" };
 async function PullPageBody({ params }: { params: Promise<{ owner: string; repo: string; number: string }> }) {
   const p = await params, full = `${p.owner}/${p.repo}`, n = Number(p.number);
   return (
-    <CollabPage title={`Pull request #${p.number}`} crumbs={<Link href={`/pulls/${full}`} className="underline">{full} pull requests</Link>}>
+    <CollabPage title={`Pull request #${p.number}`} crumbs={<Link href={`/repos/pull-requests/${full}`} className="underline">{full} pull requests</Link>}>
       {(u) => <WithRepo u={u} repo={full} render={async ({ db, gh, repo }) => {
         const [pr, reviews, reviewComments, comments] = await Promise.all([gh.getPull(repo, n), gh.pullReviews(repo, n), gh.reviewComments(repo, n), gh.issueComments(repo, n)]);
         const merged = !!pr.merged || !!pr.merged_at;
