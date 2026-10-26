@@ -11,7 +11,7 @@ function Repos({ user }: { user: SessionUser }) {
   const db = getDb(), u = actor(user);
   const rows = listTeamRepos(db, u.tenantId).map((r) => ({ ...r, canEdit: canEditRepo(db, u, r) }));
   return (
-    <Card title="Team GitHub repos" subtitle={`Workflows, GitHub file storage and agent runs can only use these repos${ceiling ? " (and the server's COBRA_GITHUB_ALLOWED_REPOS ceiling)" : ""}.`}>
+    <Card title="Team GitHub repos" subtitle={`Workflows, GitHub file storage and agent runs can only use these repos${ceiling ? " (and the server's COBRA_GITHUB_ALLOWED_REPOS ceiling, except repos added with their own token)" : ""}.`}>
       <RepoManager initial={rows} canManage={canManageRepos(user)} canAdd={canAddRepo(user)} />
     </Card>
   );

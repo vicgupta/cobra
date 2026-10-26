@@ -1,8 +1,9 @@
 // Per-team GitHub repo registry. The single gate for every GitHub read, write and
 // run: a repo must be registered to the acting team and, if COBRA_GITHUB_ALLOWED_REPOS
-// is set, also be in that global ceiling.
+// is set, also be in that global ceiling, unless the team registered it with its own PAT
+// (then the team's token, never the server GITHUB_TOKEN, is what reaches GitHub for it).
 import type { DB } from "./db";
-import { decryptSecret, encryptSecret } from "./secret-box";
+import { decryptSecret, encryptSecret, parseKey, SecretKeyError } from "./secret-box";
 
 /** patSet/patLast4 only: the token itself never leaves the server. createdBy/createdByEmail: who added it (null for seeded repos). */
 export type TeamRepo = { repo: string; defaultBranch: string | null; createdAt: number; patSet: boolean; patLast4: string | null; createdBy: number | null; createdByEmail: string | null };
@@ -29,11 +30,12 @@ export function checkTeamRepo(db: DB, tenantId: number, repo: string): string | 
   if (!REPO_RE.test(repo)) return "github repo must look like owner/name";
   if (!teamRepo(db, tenantId, repo)) return `repo ${repo} is not registered to this team (see Repos)`;
   const c = globalCeiling();
-  if (c && !c.includes(repo.toLowerCase())) return `repo ${repo} is not in COBRA_GITHUB_ALLOWED_REPOS`;
+  // Team-added repos with their own token bypass the global ceiling (team-scoped; the PAT is the access boundary).
+  if (c && !c.includes(repo.toLowerCase()) && !teamRepo(db, tenantId, repo)!.patSet) return `repo ${repo} is not in COBRA_GITHUB_ALLOWED_REPOS (add a personal access token for it in Settings > Repos to use it)`;
   return null;
 }
 
-/** Repo tokens (PATs) stay admin/team-lead only (unchanged). */
+/** Admins and team leads: manage every repo of the team (tokens included). */
 export const canManageRepos = (u: { role: string }) => u.role === "admin" || u.role === "team_lead";
 /** Job 8: any signed-in team member can add a repo to their own team. */
 export const canAddRepo = (u: { role: string }) => u.role === "admin" || u.role === "team_lead" || u.role === "member";
@@ -103,11 +105,11 @@ export function cleanPat(token: string): string {
   return t;
 }
 
-/** Sets (token) or clears (null) the repo's PAT. Same gate as add/remove. */
+/** Sets (token) or clears (null) the repo's PAT. Same gate as edit/remove: the adder, team leads, the designated lead, admins. */
 export function setRepoPat(db: DB, u: { id?: number; email?: string; role: string; tenantId: number }, repo: string, token: string | null, secretKey: string | undefined, now = Date.now()): TeamRepo {
-  if (!canManageRepos(u)) throw new RepoError(403, "only admins and team leads can manage repo tokens");
   const r = teamRepo(db, u.tenantId, repo);
   if (!r) throw new RepoError(404, `${repo} is not registered`);
+  if (!canManageRepos(u) && !(u.id != null && canEditRepo(db, { ...u, id: u.id }, r))) throw new RepoError(403, "only the repo's adder, team leads and admins can change its token");
   if (token === null) db.prepare("UPDATE team_repos SET pat_enc = NULL, pat_last4 = NULL, pat_set_at = NULL WHERE tenant_id = ? AND repo = ?").run(u.tenantId, r.repo);
   else {
     const t = cleanPat(token);
@@ -162,4 +164,35 @@ export async function verifyPat(repo: string, token: string, fetchImpl: typeof f
   if (!r.ok) return { push: null };
   const j = (await r.json().catch(() => ({}))) as { permissions?: { push?: boolean } };
   return { push: typeof j.permissions?.push === "boolean" ? j.permissions.push : null };
+}
+
+function keyOrFail(secretKey: string | undefined) {
+  try { parseKey(secretKey); } catch (e) { throw new RepoError(503, e instanceof SecretKeyError ? e.message : "COBRA_SECRET_KEY is invalid"); }
+}
+
+/** POST /api/repos. Any team member adds a repo to their own team with their own PAT (required for members;
+ *  leads/admins may omit it and rely on GITHUB_TOKEN). The token is checked against GitHub before anything is saved. */
+export async function addRepoWithToken(db: DB, u: RepoUser, b: { repo: string; defaultBranch?: string; pat?: string | null }, secretKey: string | undefined, fetchImpl: typeof fetch = fetch): Promise<TeamRepo & { pushAccess?: boolean | null }> {
+  if (!canAddRepo(u)) throw new RepoError(403, "only team members can add repos");
+  const pat = b.pat && b.pat.trim() ? b.pat : null;
+  if (!pat && !canManageRepos(u)) throw new RepoError(400, "a GitHub personal access token with access to the repo is required");
+  const repo = b.repo.trim();
+  if (!REPO_RE.test(repo)) throw new RepoError(400, "repo must look like owner/name");
+  if (teamRepo(db, u.tenantId, repo)) throw new RepoError(409, `${repo} is already registered`);
+  let check: { push: boolean | null } | undefined;
+  if (pat) { keyOrFail(secretKey); check = await verifyPat(repo, cleanPat(pat), fetchImpl); }
+  let r = addTeamRepo(db, u, repo, b.defaultBranch);
+  if (pat) r = setRepoPat(db, u, r.repo, pat, secretKey);
+  return { ...r, ...(check ? { pushAccess: check.push } : {}) };
+}
+
+/** PATCH /api/repos token change: team scope (404) and permission (403) before GitHub is ever called. */
+export async function changeRepoToken(db: DB, u: RepoUser, repo: string, pat: string | null, secretKey: string | undefined, fetchImpl: typeof fetch = fetch): Promise<TeamRepo & { pushAccess?: boolean | null }> {
+  const r0 = teamRepo(db, u.tenantId, repo.trim());
+  if (!r0) throw new RepoError(404, `${repo} is not registered`);
+  if (!canManageRepos(u) && !canEditRepo(db, u, r0)) throw new RepoError(403, "only the repo's adder, team leads and admins can change its token");
+  if (pat === null || !pat.trim()) return setRepoPat(db, u, r0.repo, null, secretKey);
+  keyOrFail(secretKey);
+  const check = await verifyPat(r0.repo, cleanPat(pat), fetchImpl);
+  return { ...setRepoPat(db, u, r0.repo, pat, secretKey), pushAccess: check.push };
 }

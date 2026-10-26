@@ -42,7 +42,7 @@ test("a member adds a repo: recorded creator, visible and usable for the whole t
   assert.deepEqual(listRepoAudit(db, bm.tenantId).map((a) => a.actorEmail), ["m@b.com"]);
 });
 
-test("edit/remove: creator, team lead, designated lead, admin; not other members; tokens stay lead/admin", () => {
+test("edit/remove: creator, team lead, designated lead, admin; not other members; tokens follow the same rule", () => {
   const { db, admin, lead, m1, m2, dl } = setup();
   db.prepare("UPDATE tenants SET designated_lead_user_id = ? WHERE id = ?").run(dl.id, dl.tenantId);
   addTeamRepo(db, m1, "acme/a");
@@ -54,8 +54,9 @@ test("edit/remove: creator, team lead, designated lead, admin; not other members
   assert.equal(updateTeamRepo(db, m1, "acme/a", "dev").defaultBranch, "dev");
   assert.equal(updateTeamRepo(db, dl, "acme/a", null).defaultBranch, null);
   assert.equal(status(() => updateTeamRepo(db, m1, "acme/a", "bad branch!")), 400);
-  // tokens: unchanged rule (admins and team leads only), even for the creator
-  assert.equal(status(() => setRepoPat(db, m1, "acme/a", "ghp_" + "x".repeat(30), undefined)), 403);
+  // tokens: the creator may change them (no key here: 503); other members may not (403)
+  assert.equal(status(() => setRepoPat(db, m1, "acme/a", "ghp_" + "x".repeat(30), undefined)), 503);
+  assert.equal(status(() => setRepoPat(db, m2, "acme/a", "ghp_" + "x".repeat(30), undefined)), 403);
   // seeded/legacy repos (no creator) are lead/admin only
   db.prepare("INSERT INTO team_repos (tenant_id, repo, created_at) VALUES (?, 'legacy/one', 1)").run(m1.tenantId);
   assert.equal(status(() => removeTeamRepo(db, m1, "legacy/one")), 403);
@@ -71,11 +72,12 @@ test("edit/remove: creator, team lead, designated lead, admin; not other members
   ]);
 });
 
-test("UI: add form shown to members, token field only for leads/admins", async () => {
+test("UI: add form shown to members, token field for everyone (required for members)", async () => {
   const { readFileSync } = await import("node:fs");
   const s = readFileSync(new URL("../components/workflows.tsx", import.meta.url), "utf8");
   assert.match(s, /\{canAdd \? \(/);
-  assert.match(s, /\{canManage && <input aria-label="Personal access token \(optional\)"/);
+  assert.match(s, /aria-label=\{canManage \? "Personal access token \(optional\)" : "Personal access token"\}/);
+  assert.match(s, /disabled=\{!repo\.trim\(\) \|\| \(!canManage && !pat\.trim\(\)\)\}/);
   assert.match(readFileSync(new URL("../components/repos.tsx", import.meta.url), "utf8"), /canAdd=\{canAddRepo\(user\)\}/);
 });
 

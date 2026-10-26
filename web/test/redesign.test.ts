@@ -167,9 +167,9 @@ test("members: start runs of approved workflows in their own tenant; not unappro
   assert.equal(startRun(db, member, un.name, { mode: "simulated" }, d).status, 409);
   // other tenant: not visible at all
   assert.equal(startRun(db, b, name, { mode: "simulated" }, deps(db, b.tenantId)).status, 404);
-  // Job 8: members can add repos to their own team, but still can't set tokens
+  // members can add repos to their own team and set the token on repos they added (here: no server key, so 503 not 403)
   assert.equal(addTeamRepo(db, member, "x/y").createdBy, member.id);
-  assert.throws(() => setRepoPat(db, member, "x/y", "ghp_" + "a".repeat(30), undefined), (e: unknown) => e instanceof RepoError && e.status === 403);
+  assert.throws(() => setRepoPat(db, member, "x/y", "ghp_" + "a".repeat(30), undefined), (e: unknown) => e instanceof RepoError && e.status === 503);
 });
 
 test("YAML: engine/prompt optional (backward compatible) and validated", () => {
