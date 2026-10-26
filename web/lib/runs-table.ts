@@ -14,7 +14,8 @@ export type SortKey = "id" | "name" | "status" | "startedAt" | "duration" | "tri
 export type SortDir = "asc" | "desc";
 export const DEFAULT_SORT: { key: SortKey; dir: SortDir } = { key: "startedAt", dir: "desc" };
 
-export const shortId = (id: string): string => id.slice(0, 8);
+/** 8 chars after a short alpha prefix + underscore (run_, skr_, ...); full ID stays in the title and sort. */
+export const shortId = (id: string): string => id.replace(/^[A-Za-z]{1,6}_/, "").slice(0, 8);
 
 /** "agent:foo" → foo (agent), "skill:bar" → bar (skill); legacy rows fall back to the title. */
 export function runName(workflow: string | null | undefined, title: string): { name: string; kind: RunRow["kind"] } {

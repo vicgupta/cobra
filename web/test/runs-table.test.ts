@@ -5,7 +5,10 @@ import { ariaSort, DEFAULT_SORT, formatDuration, nextSort, relativeTime, runName
 const row = (id: string, o: Partial<RunRow> = {}): RunRow => ({ id, name: id, kind: "agent", status: "succeeded", startedAt: 0, endedAt: null, triggeredBy: null, ...o });
 
 test("formatting helpers", () => {
-  assert.equal(shortId("run_mvpsjba63c3f"), "run_mvps");
+  assert.equal(shortId("run_mvpsjba63c3f"), "mvpsjba6");
+  assert.equal(shortId("skr_mvpsjx20gpjo"), "mvpsjx20");
+  assert.equal(shortId("abc123def456"), "abc123de");
+  assert.equal(shortId("run_ab"), "ab");
   assert.equal(formatDuration(134_000), "2m 14s");
   assert.equal(formatDuration(9_400), "9s");
   assert.equal(formatDuration(400), "<1s");
@@ -48,6 +51,8 @@ test("sorting: default newest first, every column both ways, blanks last", () =>
   assert.equal(ids("name", "asc"), "abc");
   assert.equal(ids("name", "desc"), "cba");
   assert.equal(ids("id", "asc"), "abc");
+  const pre = [row("skr_aaaa0001", { startedAt: 1 }), row("run_zzzz0001", { startedAt: 2 })];
+  assert.deepEqual(sortRuns(pre, "id", "asc").map((r) => r.id), ["run_zzzz0001", "skr_aaaa0001"], "id sort uses the full ID");
   assert.equal(ids("duration", "asc"), "cba");
   assert.equal(ids("duration", "desc"), "bca");
   assert.equal(ids("triggeredBy", "asc"), "cba");
