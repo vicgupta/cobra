@@ -69,7 +69,7 @@ test("migration 21 rewrites stored legacy workspace paths to the run's team dir"
     db.prepare("INSERT INTO runs (id, tenant_id, agent, repo, issue, title, started_at) VALUES (?, ?, 'a', '', 0, 't', 1)").run(id, t);
     db.prepare("INSERT INTO run_step_events (run_id, tenant_id, step_id, status, output, at) VALUES (?, ?, 's', 'succeeded', ?, 1)").run(id, t, `[cobra] workspace ${legacy}/${id}\nnot ${legacy}x/keep`);
   }
-  db.exec("PRAGMA user_version = 20"); migrate(db);
+  db.exec("PRAGMA user_version = 20"); migrate(db, 21);
   const out = (id: string) => (db.prepare("SELECT output o FROM run_step_events WHERE run_id = ?").get(id) as { o: string }).o;
   assert.equal(out("run_1"), `[cobra] workspace ${root}/${t1}/workspaces/run_1\nnot ${legacy}x/keep`);
   assert.equal(out("run_2"), `[cobra] workspace ${root}/${t2}/workspaces/run_2\nnot ${legacy}x/keep`);

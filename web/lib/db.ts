@@ -467,6 +467,36 @@ const MIGRATIONS: Array<(db: DB) => void> = [
       }
     }
   },
+  // 22 (Notifications): system-admin daily analytics email. One settings row; every send recorded
+  // (a unique (kind, send_date) index for 'daily' prevents double sends); changes audited.
+  (db) => db.exec(`
+    CREATE TABLE notification_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      daily_enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER,
+      updated_by TEXT
+    );
+    INSERT INTO notification_settings (id, daily_enabled) VALUES (1, 1);
+    CREATE TABLE notification_sends (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL CHECK (kind IN ('daily','test')),
+      send_date TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('sending','sent','failed','skipped')),
+      recipients TEXT NOT NULL DEFAULT '',
+      error TEXT,
+      triggered_by TEXT,
+      at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX notification_sends_daily ON notification_sends(send_date) WHERE kind = 'daily';
+    CREATE TABLE notification_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email TEXT NOT NULL,
+      action TEXT NOT NULL,
+      detail TEXT NOT NULL DEFAULT '',
+      at INTEGER NOT NULL
+    );
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */
