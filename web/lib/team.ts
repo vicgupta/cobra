@@ -11,7 +11,7 @@ import { CollabError, designatedLead, isSystemAdmin } from "./collab";
 import type { Actor } from "./workflows/store";
 
 export type Member = { id: number; email: string; name: string; role: "admin" | "team_lead" | "member" };
-export type TeamAction = "promote" | "demote" | "designate" | "clear_designated";
+export type TeamAction = "promote" | "demote" | "designate" | "clear_designated" | "notify_toggle" | "notify_recipients" | "notify_optout" | "notify_optin" | "notify_test";
 const PROTECTED_USER_ID = 1;
 
 export function teamMembers(db: DB, tenantId: number): Member[] {

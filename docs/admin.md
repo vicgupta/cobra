@@ -50,3 +50,12 @@ Every day at **4:00 AM America/New_York** (DST-aware) Cobra updates the agent CL
 - If an agent run is active, the update retries every 15 minutes until 6:30 AM ET, then is skipped and recorded. If the server was down at 4 AM it catches up the same day.
 - The page shows each run as a before/after table (Before, After, changed / unchanged / rolled back / failed, time) with a history of past runs; the 7 AM admin email includes last night's results.
 - Disable the timer with `COBRA_UPDATE_SCHEDULER=off`. Commands run with a minimal environment (no Cobra secrets) and output is redacted.
+
+## Team notifications (Settings > Team notifications)
+
+Each team gets its own daily email at **7:00 AM America/New_York** (DST-aware, one send per team per day, catch-up until noon ET). It covers **only that team's last 24 hours**: runs by status, engine and provider; failures with links; token usage and engine-reported spend; skills and workflows changed or awaiting approval; issues, PRs and merges; join requests and invites; new members; team audit highlights. No server health, other teams or admin metrics.
+
+- **On by default** for every team. **Recipients:** `Team leads` (team leads and the designated lead, default) or `Entire team` (every member). The tab shows the resolved list.
+- Team leads and system admins change the toggle and recipients and can "Send test now" (emails only the person clicking). Members see the tab and can opt out of their own copy.
+- Skipped days (disabled, or nobody left after opt-outs) are recorded with the reason. Every change is in team_audit (`notify_*`).
+- The system-admin email (Settings > Notifications) is unchanged.

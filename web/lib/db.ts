@@ -605,6 +605,56 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     CREATE INDEX update_items_run ON update_items(run_id);
     CREATE TABLE update_catalog_ids (tool TEXT PRIMARY KEY, ids TEXT NOT NULL, at INTEGER NOT NULL);
   `),
+  // 25 (Team notifications): a daily 7 AM ET email per team (team data only). Settings default to ON with
+  // recipients 'leads' (team leads + designated lead) when a team has no row. One daily send per team per
+  // NY date (unique index). team_audit is rebuilt again to allow the notification actions.
+  (db) => db.exec(`
+    CREATE TABLE team_notification_settings (
+      tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      recipients_mode TEXT NOT NULL DEFAULT 'leads' CHECK (recipients_mode IN ('leads','all')),
+      updated_at INTEGER,
+      updated_by TEXT
+    );
+    CREATE TABLE team_notification_optouts (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      at INTEGER NOT NULL,
+      PRIMARY KEY (tenant_id, user_id)
+    );
+    CREATE TABLE team_notification_sends (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK (kind IN ('daily','test')),
+      send_date TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('sending','sent','failed','skipped')),
+      recipients TEXT NOT NULL DEFAULT '',
+      error TEXT,
+      triggered_by TEXT,
+      at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX team_notification_sends_daily ON team_notification_sends(tenant_id, send_date) WHERE kind = 'daily';
+    CREATE INDEX team_notification_sends_tenant ON team_notification_sends(tenant_id, at);
+    CREATE TABLE team_audit_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('promote','demote','designate','clear_designated',
+        'invite_create','invite_revoke','invite_accept','team_create','signup_toggle',
+        'join_request','join_notify','join_send_link','join_dismiss','join_expire',
+        'notify_toggle','notify_recipients','notify_optout','notify_optin','notify_test')),
+      target_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      target_email TEXT,
+      detail TEXT NOT NULL DEFAULT '',
+      at INTEGER NOT NULL
+    );
+    INSERT INTO team_audit_new (id, tenant_id, actor_id, actor_email, action, target_id, target_email, detail, at)
+      SELECT id, tenant_id, actor_id, actor_email, action, target_id, target_email, detail, at FROM team_audit;
+    DROP TABLE team_audit;
+    ALTER TABLE team_audit_new RENAME TO team_audit;
+    CREATE INDEX team_audit_tenant ON team_audit(tenant_id, at);
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

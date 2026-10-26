@@ -5,6 +5,7 @@ import { dbPath, getDb } from "./db";
 import { sendEmail } from "./mail";
 import { maybeSendDaily, serviceHealth } from "./notifications";
 import { maybeRunDailyUpdate } from "./tool-updates";
+import { maybeSendTeamDaily } from "./team-notifications";
 import { nodeOps } from "./tool-updates-node";
 
 const g = globalThis as { __cobraNotifyTimer?: ReturnType<typeof setInterval> };
@@ -25,7 +26,12 @@ export function startNotifyScheduler(): void {
     try {
       const r = await maybeSendDaily(getDb(), sendEmail, Date.now(), () => serviceHealth(dbPath(), "/var/lib/cobra"));
       if (r === "sent" || r === "failed") console.log(`[cobra] daily admin email: ${r}`);
-    } catch (e) { console.error("[cobra] daily admin email:", e instanceof Error ? e.message : e); } finally { busy = false; }
+    } catch (e) { console.error("[cobra] daily admin email:", e instanceof Error ? e.message : e); }
+    try {
+      // 7 AM ET team emails (team data only), one claim per team per day.
+      const t = await maybeSendTeamDaily(getDb(), sendEmail, Date.now());
+      if (t !== "not-due") for (const [id, r] of Object.entries(t)) if (r !== "already") console.log(`[cobra] team ${id} daily email: ${r}`);
+    } catch (e) { console.error("[cobra] team daily email:", e instanceof Error ? e.message : e); } finally { busy = false; }
   };
   g.__cobraNotifyTimer = setInterval(() => void tick(), 60_000);
   g.__cobraNotifyTimer.unref?.();
