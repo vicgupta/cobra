@@ -11,6 +11,7 @@ import type { AgentRunner, RepoCheck } from "./handlers";
 import { modelArgs } from "../agent-models";
 import { effortArgs, type ProviderDefaults } from "../providers";
 import type { Engine } from "../engines";
+import { usageCollector, type Usage } from "../usage";
 
 type Env = Record<string, string | undefined>;
 
@@ -36,6 +37,8 @@ export type LocalRunnerOptions = {
   defaultTimeoutMs?: number;
   /** Settings > Providers defaults, read at run time: model when the agent has none, and the effort tier. */
   providerDefaults?: (driver: Engine) => ProviderDefaults;
+  /** Usage parsed from the engine's JSON output at the end of the agent step (display only). */
+  onUsage?: (runKey: string, usage: Usage) => void;
 };
 
 export const workspacesDir = () => process.env.COBRA_WORKSPACES_DIR || "/home/cobra/workspaces";
@@ -153,19 +156,22 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       // confined to its own throwaway clone. COBRA_CODEX_SANDBOX=workspace-write (etc.) opts back in.
       const sandbox = (opts.codexSandbox ?? process.env.COBRA_CODEX_SANDBOX ?? "").trim();
       const mode = sandbox ? ["--sandbox", sandbox] : ["--dangerously-bypass-approvals-and-sandbox"];
-      args = ["exec", "--skip-git-repo-check", ...modelArgs("codex", model), ...effortArgs("codex", effort), ...mode, "--output-last-message", lastFile, prompt + ghNote];
+      args = ["exec", "--skip-git-repo-check", ...modelArgs("codex", model), ...effortArgs("codex", effort), ...mode, "--json", "--output-last-message", lastFile, prompt + ghNote];
     } else {
       const oauth = opts.resolveSecret("CLAUDE_CODE_OAUTH_TOKEN");
       if (oauth) env.CLAUDE_CODE_OAUTH_TOKEN = oauth;
       const key = opts.resolveSecret("ANTHROPIC_API_KEY");
       if (!oauth && key) env.ANTHROPIC_API_KEY = key;
       cmd = opts.claudeBin ?? "claude";
-      args = ["-p", prompt + ghNote, ...modelArgs("claude-code", model), ...effortArgs("claude-code", effort), "--dangerously-skip-permissions", "--output-format", "text"];
+      args = ["-p", prompt + ghNote, ...modelArgs("claude-code", model), ...effortArgs("claude-code", effort), "--dangerously-skip-permissions", "--output-format", "json"];
     }
     note(`running ${driver} headless (model: ${model ?? "default"}${!own && model ? " (provider default)" : ""}, effort: ${effort ?? "default"})`);
     const limit = timeoutMs ?? opts.defaultTimeoutMs ?? 10 * 60_000;
+    const uc = usageCollector(driver, model, log);
     let r: { code: number; out: string };
-    try { r = await run(cmd, args, { cwd: dir, env, signal, log, timeoutMs: limit }); } finally { cleanup(); }
+    try { r = await run(cmd, args, { cwd: dir, env, signal, log: (s) => uc.write(s), timeoutMs: limit }); } finally { cleanup(); }
+    const parsed = uc.finish();
+    { try { opts.onUsage?.(runId, parsed.usage ?? uc.orNull()); } catch (e) { note(`usage not recorded: ${(e as Error).message}`); } }
     if (r.code !== 0) throw new Error(`${driver} exited with code ${r.code}`);
 
     await g(["add", "-A"]);
@@ -177,7 +183,7 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       if (cloned) { await g(["push", "-q", "origin", `${branch}:refs/heads/${branch}`]); pushed = true; note(`pushed ${branch} to ${repo}`); }
       else note("not pushed (no clone)");
     } else note("no file changes");
-    const summary = existsSync(lastFile) ? readFileSync(lastFile, "utf8").trim() : r.out.trim().slice(-2000);
+    const summary = existsSync(lastFile) ? readFileSync(lastFile, "utf8").trim() : (parsed.text || r.out).trim().slice(-2000);
     return { driver, workspace: dir, branch, pushed, files: files.join(","), summary };
   };
 }

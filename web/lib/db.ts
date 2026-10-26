@@ -338,6 +338,24 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     );
     ALTER TABLE provider_audit ADD COLUMN detail TEXT;
   `),
+  // 19 (Usage): display-only token usage and engine-reported cost per agent step (no budgets or limits).
+  // cost_usd is NULL unless the engine reported it; old runs simply have no rows ("no data").
+  (db) => db.exec(`
+    CREATE TABLE run_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+      step_id TEXT,
+      provider TEXT NOT NULL,
+      model TEXT,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      cached_tokens INTEGER,
+      cost_usd REAL,
+      cost_source TEXT CHECK (cost_source IS NULL OR cost_source IN ('reported','estimated')),
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX run_usage_run ON run_usage(run_id);
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */
