@@ -382,8 +382,6 @@ export function RepoManager({ initial, canManage, canAdd = canManage }: { initia
           <button className={button} disabled={!repo.trim()}>Add repo</button>
         </form>
       ) : <p className="text-xs text-subtle">Only team members can add repos.</p>}
-      <p className="text-xs text-subtle">Anyone on the team can add a repo; it is shared with the whole team. The person who added it, team leads and admins can edit or remove it.{canManage ? "" : " Only admins and team leads can set repo tokens."}</p>
-      <p className="text-xs text-subtle">A repo&apos;s token is used for all its GitHub calls, clones and pushes; without one the server&apos;s GITHUB_TOKEN is used. Tokens are encrypted and never shown again.</p>
       {notice && <p className="text-sm text-success">{notice}</p>}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     </div>

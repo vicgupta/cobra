@@ -78,3 +78,12 @@ test("UI: add form shown to members, token field only for leads/admins", async (
   assert.match(s, /\{canManage && <input aria-label="Personal access token \(optional\)"/);
   assert.match(readFileSync(new URL("../components/repos.tsx", import.meta.url), "utf8"), /canAdd=\{canAddRepo\(user\)\}/);
 });
+
+test("Settings > Repos UI: no recent-changes card or token/helper copy; audit data still recorded and served", async () => {
+  const { readFileSync } = await import("node:fs");
+  const repos = readFileSync(new URL("../components/repos.tsx", import.meta.url), "utf8");
+  const wf = readFileSync(new URL("../components/workflows.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(repos, /Recent repo changes|listRepoAudit/);
+  assert.doesNotMatch(wf, /Anyone on the team can add a repo|token is used/);
+  assert.match(readFileSync(new URL("../app/api/repos/route.ts", import.meta.url), "utf8"), /audit: listRepoAudit\(db, u\.tenantId\)/);
+});
