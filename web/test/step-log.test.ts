@@ -26,6 +26,7 @@ test("LiveLog never stops capturing: a huge header can't crowd out the latest ou
 test("mergeLogs keeps streamed output and appends the final log's new part", () => {
   const header = "[agent] a\n[prompt]\ndo it\n";
   assert.equal(mergeLogs(header + "stderr: boom\n", header + "[error]\nexit 1"), header + "stderr: boom\n[error]\nexit 1");
+  assert.equal(mergeLogs(header + "[opencode] Insufficient funds\n", header + "[error]\nexit 1"), header + "[opencode] Insufficient funds\n[error]\nexit 1", "no partial-line overlap");
   assert.equal(mergeLogs(null, "x"), "x"); assert.equal(mergeLogs("x", null), "x"); assert.equal(mergeLogs("abc", "abc"), "abc");
 });
 
@@ -59,7 +60,7 @@ test("runner: streamed output survives into the failed row; display collapses to
   const d = getRunDetail(db, run.id)!;
   const failed = d.events.find((e) => e.status === "failed")!;
   assert.match(failed.output!, /Insufficient account funds/, "agent's own stderr kept");
-  assert.match(failed.output!, /opencode exited with code 1/); assert.match(failed.output!, /chars omitted/); assert.ok(failed.truncated);
+  assert.match(failed.output!, /opencode exited with code 1/); assert.match(failed.output!, /\n\[error\]\n/); assert.match(failed.output!, /chars omitted/); assert.ok(failed.truncated);
   const steps = collapseSteps(d.events).filter((s) => s.stepId === "agent");
   assert.equal(steps.length, 1); assert.equal(steps[0].status, "failed"); assert.deepEqual(steps[0].history, ["pending", "running", "failed"]);
 });

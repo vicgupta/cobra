@@ -34,6 +34,8 @@ export function mergeLogs(a: string | null | undefined, b: string | null | undef
   if (!b || a === b || a.includes(b)) return a;
   let k = 0;
   while (k < a.length && k < b.length && a[k] === b[k]) k++;
+  // Only split at a line boundary, so a coincidental shared character can't eat the start of the next line.
+  if (k < b.length && k > 0 && b[k - 1] !== "\n" && b[k] !== "\n") k = b.lastIndexOf("\n", k - 1) + 1;
   const rest = b.slice(k);
   return a + (a.endsWith("\n") || rest.startsWith("\n") ? "" : "\n") + rest;
 }
