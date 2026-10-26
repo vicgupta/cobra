@@ -1,7 +1,10 @@
-// Settings > Providers: unified credential manager (system admins only).
+// Settings > Providers: unified credential manager, per team (tenant-scoped, migration 28). Every member
+// of a team (member, team lead, designated lead) manages that team's credentials and custom providers;
+// system admins (role admin, no team role) see the read-only view. Runs only ever see their own team's rows.
+// The server env file / CLI logins are a fallback for team 1 (Vic) only; other teams get a clear error.
 //
 // Each built-in provider has credential slots by auth type. Values are stored AES-256-GCM encrypted
-// (lib/secret-box.ts, COBRA_SECRET_KEY) in provider_secrets (engine, name); views carry set / not set,
+// (lib/secret-box.ts, COBRA_SECRET_KEY) in team_provider_secrets (tenant_id, engine, name); views carry set / not set,
 // the last 4 characters, who and when, never the value. Every set / replace / delete and auth-method
 // change is written to provider_audit. A stored value wins over the server env file (the env fallback).
 //
@@ -61,40 +64,48 @@ export const PROVIDER_AUTH: Record<AgentEngine | "openrouter", ProviderAuthSpec>
   },
 };
 
-type Admin = { id: number; email: string; role: string };
+type Admin = { id: number; email: string; role: string; tenantId: number };
+
+/** The team whose credentials may fall back to the server env file and the cobra user's CLI logins. */
+export const ENV_FALLBACK_TEAM = 1;
+/** Who manages a team's providers: anyone with a team role (member, team lead, designated lead). */
+export const canManageProviders = (u: { role: string }) => !isSystemAdmin(u);
+/** Env lookup for a team: the real env file for team 1, nothing for everyone else. */
+export const teamEnv = (tenantId: number, env: (n: string) => string | undefined) => (n: string) => (tenantId === ENV_FALLBACK_TEAM ? env(n) : undefined);
+export const noCredential = (what: string) => `no credential set for this team: ${what} (a team member adds it in Settings > Providers)`;
 export type CredentialView = CredentialSlot & { set: boolean; source: "stored" | "env" | null; last4: string | null; setAt: number | null; setBy: string | null };
 
-const row = (db: DB, engine: string, name: string) =>
-  db.prepare("SELECT value_enc, set_at, set_by FROM provider_secrets WHERE engine = ? AND name = ?").get(engine, name) as { value_enc: string; set_at: number; set_by: string | null } | undefined;
+const row = (db: DB, t: number, engine: string, name: string) =>
+  db.prepare("SELECT value_enc, set_at, set_by FROM team_provider_secrets WHERE tenant_id = ? AND engine = ? AND name = ?").get(t, engine, name) as { value_enc: string; set_at: number; set_by: string | null } | undefined;
 const tail = (v: string) => (v.length >= 12 ? v.slice(-4) : null);
 const envName = (engine: string, name: string) => (engine === "openrouter" ? "COBRA_OPENROUTER_API_KEY" : name);
 
 /** Stored value (decrypted) for a run; undefined when unset/undecryptable. Never log the result. */
-export function storedCredential(db: DB, engine: string, name: string, secretKey: string | undefined): string | undefined {
-  const r = row(db, engine, name);
+export function storedCredential(db: DB, t: number, engine: string, name: string, secretKey: string | undefined): string | undefined {
+  const r = row(db, t, engine, name);
   if (!r) return undefined;
   try { return decryptSecret(r.value_enc, secretKey); } catch { console.error(`[cobra] the stored ${name} for ${engine} can't be decrypted (COBRA_SECRET_KEY changed?)`); return undefined; }
 }
 
 /** Stored value, else the env fallback (same name in the server env file). */
-export function resolveCredential(db: DB, engine: string, name: string, secretKey: string | undefined, env: (n: string) => string | undefined): string | undefined {
-  return storedCredential(db, engine, name, secretKey) ?? (env(envName(engine, name))?.trim() || undefined);
+export function resolveCredential(db: DB, t: number, engine: string, name: string, secretKey: string | undefined, env: (n: string) => string | undefined): string | undefined {
+  return storedCredential(db, t, engine, name, secretKey) ?? (teamEnv(t, env)(envName(engine, name))?.trim() || undefined);
 }
 
-export function credentialViews(db: DB, engine: keyof typeof PROVIDER_AUTH, secretKey: string | undefined, env: (n: string) => string | undefined, withDetail: boolean): CredentialView[] {
+export function credentialViews(db: DB, t: number, engine: keyof typeof PROVIDER_AUTH, secretKey: string | undefined, env: (n: string) => string | undefined, withDetail: boolean): CredentialView[] {
   return PROVIDER_AUTH[engine].slots.map((s) => {
-    const r = row(db, engine, s.name);
+    const r = row(db, t, engine, s.name);
     let last4: string | null = null;
-    if (r && withDetail) { const v = storedCredential(db, engine, s.name, secretKey); last4 = v ? tail(v) : null; }
-    const envSet = !r && !!env(envName(engine, s.name))?.trim();
+    if (r && withDetail) { const v = storedCredential(db, t, engine, s.name, secretKey); last4 = v ? tail(v) : null; }
+    const envSet = !r && !!teamEnv(t, env)(envName(engine, s.name))?.trim();
     return { ...s, set: !!r || envSet, source: r ? "stored" : envSet ? "env" : null, last4, setAt: withDetail ? r?.set_at ?? null : null, setBy: withDetail ? r?.set_by ?? null : null };
   });
 }
 
 const audit = (db: DB, u: Admin, engine: string, detail: string, now: number) =>
-  db.prepare("INSERT INTO provider_audit (actor_id, actor_email, engine, at, detail) VALUES (?, ?, ?, ?, ?)").run(u.id, u.email, engine, now, detail);
+  db.prepare("INSERT INTO provider_audit (tenant_id, actor_id, actor_email, engine, at, detail) VALUES (?, ?, ?, ?, ?, ?)").run(u.tenantId, u.id, u.email, engine, now, detail);
 
-function requireAdmin(u: Admin, what: string) { if (!isSystemAdmin(u)) throw new CollabError(403, `only system admins can change ${what}`); }
+function requireManager(u: Admin, what: string) { if (!canManageProviders(u)) throw new CollabError(403, `only members of the team can change its ${what} (system admins without a team role can't)`); }
 
 export function checkSecretValue(v: unknown, label: string): string {
   if (typeof v !== "string") throw new CollabError(400, "value must be a string, or null to delete");
@@ -103,49 +114,49 @@ export function checkSecretValue(v: unknown, label: string): string {
   return t;
 }
 
-function writeSecret(db: DB, engine: string, name: string, value: string, secretKey: string | undefined, by: string, now: number) {
+function writeSecret(db: DB, t: number, engine: string, name: string, value: string, secretKey: string | undefined, by: string, now: number) {
   let enc: string;
   try { enc = encryptSecret(value, secretKey); } catch (x) { throw new CollabError(503, x instanceof Error ? x.message : "encryption failed"); }
-  db.prepare(`INSERT INTO provider_secrets (engine, name, value_enc, set_at, set_by) VALUES (?, ?, ?, ?, ?)
-    ON CONFLICT(engine, name) DO UPDATE SET value_enc = excluded.value_enc, set_at = excluded.set_at, set_by = excluded.set_by`).run(engine, name, enc, now, by);
+  db.prepare(`INSERT INTO team_provider_secrets (tenant_id, engine, name, value_enc, set_at, set_by) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(tenant_id, engine, name) DO UPDATE SET value_enc = excluded.value_enc, set_at = excluded.set_at, set_by = excluded.set_by`).run(t, engine, name, enc, now, by);
 }
 
 /** Set / replace (string) or delete (null) one credential slot of a built-in provider. System admins only. */
 export function setCredential(db: DB, u: Admin, engine: unknown, name: unknown, value: unknown, secretKey: string | undefined, env: (n: string) => string | undefined, now = Date.now()): CredentialView {
-  requireAdmin(u, "provider credentials");
+  requireManager(u, "provider credentials");
   const spec = PROVIDER_AUTH[engine as keyof typeof PROVIDER_AUTH];
   if (!spec || typeof engine !== "string" || !Object.hasOwn(PROVIDER_AUTH, engine)) throw new CollabError(404, `unknown provider '${String(engine)}'`);
   if (engine === "openrouter") throw new CollabError(400, "OpenRouter's key goes through its own path (lib/openrouter.ts)");
   const slot = spec.slots.find((s) => s.name === name);
   if (!slot) throw new CollabError(400, `${spec.label} has no credential '${String(name)}' (has: ${spec.slots.map((s) => s.name).join(", ")})`);
-  const existed = !!row(db, engine, slot.name);
+  const t = u.tenantId, existed = !!row(db, t, engine, slot.name);
   if (value === null || value === "") {
     if (!existed) throw new CollabError(404, `${slot.name} is not stored`);
-    db.prepare("DELETE FROM provider_secrets WHERE engine = ? AND name = ?").run(engine, slot.name);
+    db.prepare("DELETE FROM team_provider_secrets WHERE tenant_id = ? AND engine = ? AND name = ?").run(t, engine, slot.name);
     audit(db, u, engine, `${slot.name} deleted`, now);
   } else {
-    writeSecret(db, engine, slot.name, checkSecretValue(value, slot.label), secretKey, u.email, now);
+    writeSecret(db, t, engine, slot.name, checkSecretValue(value, slot.label), secretKey, u.email, now);
     audit(db, u, engine, `${slot.name} ${existed ? "replaced" : "set"}`, now);
   }
-  return credentialViews(db, engine as keyof typeof PROVIDER_AUTH, secretKey, env, true).find((c) => c.name === slot.name)!;
+  return credentialViews(db, t, engine as keyof typeof PROVIDER_AUTH, secretKey, env, true).find((c) => c.name === slot.name)!;
 }
 
-export function getAuthMode(db: DB, engine: string): { mode: AuthMode; updatedAt: number | null; updatedBy: string | null } {
-  const r = db.prepare("SELECT mode, updated_at, updated_by FROM provider_auth WHERE engine = ?").get(engine) as { mode: AuthMode; updated_at: number; updated_by: string | null } | undefined;
+export function getAuthMode(db: DB, t: number, engine: string): { mode: AuthMode; updatedAt: number | null; updatedBy: string | null } {
+  const r = db.prepare("SELECT mode, updated_at, updated_by FROM team_provider_auth WHERE tenant_id = ? AND engine = ?").get(t, engine) as { mode: AuthMode; updated_at: number; updated_by: string | null } | undefined;
   const spec = PROVIDER_AUTH[engine as keyof typeof PROVIDER_AUTH];
   const mode = r && spec?.modes.includes(r.mode) ? r.mode : spec?.modes[0] ?? "auto";
   return { mode, updatedAt: r?.updated_at ?? null, updatedBy: r?.updated_by ?? null };
 }
 
 export function setAuthMode(db: DB, u: Admin, engine: unknown, mode: unknown, now = Date.now()) {
-  requireAdmin(u, "provider auth methods");
+  requireManager(u, "provider auth methods");
   if (typeof engine !== "string" || !Object.hasOwn(PROVIDER_AUTH, engine)) throw new CollabError(404, `unknown provider '${String(engine)}'`);
   const spec = PROVIDER_AUTH[engine as keyof typeof PROVIDER_AUTH];
   if (!spec.modes.includes(mode as AuthMode)) throw new CollabError(400, `${spec.label} supports: ${spec.modes.join(", ")}`);
-  const old = getAuthMode(db, engine).mode;
-  db.prepare("INSERT INTO provider_auth (engine, mode, updated_at, updated_by) VALUES (?, ?, ?, ?) ON CONFLICT(engine) DO UPDATE SET mode = excluded.mode, updated_at = excluded.updated_at, updated_by = excluded.updated_by").run(engine, mode as string, now, u.email);
+  const old = getAuthMode(db, u.tenantId, engine).mode;
+  db.prepare("INSERT INTO team_provider_auth (tenant_id, engine, mode, updated_at, updated_by) VALUES (?, ?, ?, ?, ?) ON CONFLICT(tenant_id, engine) DO UPDATE SET mode = excluded.mode, updated_at = excluded.updated_at, updated_by = excluded.updated_by").run(u.tenantId, engine, mode as string, now, u.email);
   audit(db, u, engine, `auth method ${old} -> ${String(mode)}`, now);
-  return getAuthMode(db, engine);
+  return getAuthMode(db, u.tenantId, engine);
 }
 
 /** True when the server has a Codex ChatGPT login file (read-only check; the file is never read here). */
@@ -154,25 +165,27 @@ export const codexServerLogin = (home = process.env.HOME ?? "") => !!home && exi
 export type RunAuth = { env: Record<string, string>; unset: string[]; note: string };
 
 /** Per-run auth env for Claude Code and Codex from the chosen method (throws a clear error when missing). */
-export function runAuth(engine: "claude-code" | "codex", mode: AuthMode, cred: (name: string) => string | undefined, serverLogin: boolean): RunAuth {
+export function runAuth(engine: "claude-code" | "codex", mode: AuthMode, cred: (name: string) => string | undefined, serverLogin: boolean, cliLogin = true): RunAuth {
   if (engine === "claude-code") {
     const oauth = cred("CLAUDE_CODE_OAUTH_TOKEN"), key = cred("ANTHROPIC_API_KEY");
     const useSub = mode === "subscription" || (mode === "auto" && !!oauth);
     if (useSub) {
-      if (!oauth) throw new Error("Claude Code is set to Subscription but no CLAUDE_CODE_OAUTH_TOKEN is stored: a system admin pastes one from `claude setup-token` in Settings > Providers");
+      if (!oauth) throw new Error("Claude Code is set to Subscription but no CLAUDE_CODE_OAUTH_TOKEN is stored: a team member pastes one from `claude setup-token` in Settings > Providers");
       return { env: { CLAUDE_CODE_OAUTH_TOKEN: oauth }, unset: ["ANTHROPIC_API_KEY"], note: "claude-code: using the subscription token" };
     }
     if (key) return { env: { ANTHROPIC_API_KEY: key }, unset: ["CLAUDE_CODE_OAUTH_TOKEN"], note: "claude-code: using the API key" };
-    if (mode === "api_key") throw new Error("Claude Code is set to API key but no ANTHROPIC_API_KEY is stored: a system admin sets it in Settings > Providers");
+    if (mode === "api_key") throw new Error("Claude Code is set to API key but no ANTHROPIC_API_KEY is stored: a team member sets it in Settings > Providers");
+    if (!cliLogin) throw new Error(noCredential("Claude Code needs an ANTHROPIC_API_KEY or a CLAUDE_CODE_OAUTH_TOKEN"));
     return { env: {}, unset: [], note: "claude-code: no stored credential; using the CLI's own login" };
   }
   const key = cred("CODEX_API_KEY"), token = cred("CODEX_ACCESS_TOKEN");
   if (mode === "api_key" || (mode === "auto" && key && !token && !serverLogin)) {
-    if (!key) throw new Error("Codex is set to API key but no CODEX_API_KEY is stored: a system admin sets it in Settings > Providers");
+    if (!key) throw new Error("Codex is set to API key but no CODEX_API_KEY is stored: a team member sets it in Settings > Providers");
     return { env: { CODEX_API_KEY: key }, unset: ["OPENAI_API_KEY", "CODEX_ACCESS_TOKEN"], note: "codex: using the API key" };
   }
   if (token) return { env: { CODEX_ACCESS_TOKEN: token }, unset: ["CODEX_API_KEY", "OPENAI_API_KEY"], note: "codex: using the stored ChatGPT/Codex access token" };
   if (!serverLogin && mode === "subscription") throw new Error("Codex is set to Subscription but there's no ChatGPT login on the server and no CODEX_ACCESS_TOKEN is stored");
+  if (!cliLogin) throw new Error(noCredential("Codex needs a CODEX_API_KEY or a CODEX_ACCESS_TOKEN"));
   return { env: {}, unset: ["CODEX_API_KEY", "OPENAI_API_KEY"], note: "codex: using the server's ChatGPT login" };
 }
 
@@ -192,22 +205,22 @@ export type CustomProviderView = CustomProvider & { key: CredentialView };
 
 const parseModels = (s: string): string[] => { try { const a = JSON.parse(s); return Array.isArray(a) ? a.filter((m): m is string => typeof m === "string") : []; } catch { return []; } };
 
-export function listCustomProviders(db: DB): CustomProvider[] {
-  return (db.prepare("SELECT id, name, base_url baseUrl, models, created_at createdAt, created_by createdBy, updated_at updatedAt, updated_by updatedBy FROM custom_providers ORDER BY id").all() as Array<Omit<CustomProvider, "models"> & { models: string }>)
+export function listCustomProviders(db: DB, t: number): CustomProvider[] {
+  return (db.prepare("SELECT id, name, base_url baseUrl, models, created_at createdAt, created_by createdBy, updated_at updatedAt, updated_by updatedBy FROM team_custom_providers WHERE tenant_id = ? ORDER BY id").all(t) as Array<Omit<CustomProvider, "models"> & { models: string }>)
     .map((r) => ({ ...r, models: parseModels(r.models) }));
 }
 
-export function customProviderViews(db: DB, secretKey: string | undefined, withDetail: boolean): CustomProviderView[] {
-  return listCustomProviders(db).map((p) => {
-    const r = row(db, CUSTOM_ENGINE(p.id), CUSTOM_KEY);
+export function customProviderViews(db: DB, t: number, secretKey: string | undefined, withDetail: boolean): CustomProviderView[] {
+  return listCustomProviders(db, t).map((p) => {
+    const r = row(db, t, CUSTOM_ENGINE(p.id), CUSTOM_KEY);
     let last4: string | null = null;
-    if (r && withDetail) { const v = storedCredential(db, CUSTOM_ENGINE(p.id), CUSTOM_KEY, secretKey); last4 = v ? tail(v) : null; }
+    if (r && withDetail) { const v = storedCredential(db, t, CUSTOM_ENGINE(p.id), CUSTOM_KEY, secretKey); last4 = v ? tail(v) : null; }
     return { ...p, key: { name: CUSTOM_KEY, type: "api_key", label: `${p.name} API key`, help: "", set: !!r, source: r ? "stored" : null, last4, setAt: withDetail ? r?.set_at ?? null : null, setBy: withDetail ? r?.set_by ?? null : null } };
   });
 }
 
-/** Every custom model id, as the OpenCode engine sees it: <provider id>/<model>. */
-export const customModelIds = (db: DB): string[] => listCustomProviders(db).flatMap((p) => p.models.map((m) => `${p.id}/${m}`));
+/** The team's custom model ids, as the OpenCode engine sees them: <provider id>/<model> (never another team's). */
+export const customModelIds = (db: DB, t: number): string[] => listCustomProviders(db, t).flatMap((p) => p.models.map((m) => `${p.id}/${m}`));
 
 type CustomInput = { id?: unknown; name?: unknown; baseUrl?: unknown; models?: unknown; apiKey?: unknown };
 function checkFields(b: CustomInput, partial: CustomProvider | null) {
@@ -227,26 +240,27 @@ function checkFields(b: CustomInput, partial: CustomProvider | null) {
 }
 
 export function addCustomProvider(db: DB, u: Admin, b: CustomInput, secretKey: string | undefined, now = Date.now()): CustomProvider {
-  requireAdmin(u, "custom providers");
+  requireManager(u, "custom providers");
   const id = typeof b.id === "string" ? b.id.trim() : "";
   if (!ID_RE.test(id)) throw new CollabError(400, "id must be 2-31 lowercase letters, digits or '-', starting with a letter");
   if (RESERVED.has(id)) throw new CollabError(400, `'${id}' is a built-in OpenCode provider id; pick another`);
-  if (db.prepare("SELECT 1 FROM custom_providers WHERE id = ?").get(id)) throw new CollabError(409, `a custom provider '${id}' already exists`);
+  const t = u.tenantId;
+  if (db.prepare("SELECT 1 FROM team_custom_providers WHERE tenant_id = ? AND id = ?").get(t, id)) throw new CollabError(409, `a custom provider '${id}' already exists`);
   const f = checkFields(b, null);
   const key = b.apiKey === undefined || b.apiKey === null || b.apiKey === "" ? null : checkSecretValue(b.apiKey, "API key");
   db.exec("BEGIN");
   try {
-    db.prepare("INSERT INTO custom_providers (id, name, base_url, models, created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(id, f.name, f.baseUrl, JSON.stringify(f.models), now, u.email, now, u.email);
-    if (key) writeSecret(db, CUSTOM_ENGINE(id), CUSTOM_KEY, key, secretKey, u.email, now);
+    db.prepare("INSERT INTO team_custom_providers (tenant_id, id, name, base_url, models, created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(t, id, f.name, f.baseUrl, JSON.stringify(f.models), now, u.email, now, u.email);
+    if (key) writeSecret(db, t, CUSTOM_ENGINE(id), CUSTOM_KEY, key, secretKey, u.email, now);
     audit(db, u, CUSTOM_ENGINE(id), `custom provider added (${f.baseUrl}; ${f.models.length} models${key ? "; API key set" : ""})`, now);
     db.exec("COMMIT");
   } catch (e) { db.exec("ROLLBACK"); throw e; }
-  return listCustomProviders(db).find((p) => p.id === id)!;
+  return listCustomProviders(db, u.tenantId).find((p) => p.id === id)!;
 }
 
 export function updateCustomProvider(db: DB, u: Admin, id: string, b: CustomInput, secretKey: string | undefined, now = Date.now()): CustomProvider {
-  requireAdmin(u, "custom providers");
-  const cur = listCustomProviders(db).find((p) => p.id === id);
+  requireManager(u, "custom providers");
+  const t = u.tenantId, cur = listCustomProviders(db, t).find((p) => p.id === id);
   if (!cur) throw new CollabError(404, `no custom provider '${id}'`);
   const f = checkFields(b, cur);
   const changes: string[] = [];
@@ -255,28 +269,28 @@ export function updateCustomProvider(db: DB, u: Admin, id: string, b: CustomInpu
   if (JSON.stringify(f.models) !== JSON.stringify(cur.models)) changes.push(`models -> ${f.models.length}`);
   db.exec("BEGIN");
   try {
-    db.prepare("UPDATE custom_providers SET name = ?, base_url = ?, models = ?, updated_at = ?, updated_by = ? WHERE id = ?").run(f.name, f.baseUrl, JSON.stringify(f.models), now, u.email, id);
+    db.prepare("UPDATE team_custom_providers SET name = ?, base_url = ?, models = ?, updated_at = ?, updated_by = ? WHERE tenant_id = ? AND id = ?").run(f.name, f.baseUrl, JSON.stringify(f.models), now, u.email, t, id);
     if (b.apiKey === null) {
-      if (row(db, CUSTOM_ENGINE(id), CUSTOM_KEY)) { db.prepare("DELETE FROM provider_secrets WHERE engine = ? AND name = ?").run(CUSTOM_ENGINE(id), CUSTOM_KEY); changes.push("API key deleted"); }
+      if (row(db, t, CUSTOM_ENGINE(id), CUSTOM_KEY)) { db.prepare("DELETE FROM team_provider_secrets WHERE tenant_id = ? AND engine = ? AND name = ?").run(t, CUSTOM_ENGINE(id), CUSTOM_KEY); changes.push("API key deleted"); }
     } else if (b.apiKey !== undefined && b.apiKey !== "") {
-      const had = !!row(db, CUSTOM_ENGINE(id), CUSTOM_KEY);
-      writeSecret(db, CUSTOM_ENGINE(id), CUSTOM_KEY, checkSecretValue(b.apiKey, "API key"), secretKey, u.email, now);
+      const had = !!row(db, t, CUSTOM_ENGINE(id), CUSTOM_KEY);
+      writeSecret(db, t, CUSTOM_ENGINE(id), CUSTOM_KEY, checkSecretValue(b.apiKey, "API key"), secretKey, u.email, now);
       changes.push(`API key ${had ? "replaced" : "set"}`);
     }
     audit(db, u, CUSTOM_ENGINE(id), `custom provider edited (${changes.join("; ") || "no changes"})`, now);
     db.exec("COMMIT");
   } catch (e) { db.exec("ROLLBACK"); throw e; }
-  return listCustomProviders(db).find((p) => p.id === id)!;
+  return listCustomProviders(db, u.tenantId).find((p) => p.id === id)!;
 }
 
 export function deleteCustomProvider(db: DB, u: Admin, id: string, now = Date.now()): void {
-  requireAdmin(u, "custom providers");
-  const cur = listCustomProviders(db).find((p) => p.id === id);
+  requireManager(u, "custom providers");
+  const t = u.tenantId, cur = listCustomProviders(db, t).find((p) => p.id === id);
   if (!cur) throw new CollabError(404, `no custom provider '${id}'`);
   db.exec("BEGIN");
   try {
-    db.prepare("DELETE FROM custom_providers WHERE id = ?").run(id);
-    db.prepare("DELETE FROM provider_secrets WHERE engine = ?").run(CUSTOM_ENGINE(id));
+    db.prepare("DELETE FROM team_custom_providers WHERE tenant_id = ? AND id = ?").run(t, id);
+    db.prepare("DELETE FROM team_provider_secrets WHERE tenant_id = ? AND engine = ?").run(t, CUSTOM_ENGINE(id));
     audit(db, u, CUSTOM_ENGINE(id), "custom provider deleted (and its API key)", now);
     db.exec("COMMIT");
   } catch (e) { db.exec("ROLLBACK"); throw e; }
@@ -285,12 +299,12 @@ export function deleteCustomProvider(db: DB, u: Admin, id: string, now = Date.no
 export const customEnvName = (id: string) => `COBRA_CP_${id.toUpperCase().replace(/-/g, "_")}_KEY`;
 
 /** opencode.json for a run plus the env vars carrying the keys. Keys never appear in the file. */
-export function opencodeCustomConfig(db: DB, secretKey: string | undefined): { config: Record<string, unknown> | null; env: Record<string, string>; secrets: string[] } {
-  const ps = listCustomProviders(db);
+export function opencodeCustomConfig(db: DB, t: number, secretKey: string | undefined): { config: Record<string, unknown> | null; env: Record<string, string>; secrets: string[] } {
+  const ps = listCustomProviders(db, t);
   if (!ps.length) return { config: null, env: {}, secrets: [] };
   const env: Record<string, string> = {}, provider: Record<string, unknown> = {};
   for (const p of ps) {
-    const key = storedCredential(db, CUSTOM_ENGINE(p.id), CUSTOM_KEY, secretKey);
+    const key = storedCredential(db, t, CUSTOM_ENGINE(p.id), CUSTOM_KEY, secretKey);
     if (key) env[customEnvName(p.id)] = key;
     provider[p.id] = {
       npm: "@ai-sdk/openai-compatible", name: p.name,
@@ -301,10 +315,10 @@ export function opencodeCustomConfig(db: DB, secretKey: string | undefined): { c
   return { config: { $schema: "https://opencode.ai/config.json", provider }, env, secrets: Object.values(env) };
 }
 
-/** Every stored custom-provider key (for run-log redaction). */
-export const customProviderSecrets = (db: DB, secretKey: string | undefined) =>
-  listCustomProviders(db).map((p) => storedCredential(db, CUSTOM_ENGINE(p.id), CUSTOM_KEY, secretKey)).filter((v): v is string => !!v);
+/** The team's stored custom-provider keys (for run-log redaction). */
+export const customProviderSecrets = (db: DB, t: number, secretKey: string | undefined) =>
+  listCustomProviders(db, t).map((p) => storedCredential(db, t, CUSTOM_ENGINE(p.id), CUSTOM_KEY, secretKey)).filter((v): v is string => !!v);
 
-/** Every stored built-in credential (for run-log redaction). */
-export const builtinCredentialSecrets = (db: DB, secretKey: string | undefined) =>
-  (Object.keys(PROVIDER_AUTH) as Array<keyof typeof PROVIDER_AUTH>).flatMap((e) => PROVIDER_AUTH[e].slots.map((s) => storedCredential(db, e, s.name, secretKey))).filter((v): v is string => !!v);
+/** The team's stored built-in credentials (for run-log redaction). */
+export const builtinCredentialSecrets = (db: DB, t: number, secretKey: string | undefined) =>
+  (Object.keys(PROVIDER_AUTH) as Array<keyof typeof PROVIDER_AUTH>).flatMap((e) => PROVIDER_AUTH[e].slots.map((s) => storedCredential(db, t, e, s.name, secretKey))).filter((v): v is string => !!v);

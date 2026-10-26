@@ -15,25 +15,27 @@ import { localRunner } from "../lib/workflows/local-runner";
 
 const KEY = Buffer.alloc(32, 7).toString("base64");
 const OC = "oc-zen-TESTONLY0123456789";
+const tid = (db: ReturnType<typeof openDb>, id: number) => (db.prepare("SELECT tenant_id t FROM users WHERE id = ?").get(id) as { t: number }).t;
 function setup() {
   const db = openDb(":memory:");
-  const mk = (email: string, role: "admin" | "member") => ({ id: createUser(db, { email, tenant: "a", tenantName: "a", role, password: "pw-1234567890" }), email, role });
+  const mk = (email: string, role: "admin" | "member") => { const id = createUser(db, { email, tenant: "a", tenantName: "a", role, password: "pw-1234567890" }); return { id, email, role, tenantId: tid(db, id) }; };
   return { db, admin: mk("admin@a.com", "admin"), member: mk("m@a.com", "member") };
 }
 
-test("opencode key: encrypted, admin-only, never returned, audited, separate from OpenRouter", () => {
+test("opencode key: encrypted, team members only (not system admins), never returned, audited, separate from OpenRouter", () => {
   const { db, admin, member } = setup();
-  assert.throws(() => setProviderSecret(db, member, "opencode", OC, KEY), (e) => e instanceof CollabError && e.status === 403);
-  const v = setProviderSecret(db, admin, "opencode", OC, KEY);
+  assert.throws(() => setProviderSecret(db, admin, "opencode", OC, KEY), (e) => e instanceof CollabError && e.status === 403);
+  const t = member.tenantId;
+  const v = setProviderSecret(db, member, "opencode", OC, KEY);
   assert.equal(v.name, "OPENCODE_API_KEY"); assert.equal(v.set, true); assert.ok(!JSON.stringify(v).includes(OC));
-  const raw = db.prepare("SELECT value_enc FROM provider_secrets WHERE engine = 'opencode'").get() as { value_enc: string };
+  const raw = db.prepare("SELECT value_enc FROM team_provider_secrets WHERE engine = 'opencode'").get() as { value_enc: string };
   assert.ok(!raw.value_enc.includes(OC));
-  assert.equal(getProviderSecret(db, "opencode", KEY), OC);
-  assert.ok(providerSecretValues(db, KEY).includes(OC), "redacted from logs");
+  assert.equal(getProviderSecret(db, t, "opencode", KEY), OC);
+  assert.ok(providerSecretValues(db, t, KEY).includes(OC), "redacted from logs");
   assert.equal(openRouterStatus(db).set, false, "OpenRouter key untouched");
-  const a = listProviderAudit(db, 5)[0]; assert.equal(a.engine, "opencode"); assert.match(a.detail!, /OPENCODE_API_KEY set/); assert.ok(!JSON.stringify(a).includes(OC));
-  setProviderSecret(db, admin, "opencode", null, KEY);
-  assert.equal(providerSecretStatus(db, "opencode")!.set, false);
+  const a = listProviderAudit(db, t, 5)[0]; assert.equal(a.engine, "opencode"); assert.match(a.detail!, /OPENCODE_API_KEY set/); assert.ok(!JSON.stringify(a).includes(OC));
+  setProviderSecret(db, member, "opencode", null, KEY);
+  assert.equal(providerSecretStatus(db, t, "opencode")!.set, false);
 });
 
 test("opencode models: opencode/<model> ids on the OpenCode engine only", () => {
@@ -62,7 +64,7 @@ test("opencode runner: OPENCODE_API_KEY injected, no OpenRouter key, clear error
     assert.match(o(), new RegExp(`OPENCODE_API_KEY=${OC}`)); assert.match(o(), /OPENROUTER_API_KEY=\n/); assert.match(o(), /ARG=opencode\/gpt-6-sol/);
     assert.equal(orCalls, 0, "the OpenRouter key is never read for opencode/* models");
     key = undefined;
-    await assert.rejects(go("opencode/gpt-6-sol"), /OpenCode has no API key/);
+    await assert.rejects(go("opencode/gpt-6-sol"), /no credential set for this team: OpenCode needs an OPENCODE_API_KEY/);
     await go("opencode/big-pickle");
     assert.match(o(), /OPENCODE_API_KEY=\n/); assert.match(o(), /ARG=opencode\/big-pickle/);
   } finally { process.env.HOME = prevHome; }

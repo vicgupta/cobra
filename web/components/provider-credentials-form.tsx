@@ -29,7 +29,7 @@ function ConfirmDelete({ what, busy, onConfirm }: { what: string; busy: boolean;
   );
 }
 
-/** One masked credential slot: enter / replace / delete. The value is write-only. System admins only (server-enforced). */
+/** One masked credential slot: enter / replace / delete. The value is write-only. Team members only, own team (server-enforced). */
 export function CredentialForm({ engine, name, label, help, set, stored }: { engine: string; name: string; label: string; help: string; set: boolean; stored: boolean }) {
   const router = useRouter();
   const [value, setValue] = useState("");

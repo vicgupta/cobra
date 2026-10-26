@@ -691,6 +691,48 @@ const MIGRATIONS: Array<(db: DB) => void> = [
       updated_by TEXT
     );
   `),
+  // 28 (Job 11): provider credentials, auth methods and custom providers are per team. Existing rows move to
+  // team 1. OpenRouter's key stays in the global provider_secrets table (its code path is on hold) and is used
+  // by team 1 only. provider_audit gains tenant_id (NULL = global: provider defaults, OpenRouter).
+  (db) => db.exec(`
+    CREATE TABLE team_provider_secrets (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      engine TEXT NOT NULL,
+      name TEXT NOT NULL,
+      value_enc TEXT NOT NULL,
+      set_at INTEGER NOT NULL,
+      set_by TEXT,
+      PRIMARY KEY (tenant_id, engine, name)
+    );
+    CREATE TABLE team_provider_auth (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      engine TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK (mode IN ('auto','api_key','subscription')),
+      updated_at INTEGER NOT NULL,
+      updated_by TEXT,
+      PRIMARY KEY (tenant_id, engine)
+    );
+    CREATE TABLE team_custom_providers (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      base_url TEXT NOT NULL,
+      models TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      updated_at INTEGER NOT NULL,
+      updated_by TEXT,
+      PRIMARY KEY (tenant_id, id)
+    );
+    INSERT INTO team_provider_secrets SELECT 1, engine, name, value_enc, set_at, set_by FROM provider_secrets WHERE engine <> 'openrouter' AND EXISTS (SELECT 1 FROM tenants WHERE id = 1);
+    DELETE FROM provider_secrets WHERE engine <> 'openrouter' AND EXISTS (SELECT 1 FROM tenants WHERE id = 1);
+    INSERT INTO team_provider_auth SELECT 1, engine, mode, updated_at, updated_by FROM provider_auth WHERE EXISTS (SELECT 1 FROM tenants WHERE id = 1);
+    INSERT INTO team_custom_providers SELECT 1, id, name, base_url, models, created_at, created_by, updated_at, updated_by FROM custom_providers WHERE EXISTS (SELECT 1 FROM tenants WHERE id = 1);
+    DROP TABLE provider_auth;
+    DROP TABLE custom_providers;
+    ALTER TABLE provider_audit ADD COLUMN tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE;
+    UPDATE provider_audit SET tenant_id = 1 WHERE (detail LIKE '%API_KEY%' OR detail LIKE '%TOKEN%' OR detail LIKE 'auth method%' OR engine LIKE 'custom:%') AND engine <> 'openrouter' AND EXISTS (SELECT 1 FROM tenants WHERE id = 1);
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

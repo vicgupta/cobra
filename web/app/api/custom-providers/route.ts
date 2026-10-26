@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
 import { apiGuard } from "@/lib/auth/server";
-import { CollabError, isSystemAdmin } from "@/lib/collab";
-import { addCustomProvider, customProviderViews } from "@/lib/provider-credentials";
+import { CollabError } from "@/lib/collab";
+import { addCustomProvider, canManageProviders, customProviderViews } from "@/lib/provider-credentials";
 import { getDb, secretValue } from "@/lib/workflows/server";
 
-/** Custom OpenAI-compatible providers (run on the OpenCode engine). Admins get masked key status; others names/models only. */
+/** The caller's team's custom OpenAI-compatible providers (OpenCode engine). Team members get masked key status;
+ *  system admins (read-only) get names/models and set / not set only. */
 export async function GET(req: Request) {
   const g = await apiGuard(req);
   if (g.error) return g.error;
-  const admin = isSystemAdmin(g.user);
-  return NextResponse.json({ providers: customProviderViews(getDb(), secretValue("COBRA_SECRET_KEY"), admin).map((p) => admin ? p : { id: p.id, name: p.name, models: p.models, key: { set: p.key.set } }) });
+  const m = canManageProviders(g.user);
+  return NextResponse.json({ providers: customProviderViews(getDb(), g.user.tenantId, secretValue("COBRA_SECRET_KEY"), m).map((p) => m ? p : { id: p.id, name: p.name, models: p.models, key: { set: p.key.set } }) });
 }
 
-/** Body: { id, name, baseUrl, models: string[] | "a, b", apiKey? }. System admins only. */
+/** Body: { id, name, baseUrl, models: string[] | "a, b", apiKey? }. Team members only (the caller's team). */
 export async function POST(req: Request) {
   const g = await apiGuard(req);
   if (g.error) return g.error;

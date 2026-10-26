@@ -4,7 +4,7 @@ import { CollabError } from "@/lib/collab";
 import { setAuthMode } from "@/lib/provider-credentials";
 import { getDb } from "@/lib/workflows/server";
 
-/** Settings > Providers: choose the auth method { mode: "auto" | "api_key" | "subscription" }. System admins only. */
+/** Settings > Providers: choose the auth method { mode: "auto" | "api_key" | "subscription" }. Team members only (the caller's team). */
 export async function PUT(req: Request, ctx: { params: Promise<{ engine: string }> }) {
   const g = await apiGuard(req);
   if (g.error) return g.error;

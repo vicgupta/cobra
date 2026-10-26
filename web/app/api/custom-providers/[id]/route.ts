@@ -4,7 +4,7 @@ import { CollabError } from "@/lib/collab";
 import { deleteCustomProvider, updateCustomProvider } from "@/lib/provider-credentials";
 import { getDb, secretValue } from "@/lib/workflows/server";
 
-/** Edit: { name?, baseUrl?, models?, apiKey?: string (replace) | null (delete) }. System admins only. */
+/** Edit: { name?, baseUrl?, models?, apiKey?: string (replace) | null (delete) }. Team members only (the caller's team). */
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const g = await apiGuard(req);
   if (g.error) return g.error;

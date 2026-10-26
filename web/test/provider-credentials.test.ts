@@ -1,5 +1,5 @@
-// Settings > Providers credential manager: slots, masked status, admin-only set/replace/delete with audit,
-// auth method per provider, runner selection by method, custom OpenAI-compatible providers on OpenCode.
+// Settings > Providers credential manager, per team (Job 11): slots, masked status, team-member set/replace/delete
+// with per-team audit, cross-team isolation, env fallback for team 1 only, auth method per provider, runner selection by method, custom OpenAI-compatible providers on OpenCode.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -8,58 +8,91 @@ import path from "node:path";
 import { openDb } from "../lib/db";
 import { createUser } from "../lib/auth/users";
 import { CollabError } from "../lib/collab";
+import { migrate } from "../lib/db";
+import { DatabaseSync } from "node:sqlite";
 import { checkModel, allModels } from "../lib/agent-models";
 import { listProviderAudit, getProviderSecret } from "../lib/providers";
 import {
   addCustomProvider, credentialViews, customModelIds, customProviderViews, deleteCustomProvider, getAuthMode,
-  opencodeCustomConfig, runAuth, setAuthMode, setCredential, storedCredential, updateCustomProvider, customEnvName,
+  opencodeCustomConfig, runAuth, canManageProviders, resolveCredential, setAuthMode, setCredential, storedCredential, updateCustomProvider, customEnvName, builtinCredentialSecrets,
 } from "../lib/provider-credentials";
 import { localRunner } from "../lib/workflows/local-runner";
+import { updaterOps } from "../lib/tool-updates-node";
 
 const SK = Buffer.alloc(32, 7).toString("base64");
 const noEnv = () => undefined;
 function setup() {
   const db = openDb(":memory:");
-  const mk = (email: string, role: "admin" | "team_lead" | "member") => ({ id: createUser(db, { email, tenant: "a", tenantName: "a", role, password: "pw-1234567890" }), email, role });
-  return { db, admin: mk("admin@a.com", "admin"), lead: mk("lead@a.com", "team_lead"), member: mk("m@a.com", "member") };
+  const mk = (email: string, role: "admin" | "team_lead" | "member", tenant = "a") => {
+    const id = createUser(db, { email, tenant, tenantName: tenant, role, password: "pw-1234567890" });
+    return { id, email, role, tenantId: (db.prepare("SELECT tenant_id t FROM users WHERE id = ?").get(id) as { t: number }).t };
+  };
+  const r = { db, admin: mk("admin@a.com", "admin"), lead: mk("lead@a.com", "team_lead"), member: mk("m@a.com", "member"), other: mk("o@b.com", "member", "b"), otherLead: mk("ol@b.com", "team_lead", "b") };
+  assert.equal(r.lead.tenantId, 1); assert.notEqual(r.other.tenantId, 1);
+  return r;
 }
 const is = (status: number) => (e: unknown) => e instanceof CollabError && e.status === status;
 
-test("credentials: admin-only set / replace / delete, masked status (last 4), audit, env fallback", () => {
+test("credentials: every team member (member, lead) manages; system admins read-only; masked status; per-team audit", () => {
   const { db, admin, lead, member } = setup();
-  for (const u of [lead, member]) assert.throws(() => setCredential(db, u, "claude-code", "ANTHROPIC_API_KEY", "sk-ant-TESTONLY-1234", SK, noEnv), is(403));
-  assert.throws(() => setCredential(db, admin, "claude-code", "NOPE", "sk-ant-TESTONLY-1234", SK, noEnv), is(400));
-  assert.throws(() => setCredential(db, admin, "bogus", "X", "sk-ant-TESTONLY-1234", SK, noEnv), is(404));
-  assert.throws(() => setCredential(db, admin, "claude-code", "ANTHROPIC_API_KEY", "short", SK, noEnv), is(400));
-  assert.throws(() => setCredential(db, admin, "openrouter", "OPENROUTER_API_KEY", "sk-or-TESTONLY-1234", SK, noEnv), is(400));
-  const v = setCredential(db, admin, "claude-code", "ANTHROPIC_API_KEY", "sk-ant-TESTONLY-1234", SK, noEnv, 1000);
-  assert.equal(v.set, true); assert.equal(v.last4, "1234"); assert.equal(v.setBy, "admin@a.com"); assert.equal(v.setAt, 1000);
+  const t = lead.tenantId;
+  assert.equal(canManageProviders(member), true); assert.equal(canManageProviders(lead), true); assert.equal(canManageProviders(admin), false);
+  assert.throws(() => setCredential(db, admin, "claude-code", "ANTHROPIC_API_KEY", "sk-ant-TESTONLY-1234", SK, noEnv), is(403));
+  assert.throws(() => setCredential(db, lead, "claude-code", "NOPE", "sk-ant-TESTONLY-1234", SK, noEnv), is(400));
+  assert.throws(() => setCredential(db, lead, "bogus", "X", "sk-ant-TESTONLY-1234", SK, noEnv), is(404));
+  assert.throws(() => setCredential(db, lead, "claude-code", "ANTHROPIC_API_KEY", "short", SK, noEnv), is(400));
+  assert.throws(() => setCredential(db, lead, "openrouter", "OPENROUTER_API_KEY", "sk-or-TESTONLY-1234", SK, noEnv), is(400));
+  const v = setCredential(db, member, "claude-code", "ANTHROPIC_API_KEY", "sk-ant-TESTONLY-1234", SK, noEnv, 1000);
+  assert.equal(v.set, true); assert.equal(v.last4, "1234"); assert.equal(v.setBy, "m@a.com"); assert.equal(v.setAt, 1000);
   assert.ok(!JSON.stringify(v).includes("TESTONLY"));
-  setCredential(db, admin, "claude-code", "ANTHROPIC_API_KEY", "sk-ant-TESTONLY-9999", SK, noEnv, 2000);
-  assert.equal(storedCredential(db, "claude-code", "ANTHROPIC_API_KEY", SK), "sk-ant-TESTONLY-9999");
-  // members get set/unset only
-  const mv = credentialViews(db, "claude-code", SK, noEnv, false).find((c) => c.name === "ANTHROPIC_API_KEY")!;
+  setCredential(db, lead, "claude-code", "ANTHROPIC_API_KEY", "sk-ant-TESTONLY-9999", SK, noEnv, 2000);
+  assert.equal(storedCredential(db, t, "claude-code", "ANTHROPIC_API_KEY", SK), "sk-ant-TESTONLY-9999");
+  // the read-only view gets set/unset only
+  const mv = credentialViews(db, t, "claude-code", SK, noEnv, false).find((c) => c.name === "ANTHROPIC_API_KEY")!;
   assert.equal(mv.set, true); assert.equal(mv.last4, null); assert.equal(mv.setBy, null);
-  setCredential(db, admin, "claude-code", "ANTHROPIC_API_KEY", null, SK, noEnv, 3000);
-  assert.throws(() => setCredential(db, admin, "claude-code", "ANTHROPIC_API_KEY", null, SK, noEnv), is(404));
-  const env = (n: string) => (n === "ANTHROPIC_API_KEY" ? "from-env-file" : undefined);
-  assert.equal(credentialViews(db, "claude-code", SK, env, true)[0].source, "env");
-  const log = listProviderAudit(db).map((l) => l.detail);
-  assert.deepEqual(log.slice(0, 3), ["ANTHROPIC_API_KEY deleted", "ANTHROPIC_API_KEY replaced", "ANTHROPIC_API_KEY set"]);
-  // the existing Cursor/OpenCode readers see the same storage
-  setCredential(db, admin, "cursor", "CURSOR_API_KEY", "cur-TESTONLY-5678", SK, noEnv);
-  assert.equal(getProviderSecret(db, "cursor", SK), "cur-TESTONLY-5678");
+  setCredential(db, member, "claude-code", "ANTHROPIC_API_KEY", null, SK, noEnv, 3000);
+  assert.throws(() => setCredential(db, lead, "claude-code", "ANTHROPIC_API_KEY", null, SK, noEnv), is(404));
+  const log = listProviderAudit(db, t);
+  assert.deepEqual(log.slice(0, 3).map((l) => [l.actorEmail, l.detail]), [["m@a.com", "ANTHROPIC_API_KEY deleted"], ["lead@a.com", "ANTHROPIC_API_KEY replaced"], ["m@a.com", "ANTHROPIC_API_KEY set"]]);
+  setCredential(db, lead, "cursor", "CURSOR_API_KEY", "cur-TESTONLY-5678", SK, noEnv);
+  assert.equal(getProviderSecret(db, t, "cursor", SK), "cur-TESTONLY-5678");
 });
 
-test("auth method: admin-only, per-provider allowed modes, audited", () => {
+test("credentials: cross-team isolation and the env fallback for team 1 only", () => {
+  const { db, lead, other, otherLead } = setup();
+  const a = lead.tenantId, b = other.tenantId;
+  setCredential(db, lead, "cursor", "CURSOR_API_KEY", "cur-TEAM-A-0001", SK, noEnv, 1);
+  setCredential(db, other, "cursor", "CURSOR_API_KEY", "cur-TEAM-B-0002", SK, noEnv, 2);
+  assert.equal(storedCredential(db, a, "cursor", "CURSOR_API_KEY", SK), "cur-TEAM-A-0001");
+  assert.equal(storedCredential(db, b, "cursor", "CURSOR_API_KEY", SK), "cur-TEAM-B-0002");
+  assert.deepEqual(builtinCredentialSecrets(db, b, SK), ["cur-TEAM-B-0002"], "team b's redaction list has only its own key");
+  setCredential(db, otherLead, "cursor", "CURSOR_API_KEY", null, SK, noEnv, 3);
+  assert.equal(storedCredential(db, a, "cursor", "CURSOR_API_KEY", SK), "cur-TEAM-A-0001", "deleting in team b leaves team a alone");
+  assert.throws(() => setCredential(db, other, "claude-code", "ANTHROPIC_API_KEY", null, SK, noEnv), is(404), "can't delete another team's row");
+  // audit is per team
+  assert.ok(listProviderAudit(db, a).every((l) => l.actorEmail === "lead@a.com"));
+  assert.deepEqual(listProviderAudit(db, b).map((l) => l.actorEmail), ["ol@b.com", "o@b.com"]);
+  // env fallback: team 1 only
+  const env = (n: string) => (n === "ANTHROPIC_API_KEY" ? "from-env-file" : undefined);
+  assert.equal(credentialViews(db, a, "claude-code", SK, env, true)[0].source, "env");
+  assert.equal(credentialViews(db, b, "claude-code", SK, env, true)[0].set, false);
+  assert.equal(resolveCredential(db, a, "claude-code", "ANTHROPIC_API_KEY", SK, env), "from-env-file");
+  assert.equal(resolveCredential(db, b, "claude-code", "ANTHROPIC_API_KEY", SK, env), undefined);
+  // auth methods per team
+  setAuthMode(db, other, "codex", "api_key");
+  assert.equal(getAuthMode(db, b, "codex").mode, "api_key"); assert.equal(getAuthMode(db, a, "codex").mode, "auto");
+});
+
+test("auth method: team members only, per-provider allowed modes, audited", () => {
   const { db, admin, member } = setup();
-  assert.equal(getAuthMode(db, "claude-code").mode, "auto");
-  assert.equal(getAuthMode(db, "cursor").mode, "api_key");
-  assert.throws(() => setAuthMode(db, member, "codex", "api_key"), is(403));
-  assert.throws(() => setAuthMode(db, admin, "cursor", "subscription"), is(400));
-  assert.throws(() => setAuthMode(db, admin, "codex", "weird"), is(400));
-  assert.equal(setAuthMode(db, admin, "codex", "subscription").mode, "subscription");
-  assert.equal(listProviderAudit(db)[0].detail, "auth method auto -> subscription");
+  const t = member.tenantId;
+  assert.equal(getAuthMode(db, t, "claude-code").mode, "auto");
+  assert.equal(getAuthMode(db, t, "cursor").mode, "api_key");
+  assert.throws(() => setAuthMode(db, admin, "codex", "api_key"), is(403));
+  assert.throws(() => setAuthMode(db, member, "cursor", "subscription"), is(400));
+  assert.throws(() => setAuthMode(db, member, "codex", "weird"), is(400));
+  assert.equal(setAuthMode(db, member, "codex", "subscription").mode, "subscription");
+  assert.equal(listProviderAudit(db, t)[0].detail, "auth method auto -> subscription");
 });
 
 test("runAuth: Claude Code and Codex use only the chosen credential", () => {
@@ -78,40 +111,73 @@ test("runAuth: Claude Code and Codex use only the chosen credential", () => {
   assert.throws(() => runAuth("codex", "subscription", c({}), false), /ChatGPT login/);
   assert.deepEqual(runAuth("codex", "auto", c({ CODEX_API_KEY: "ck" }), true).env, {}, "auto prefers the server ChatGPT login");
   assert.deepEqual(runAuth("codex", "auto", c({ CODEX_API_KEY: "ck" }), false).env, { CODEX_API_KEY: "ck" });
+  // no CLI-login fallback (teams other than 1): a clear error instead of the server's logins
+  assert.throws(() => runAuth("claude-code", "auto", c({}), false, false), /no credential set for this team/);
+  assert.throws(() => runAuth("codex", "auto", c({}), false, false), /no credential set for this team/);
+  assert.equal(runAuth("claude-code", "auto", c({}), false, true).note, "claude-code: no stored credential; using the CLI's own login");
 });
 
-test("custom providers: CRUD admin-only, validation, model picker, opencode config without keys, audited", () => {
-  const { db, admin, member } = setup();
+test("custom providers: CRUD by team members (not admins), per-team pickers, validation, model picker, opencode config without keys, audited", () => {
+  const { db, admin, member, lead, other } = setup();
+  const t = member.tenantId, b = other.tenantId;
   const base = { id: "together", name: "Together AI", baseUrl: "https://api.together.xyz/v1/", models: "meta-llama/Llama-3.3-70B, qwen-3", apiKey: "tg-TESTONLY-abcd" };
-  assert.throws(() => addCustomProvider(db, member, base, SK), is(403));
-  assert.throws(() => addCustomProvider(db, admin, { ...base, id: "openai" }, SK), is(400));
-  assert.throws(() => addCustomProvider(db, admin, { ...base, baseUrl: "http://evil.example/v1" }, SK), is(400));
-  assert.throws(() => addCustomProvider(db, admin, { ...base, models: "" }, SK), is(400));
-  assert.throws(() => addCustomProvider(db, admin, { ...base, models: ["bad id"] }, SK), is(400));
-  const p = addCustomProvider(db, admin, base, SK, 10);
+  assert.throws(() => addCustomProvider(db, admin, base, SK), is(403));
+  assert.throws(() => addCustomProvider(db, member, { ...base, id: "openai" }, SK), is(400));
+  assert.throws(() => addCustomProvider(db, member, { ...base, baseUrl: "http://evil.example/v1" }, SK), is(400));
+  assert.throws(() => addCustomProvider(db, member, { ...base, models: "" }, SK), is(400));
+  assert.throws(() => addCustomProvider(db, member, { ...base, models: ["bad id"] }, SK), is(400));
+  const p = addCustomProvider(db, member, base, SK, 10);
   assert.equal(p.baseUrl, "https://api.together.xyz/v1");
-  assert.throws(() => addCustomProvider(db, admin, base, SK), is(409));
-  assert.deepEqual(customModelIds(db), ["together/meta-llama/Llama-3.3-70B", "together/qwen-3"]);
-  assert.ok(allModels({}, customModelIds(db)).opencode.includes("together/qwen-3"));
-  assert.ok(!allModels({}, customModelIds(db)).codex.includes("together/qwen-3"));
-  assert.equal(checkModel("opencode", "together/qwen-3", {}, customModelIds(db)), "together/qwen-3");
+  assert.throws(() => addCustomProvider(db, member, base, SK), is(409));
+  assert.deepEqual(customModelIds(db, t), ["together/meta-llama/Llama-3.3-70B", "together/qwen-3"]);
+  assert.ok(allModels({}, customModelIds(db, t)).opencode.includes("together/qwen-3"));
+  assert.ok(!allModels({}, customModelIds(db, t)).codex.includes("together/qwen-3"));
+  assert.equal(checkModel("opencode", "together/qwen-3", {}, customModelIds(db, t)), "together/qwen-3");
   assert.throws(() => checkModel("opencode", "together/qwen-3", {}));
-  const v = customProviderViews(db, SK, true)[0];
+  const v = customProviderViews(db, t, SK, true)[0];
   assert.equal(v.key.last4, "abcd"); assert.ok(!JSON.stringify(v).includes("TESTONLY"));
-  const cfg = opencodeCustomConfig(db, SK);
+  const cfg = opencodeCustomConfig(db, t, SK);
   assert.ok(!JSON.stringify(cfg.config).includes("TESTONLY"), "the key is never written to opencode.json");
   assert.deepEqual((cfg.config!.provider as Record<string, { options: unknown }>).together.options, { baseURL: "https://api.together.xyz/v1", apiKey: `{env:${customEnvName("together")}}` });
   assert.equal(cfg.env.COBRA_CP_TOGETHER_KEY, "tg-TESTONLY-abcd");
-  updateCustomProvider(db, admin, "together", { models: ["qwen-3"], apiKey: null }, SK, 20);
-  assert.deepEqual(customModelIds(db), ["together/qwen-3"]);
-  assert.equal(customProviderViews(db, SK, true)[0].key.set, false);
-  assert.throws(() => deleteCustomProvider(db, member, "together"), is(403));
-  updateCustomProvider(db, admin, "together", { apiKey: "tg-TESTONLY-efgh" }, SK);
-  deleteCustomProvider(db, admin, "together");
-  assert.equal(customModelIds(db).length, 0);
-  assert.equal(storedCredential(db, "custom:together", "API_KEY", SK), undefined, "its key is deleted too");
-  const log = listProviderAudit(db).map((l) => l.detail ?? "");
+  // other teams never see it: picker, config, views; and they can reuse the same id for their own
+  assert.deepEqual(customModelIds(db, b), []);
+  assert.ok(!allModels({}, customModelIds(db, b)).opencode.includes("together/qwen-3"));
+  assert.throws(() => checkModel("opencode", "together/qwen-3", {}, customModelIds(db, b)));
+  assert.equal(opencodeCustomConfig(db, b, SK).config, null);
+  assert.equal(customProviderViews(db, b, SK, true).length, 0);
+  assert.throws(() => updateCustomProvider(db, other, "together", { name: "x" }, SK), is(404));
+  assert.throws(() => deleteCustomProvider(db, other, "together"), is(404));
+  addCustomProvider(db, other, { ...base, apiKey: "tg-TEAMB-zzzz" }, SK);
+  assert.equal(opencodeCustomConfig(db, t, SK).env.COBRA_CP_TOGETHER_KEY, "tg-TESTONLY-abcd");
+  assert.equal(opencodeCustomConfig(db, b, SK).env.COBRA_CP_TOGETHER_KEY, "tg-TEAMB-zzzz");
+  updateCustomProvider(db, lead, "together", { models: ["qwen-3"], apiKey: null }, SK, 20);
+  assert.deepEqual(customModelIds(db, t), ["together/qwen-3"]);
+  assert.equal(customProviderViews(db, t, SK, true)[0].key.set, false);
+  assert.throws(() => deleteCustomProvider(db, admin, "together"), is(403));
+  updateCustomProvider(db, member, "together", { apiKey: "tg-TESTONLY-efgh" }, SK);
+  deleteCustomProvider(db, member, "together");
+  assert.equal(customModelIds(db, t).length, 0);
+  assert.equal(storedCredential(db, t, "custom:together", "API_KEY", SK), undefined, "its key is deleted too");
+  assert.equal(customModelIds(db, b).length, 2, "team b's provider survives");
+  const log = listProviderAudit(db, t).map((l) => l.detail ?? "");
   assert.ok(log[0].startsWith("custom provider deleted") && log.some((d) => d.includes("API key deleted")) && log.some((d) => d.startsWith("custom provider added")));
+});
+
+test("migration 28: existing credentials, auth modes and custom providers move to team 1; OpenRouter stays global", () => {
+  const db = new DatabaseSync(":memory:");
+  migrate(db, 27);
+  db.exec(`INSERT INTO tenants (id, slug, name, created_at) VALUES (1, 'vic', 'Vic', 1), (2, 'b', 'B', 1);
+    INSERT INTO provider_secrets VALUES ('cursor', 'CURSOR_API_KEY', 'enc1', 1, 'x'), ('openrouter', 'OPENROUTER_API_KEY', 'enc2', 1, 'x'), ('custom:tg', 'API_KEY', 'enc3', 1, 'x');
+    INSERT INTO provider_auth VALUES ('codex', 'api_key', 1, 'x');
+    INSERT INTO custom_providers VALUES ('tg', 'TG', 'https://x.test/v1', '["m"]', 1, 'x', 1, 'x');
+    INSERT INTO provider_audit (actor_email, engine, at, detail) VALUES ('x', 'cursor', 1, 'CURSOR_API_KEY set'), ('x', 'codex', 1, NULL);`);
+  migrate(db);
+  assert.deepEqual(db.prepare("SELECT tenant_id, engine FROM team_provider_secrets ORDER BY engine").all().map((r) => ({ ...r })), [{ tenant_id: 1, engine: "cursor" }, { tenant_id: 1, engine: "custom:tg" }]);
+  assert.deepEqual(db.prepare("SELECT engine FROM provider_secrets").all().map((r) => ({ ...r })), [{ engine: "openrouter" }]);
+  assert.deepEqual(db.prepare("SELECT tenant_id, engine, mode FROM team_provider_auth").all().map((r) => ({ ...r })), [{ tenant_id: 1, engine: "codex", mode: "api_key" }]);
+  assert.deepEqual(db.prepare("SELECT tenant_id, id FROM team_custom_providers").all().map((r) => ({ ...r })), [{ tenant_id: 1, id: "tg" }]);
+  assert.deepEqual(db.prepare("SELECT tenant_id FROM provider_audit ORDER BY id").all().map((r) => (r as { tenant_id: number | null }).tenant_id), [1, null]);
 });
 
 test("runner: claude/codex env follows the auth method; opencode gets the custom-provider config", async () => {
@@ -135,4 +201,15 @@ test("runner: claude/codex env follows the auth method; opencode gets the custom
     assert.ok(!o().includes("\"apiKey\":\"cp-key\""));
     assert.ok(!existsSync(path.join(tmp, "ws", `r${n}`, ".git", "cobra-opencode")), "per-run config removed");
   } finally { process.env.HOME = prevHome; }
+});
+
+test("updater: catalog refresh uses team 1's stored keys (not an admin's, not other teams'), env file as fallback", () => {
+  const { db, lead, other } = setup();
+  const sec = (n: string) => (n === "COBRA_SECRET_KEY" ? SK : n === "CURSOR_API_KEY" ? "env-cur-0000" : undefined);
+  setCredential(db, other, "opencode", "OPENCODE_API_KEY", "oc-TEAMB-0002", SK, noEnv);
+  let env = updaterOps(db, sec).env as Record<string, string | undefined>;
+  assert.equal(env.CURSOR_API_KEY, "env-cur-0000"); assert.notEqual(env.OPENCODE_API_KEY, "oc-TEAMB-0002");
+  setCredential(db, lead, "cursor", "CURSOR_API_KEY", "cur-TEAM1-0001", SK, noEnv);
+  env = updaterOps(db, sec).env as Record<string, string | undefined>;
+  assert.equal(env.CURSOR_API_KEY, "cur-TEAM1-0001");
 });

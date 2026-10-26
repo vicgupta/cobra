@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   const g = await apiGuard(req);
   if (g.error) return g.error;
   const u = actor(g.user);
-  return NextResponse.json({ agents: listAgents(getDb(), u.tenantId).map((a) => ({ ...a, canEdit: canEditAgent(u, a) })), models: allModels(process.env, customModelIds(getDb())) });
+  return NextResponse.json({ agents: listAgents(getDb(), u.tenantId).map((a) => ({ ...a, canEdit: canEditAgent(u, a) })), models: allModels(process.env, customModelIds(getDb(), u.tenantId)) });
 }
 
 /** Any team member may create agents. */

@@ -3,7 +3,8 @@ import { apiGuard } from "@/lib/auth/server";
 import { CollabError, isSystemAdmin } from "@/lib/collab";
 import { getDb } from "@/lib/db";
 import { getUpdateRun, listUpdateRuns, setUpdatesEnabled, startManualRun, updateSettings } from "@/lib/tool-updates";
-import { nodeOps } from "@/lib/tool-updates-node";
+import { updaterOps } from "@/lib/tool-updates-node";
+import { secretValue } from "@/lib/workflows/server";
 
 const err = (e: unknown) => { if (e instanceof CollabError) return NextResponse.json({ error: e.message }, { status: e.status }); throw e; };
 
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
   if (!isSystemAdmin(g.user)) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const b = (await req.json().catch(() => null)) as { enabled?: unknown; action?: unknown } | null;
   try {
-    if (b?.action === "run") return NextResponse.json({ runId: startManualRun(getDb(), g.user, nodeOps) }, { status: 202 });
+    if (b?.action === "run") return NextResponse.json({ runId: startManualRun(getDb(), g.user, updaterOps(getDb(), secretValue)) }, { status: 202 });
     if (b && "enabled" in b) { setUpdatesEnabled(getDb(), g.user, b.enabled); return NextResponse.json({ settings: updateSettings(getDb()) }); }
     throw new CollabError(400, "send { enabled: boolean } or { action: \"run\" }");
   } catch (e) { return err(e); }

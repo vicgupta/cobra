@@ -12,12 +12,13 @@ import { checkTeamRepo, teamPatSecrets, teamRepo, tokenFor } from "../repos";
 import { githubFiles } from "./github-files";
 import { githubApi } from "../github-api";
 import type { RunDeps } from "./service";
-import { builtinCredentialSecrets, customProviderSecrets, getAuthMode, opencodeCustomConfig, storedCredential } from "../provider-credentials";
+import { ENV_FALLBACK_TEAM, builtinCredentialSecrets, customProviderSecrets, getAuthMode, opencodeCustomConfig, storedCredential } from "../provider-credentials";
 import { getProviderDefaults, getProviderSecret, providerSecretValues } from "../providers";
 import { recordUsage } from "../usage";
 import { getOpenRouterKey, OPENROUTER } from "../openrouter";
 
-/** The one global OpenRouter key (any team): stored in Settings > Providers, else COBRA_OPENROUTER_API_KEY. */
+/** The one global OpenRouter key: stored in Settings > Providers, else COBRA_OPENROUTER_API_KEY. Runs get it for
+ *  team 1 (ENV_FALLBACK_TEAM) only (Job 11); its storage path is unchanged while OpenRouter is on hold. */
 export const openRouterKey = () => getOpenRouterKey(getDb(), secret("COBRA_SECRET_KEY"), secret(OPENROUTER.envFallback));
 
 export const actor = (u: SessionUser): Actor => ({ id: u.id, email: u.email, role: u.role, tenantId: u.tenantId, name: u.name });
@@ -37,10 +38,10 @@ export const runDeps = (tenantId: number, user?: Actor): RunDeps => {
   // One resolver for every GitHub touch (Job 20): the repo's PAT, else GITHUB_TOKEN.
   const token = githubTokenFor(tenantId);
   return {
-    handlers: builtinHandlers({ checkRepo, tokenFor: token, collab: user ? collabHooks(db, user) : undefined, agentRunner: localRunner({ tenantId, resolveSecret: secret, checkRepo, githubToken: token, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch, providerDefaults: (d) => getProviderDefaults(db, d), onUsage: (key, u) => recordUsage(db, key, u), providerSecret: (e) => getProviderSecret(db, e, secret("COBRA_SECRET_KEY")), credential: (e, n) => storedCredential(db, e, n, secret("COBRA_SECRET_KEY")), authMode: (e) => getAuthMode(db, e).mode, opencodeCustom: () => opencodeCustomConfig(db, secret("COBRA_SECRET_KEY")), openRouterKey }) }),
+    handlers: builtinHandlers({ checkRepo, tokenFor: token, collab: user ? collabHooks(db, user) : undefined, agentRunner: localRunner({ tenantId, resolveSecret: secret, checkRepo, githubToken: token, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch, providerDefaults: (d) => getProviderDefaults(db, d), onUsage: (key, u) => recordUsage(db, key, u), providerSecret: (e) => getProviderSecret(db, tenantId, e, secret("COBRA_SECRET_KEY")), credential: (e, n) => storedCredential(db, tenantId, e, n, secret("COBRA_SECRET_KEY")), authMode: (e) => getAuthMode(db, tenantId, e).mode, opencodeCustom: () => opencodeCustomConfig(db, tenantId, secret("COBRA_SECRET_KEY")), openRouterKey: tenantId === ENV_FALLBACK_TEAM ? openRouterKey : () => undefined }) }),
     resolveSecret: secret,
     // Every env-file value, every team PAT (plus its git header form) and provider secrets (CURSOR_API_KEY) are redacted from run logs and errors.
-    redact: () => [...Object.values(envFile()), ...teamPatSecrets(db, tenantId, secret("COBRA_SECRET_KEY")), ...providerSecretValues(db, secret("COBRA_SECRET_KEY")), ...builtinCredentialSecrets(db, secret("COBRA_SECRET_KEY")), ...customProviderSecrets(db, secret("COBRA_SECRET_KEY")), ...[openRouterKey()].filter((v): v is string => !!v)],
+    redact: () => [...Object.values(envFile()), ...teamPatSecrets(db, tenantId, secret("COBRA_SECRET_KEY")), ...providerSecretValues(db, tenantId, secret("COBRA_SECRET_KEY")), ...builtinCredentialSecrets(db, tenantId, secret("COBRA_SECRET_KEY")), ...customProviderSecrets(db, tenantId, secret("COBRA_SECRET_KEY")), ...[openRouterKey()].filter((v): v is string => !!v)],
   };
 };
 

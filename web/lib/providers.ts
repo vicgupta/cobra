@@ -1,4 +1,4 @@
-import { customModelIds } from "./provider-credentials";
+import { canManageProviders } from "./provider-credentials";
 // Settings > Providers: the coding-agent CLIs Cobra runs, their models and effort tiers, and the
 // system-wide defaults a system admin may set (default model + default effort per provider).
 //
@@ -58,7 +58,7 @@ const row = (db: DB, e: AgentEngine) => db.prepare("SELECT engine, model, effort
 export function getProviderDefaults(db: DB, engine: AgentEngine, env: Record<string, string | undefined> = process.env): ProviderDefaults {
   const r = row(db, engine);
   if (!r) return { model: null, effort: null };
-  const model = r.model && modelAllowed(engine, r.model, env, customModelIds(db)) ? r.model : null;
+  const model = r.model && modelAllowed(engine, r.model, env, []) ? r.model : null;
   const effort = r.effort && (tiersFor(engine) as readonly string[]).includes(r.effort) ? (r.effort as EffortTier) : null;
   return { model, effort };
 }
@@ -66,7 +66,7 @@ export function getProviderDefaults(db: DB, engine: AgentEngine, env: Record<str
 export function listProviders(db: DB, env: Record<string, string | undefined> = process.env): ProviderView[] {
   return AGENT_ENGINES.map((e) => {
     const p = PROVIDERS[e], r = row(db, e);
-    return { engine: e, label: p.label, cli: p.cli, models: modelsFor(e, env, customModelIds(db)), modelSource: MODEL_SOURCES[e], modelFlag: p.modelFlag, tiers: p.tiers, effortFlag: p.effortFlag, effortSource: p.effortSource, cliTiers: p.cliTiers, defaults: getProviderDefaults(db, e, env), updatedAt: r?.updated_at ?? null, updatedBy: r?.updated_by ?? null };
+    return { engine: e, label: p.label, cli: p.cli, models: modelsFor(e, env, []), modelSource: MODEL_SOURCES[e], modelFlag: p.modelFlag, tiers: p.tiers, effortFlag: p.effortFlag, effortSource: p.effortSource, cliTiers: p.cliTiers, defaults: getProviderDefaults(db, e, env), updatedAt: r?.updated_at ?? null, updatedBy: r?.updated_by ?? null };
   });
 }
 
@@ -80,7 +80,7 @@ export function setProviderDefaults(db: DB, u: Admin, engine: unknown, b: { mode
   if (!b || typeof b !== "object" || (b.model === undefined && b.effort === undefined)) throw new CollabError(400, "send model and/or effort");
   const cur = getProviderDefaults(db, e, env);
   let model = cur.model, effort = cur.effort;
-  if (b.model !== undefined) { try { model = checkModel(e, b.model, env, customModelIds(db)); } catch (x) { throw new CollabError(400, (x as Error).message); } }
+  if (b.model !== undefined) { try { model = checkModel(e, b.model, env, []); } catch (x) { throw new CollabError(400, (x as Error).message); } }
   if (b.effort !== undefined) {
     if (b.effort === null || b.effort === "" || b.effort === "default") effort = null;
     else if (!tiersFor(e).length) throw new CollabError(400, `${PROVIDERS[e].label} has no effort tiers (Not supported); only default is allowed`);
@@ -99,8 +99,9 @@ export function setProviderDefaults(db: DB, u: Admin, engine: unknown, b: { mode
   return { model, effort };
 }
 
-export function listProviderAudit(db: DB, limit = 20) {
-  return db.prepare("SELECT actor_email actorEmail, engine, old_model oldModel, new_model newModel, old_effort oldEffort, new_effort newEffort, detail, at FROM provider_audit ORDER BY at DESC, id DESC LIMIT ?").all(limit)
+/** A team's provider audit (its own credential / custom-provider changes) plus the global rows (defaults, OpenRouter). */
+export function listProviderAudit(db: DB, tenantId: number, limit = 20) {
+  return db.prepare("SELECT actor_email actorEmail, engine, old_model oldModel, new_model newModel, old_effort oldEffort, new_effort newEffort, detail, at FROM provider_audit WHERE tenant_id = ? OR tenant_id IS NULL ORDER BY at DESC, id DESC LIMIT ?").all(tenantId, limit)
     .map((r) => ({ ...(r as object) })) as Array<{ actorEmail: string; engine: string; oldModel: string | null; newModel: string | null; oldEffort: string | null; newEffort: string | null; detail: string | null; at: number }>;
 }
 
@@ -117,44 +118,44 @@ export const PROVIDER_SECRETS: Partial<Record<AgentEngine, { name: string; label
 };
 export type ProviderSecretView = { engine: AgentEngine; name: string; label: string; help: string; set: boolean; setAt: number | null; setBy: string | null };
 
-export function providerSecretStatus(db: DB, engine: AgentEngine): ProviderSecretView | null {
+export function providerSecretStatus(db: DB, tenantId: number, engine: AgentEngine): ProviderSecretView | null {
   const s = PROVIDER_SECRETS[engine];
   if (!s) return null;
-  const r = db.prepare("SELECT set_at, set_by FROM provider_secrets WHERE engine = ? AND name = ?").get(engine, s.name) as { set_at: number; set_by: string | null } | undefined;
+  const r = db.prepare("SELECT set_at, set_by FROM team_provider_secrets WHERE tenant_id = ? AND engine = ? AND name = ?").get(tenantId, engine, s.name) as { set_at: number; set_by: string | null } | undefined;
   return { engine, ...s, set: !!r, setAt: r?.set_at ?? null, setBy: r?.set_by ?? null };
 }
 
 /** Decrypted secret for a run, or undefined (not set / undecryptable). Never log the result. */
-export function getProviderSecret(db: DB, engine: AgentEngine, secretKey: string | undefined): string | undefined {
+export function getProviderSecret(db: DB, tenantId: number, engine: AgentEngine, secretKey: string | undefined): string | undefined {
   const s = PROVIDER_SECRETS[engine];
   if (!s) return undefined;
-  const r = db.prepare("SELECT value_enc FROM provider_secrets WHERE engine = ? AND name = ?").get(engine, s.name) as { value_enc: string } | undefined;
+  const r = db.prepare("SELECT value_enc FROM team_provider_secrets WHERE tenant_id = ? AND engine = ? AND name = ?").get(tenantId, engine, s.name) as { value_enc: string } | undefined;
   if (!r) return undefined;
   try { return decryptSecret(r.value_enc, secretKey); } catch { console.error(`[cobra] the stored ${s.name} can't be decrypted (COBRA_SECRET_KEY changed?)`); return undefined; }
 }
 
 /** Every decrypted provider secret (for run-log redaction). */
-export function providerSecretValues(db: DB, secretKey: string | undefined): string[] {
-  return AGENT_ENGINES.map((e) => getProviderSecret(db, e, secretKey)).filter((v): v is string => !!v);
+export function providerSecretValues(db: DB, tenantId: number, secretKey: string | undefined): string[] {
+  return AGENT_ENGINES.map((e) => getProviderSecret(db, tenantId, e, secretKey)).filter((v): v is string => !!v);
 }
 
-/** System admins only. value: the new secret, or null/"" to clear. Returns the status (never the value). */
-export function setProviderSecret(db: DB, u: Admin, engine: unknown, value: unknown, secretKey: string | undefined, now = Date.now()): ProviderSecretView {
-  if (!isSystemAdmin(u)) throw new CollabError(403, "only system admins can change provider secrets");
+/** Members of the team (not system admins), for u's own team. value: the new secret, or null/"" to clear. Returns the status (never the value). */
+export function setProviderSecret(db: DB, u: Admin & { tenantId: number }, engine: unknown, value: unknown, secretKey: string | undefined, now = Date.now()): ProviderSecretView {
+  if (!canManageProviders(u)) throw new CollabError(403, "only members of the team can change its provider secrets");
   if (!AGENT_ENGINES.includes(engine as AgentEngine)) throw new CollabError(404, `unknown provider '${String(engine)}'`);
   const e = engine as AgentEngine, s = PROVIDER_SECRETS[e];
   if (!s) throw new CollabError(400, `${PROVIDERS[e].label} has no secret to set`);
   if (value === null || value === "") {
-    db.prepare("DELETE FROM provider_secrets WHERE engine = ? AND name = ?").run(e, s.name);
+    db.prepare("DELETE FROM team_provider_secrets WHERE tenant_id = ? AND engine = ? AND name = ?").run(u.tenantId, e, s.name);
   } else {
     if (typeof value !== "string") throw new CollabError(400, "value must be a string, or null to clear");
     const v = value.trim();
     if (v.length < 8 || v.length > 500 || /\s/.test(v)) throw new CollabError(400, `${s.label} looks invalid (8-500 characters, no spaces)`);
     let enc: string;
     try { enc = encryptSecret(v, secretKey); } catch (x) { throw new CollabError(503, x instanceof Error ? x.message : "encryption failed"); }
-    db.prepare(`INSERT INTO provider_secrets (engine, name, value_enc, set_at, set_by) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(engine, name) DO UPDATE SET value_enc = excluded.value_enc, set_at = excluded.set_at, set_by = excluded.set_by`).run(e, s.name, enc, now, u.email);
+    db.prepare(`INSERT INTO team_provider_secrets (tenant_id, engine, name, value_enc, set_at, set_by) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(tenant_id, engine, name) DO UPDATE SET value_enc = excluded.value_enc, set_at = excluded.set_at, set_by = excluded.set_by`).run(u.tenantId, e, s.name, enc, now, u.email);
   }
-  db.prepare("INSERT INTO provider_audit (actor_id, actor_email, engine, at, detail) VALUES (?, ?, ?, ?, ?)").run(u.id, u.email, e, now, `${s.name} ${value ? "set" : "cleared"}`);
-  return providerSecretStatus(db, e)!;
+  db.prepare("INSERT INTO provider_audit (tenant_id, actor_id, actor_email, engine, at, detail) VALUES (?, ?, ?, ?, ?, ?)").run(u.tenantId, u.id, u.email, e, now, `${s.name} ${value ? "set" : "cleared"}`);
+  return providerSecretStatus(db, u.tenantId, e)!;
 }

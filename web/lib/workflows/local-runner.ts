@@ -14,7 +14,7 @@ import { effortArgs, type ProviderDefaults } from "../providers";
 import type { Engine } from "../engines";
 import { usageCollector, type Usage } from "../usage";
 
-import { codexServerLogin, runAuth, type AuthMode } from "../provider-credentials";
+import { codexServerLogin, ENV_FALLBACK_TEAM, noCredential, runAuth, type AuthMode } from "../provider-credentials";
 type Env = Record<string, string | undefined>;
 
 export type LocalRunnerOptions = {
@@ -34,13 +34,13 @@ export type LocalRunnerOptions = {
   /** Decrypted Settings > Providers secret for an engine (Cursor: CURSOR_API_KEY). */
   providerSecret?: (engine: Engine) => string | undefined;
   /** Stored (Settings > Providers) credential for an engine slot, e.g. ("claude-code", "ANTHROPIC_API_KEY").
-   *  Falls back to resolveSecret(name) (the server env file) when it returns undefined. */
+   *  Falls back to resolveSecret(name) (the server env file) when it returns undefined, for team 1 only. */
   credential?: (engine: string, name: string) => string | undefined;
   /** Chosen auth method per engine (Settings > Providers); default "auto". */
   authMode?: (engine: Engine) => AuthMode;
   /** Whether the server has a Codex ChatGPT login (~/.codex/auth.json); default: checks $HOME. */
   codexServerLogin?: () => boolean;
-  /** Admin-defined custom OpenAI-compatible providers for OpenCode: opencode.json + the env carrying keys. */
+  /** The team's custom OpenAI-compatible providers for OpenCode: opencode.json + the env carrying keys. */
   opencodeCustom?: () => { config: Record<string, unknown> | null; env: Record<string, string> };
   /** Value for codex --sandbox; empty means --dangerously-bypass-approvals-and-sandbox (default; see COBRA_CODEX_SANDBOX). */
   codexSandbox?: string;
@@ -166,14 +166,18 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     const effort = driver === "cursor" ? null : pd.effort;
     let cmd: string, args: string[];
     let cleanup = () => {};
+    // Team isolation (Job 11): the server env file and the cobra user's CLI logins (~/.codex, ~/.claude) are a
+    // fallback for team 1 only (and runners without a team, i.e. tests). Other teams use only their own rows.
+    const fallback = opts.tenantId === undefined || opts.tenantId === ENV_FALLBACK_TEAM;
+    const envSecret = (n: string) => (fallback ? opts.resolveSecret(n) : undefined);
     const viaOpenRouter = isOpenRouterModel(model);
     let orKey: string | undefined;
     if (viaOpenRouter) {
       if (!supportsOpenRouter(driver)) throw new Error(`${driver} can't use OpenRouter (not supported); use Claude Code, Codex or OpenCode`);
       orKey = opts.openRouterKey?.();
-      if (!orKey) throw new Error("OpenRouter has no API key: a system admin sets it in Settings > Providers (OpenRouter), or COBRA_OPENROUTER_API_KEY in the server env");
+      if (!orKey) throw new Error(fallback ? "OpenRouter has no API key: a system admin sets it in Settings > Providers (OpenRouter), or COBRA_OPENROUTER_API_KEY in the server env" : noCredential("OpenRouter is a team 1 credential only"));
     }
-    const cred = (e: string, n: string) => opts.credential?.(e, n) ?? opts.resolveSecret(n);
+    const cred = (e: string, n: string) => opts.credential?.(e, n) ?? envSecret(n);
     if (driver === "opencode") {
       cmd = opts.opencodeBin ?? "opencode";
       // Isolated OpenCode config/data under .git (never committed), removed after the run.
@@ -181,8 +185,8 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       for (const k of ["data", "config", "state", "cache"]) mkdirSync(path.join(oc, k), { recursive: true, mode: 0o700 });
       Object.assign(env, { XDG_DATA_HOME: path.join(oc, "data"), XDG_CONFIG_HOME: path.join(oc, "config"), XDG_STATE_HOME: path.join(oc, "state"), XDG_CACHE_HOME: path.join(oc, "cache") });
       const home = process.env.HOME ?? "";
-      const live = home && existsSync(path.join(home, ".codex", "auth.json")) ? readFileSync(path.join(home, ".codex", "auth.json"), "utf8") : undefined;
-      const a = opencodeAuthFromCodex(live) ?? opencodeAuthFromCodex(opts.resolveSecret("CODEX_AUTH_JSON"));
+      const live = fallback && home && existsSync(path.join(home, ".codex", "auth.json")) ? readFileSync(path.join(home, ".codex", "auth.json"), "utf8") : undefined;
+      const a = opencodeAuthFromCodex(live) ?? opencodeAuthFromCodex(envSecret("CODEX_AUTH_JSON"));
       if (a) {
         mkdirSync(path.join(oc, "data", "opencode"), { recursive: true, mode: 0o700 });
         writeFileSync(path.join(oc, "data", "opencode", "auth.json"), JSON.stringify(a.auth), { mode: 0o600 });
@@ -201,8 +205,8 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       const ok = cred("codex", "CODEX_API_KEY");
       if (ok) env.OPENAI_API_KEY = ok;
       // OpenCode's own provider (opencode/<model>, OpenCode Console / Zen): its own key, never the OpenRouter one.
-      const ocKey = opts.providerSecret?.("opencode") ?? opts.resolveSecret("OPENCODE_API_KEY");
-      if (isOpenCodeModel(model) && !ocKey && !isFreeOpenCodeModel(model)) throw new Error("OpenCode has no API key: a system admin sets OPENCODE_API_KEY in Settings > Providers (OpenCode row), or pick a free opencode/*-free model");
+      const ocKey = opts.providerSecret?.("opencode") ?? envSecret("OPENCODE_API_KEY");
+      if (isOpenCodeModel(model) && !ocKey && !isFreeOpenCodeModel(model)) throw new Error(`${noCredential("OpenCode needs an OPENCODE_API_KEY (OpenCode row)")}, or pick a free opencode/*-free model`);
       if (ocKey) env.OPENCODE_API_KEY = ocKey;
       if (isOpenCodeModel(model)) note(`opencode: using OpenCode's own provider for ${model}${ocKey ? "" : " (free model, no key)"}`);
       if (!a && !ak && !ok && !orKey && !ocKey && !isOpenCodeModel(model)) note("opencode: no credentials found (Codex ChatGPT login, ANTHROPIC_API_KEY or CODEX_API_KEY)");
@@ -211,8 +215,8 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       args = ["run", ...modelArgs("opencode", model), ...effortArgs("opencode", effort), "--auto", prompt + ghNote];
     } else if (driver === "cursor") {
       cmd = opts.cursorBin ?? "cursor-agent";
-      const key = opts.providerSecret?.("cursor") ?? opts.resolveSecret("CURSOR_API_KEY");
-      if (!key) throw new Error("Cursor has no API key: an admin sets CURSOR_API_KEY in Settings > Providers (Cursor row)");
+      const key = opts.providerSecret?.("cursor") ?? envSecret("CURSOR_API_KEY");
+      if (!key) throw new Error(noCredential("Cursor needs a CURSOR_API_KEY (Cursor row)"));
       env.CURSOR_API_KEY = key;
       if (effort) note("cursor: effort tiers are not supported; ignoring the effort default");
       args = ["-p", prompt + ghNote, "--output-format", "text", ...modelArgs("cursor", model), "--force", "--trust"];
@@ -232,7 +236,7 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
         cleanup = () => { try { rmSync(c.codexHome!.dir, { recursive: true, force: true }); } catch { /* best effort */ } };
         note(`codex: via OpenRouter (${openRouterSlug(model!)}), per-run CODEX_HOME`);
       } else {
-        const ra = runAuth("codex", opts.authMode?.("codex") ?? "auto", (n) => cred("codex", n), opts.codexServerLogin ? opts.codexServerLogin() : codexServerLogin());
+        const ra = runAuth("codex", opts.authMode?.("codex") ?? "auto", (n) => cred("codex", n), fallback && (opts.codexServerLogin ? opts.codexServerLogin() : codexServerLogin()), fallback);
         for (const k of ra.unset) delete env[k];
         Object.assign(env, ra.env);
         note(ra.note);
@@ -246,7 +250,7 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
         Object.assign(env, c.env);
         note(`claude-code: via OpenRouter (${openRouterSlug(model!)})`);
       } else {
-        const ra = runAuth("claude-code", opts.authMode?.("claude-code") ?? "auto", (n) => cred("claude-code", n), false);
+        const ra = runAuth("claude-code", opts.authMode?.("claude-code") ?? "auto", (n) => cred("claude-code", n), false, fallback);
         for (const k of ra.unset) delete env[k];
         Object.assign(env, ra.env);
         note(ra.note);

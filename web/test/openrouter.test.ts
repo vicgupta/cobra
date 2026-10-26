@@ -46,7 +46,7 @@ test("openrouter key: global row, encrypted at rest, admin-only set/clear (403),
   assert.equal(getOpenRouterKey(db, Buffer.alloc(32, 1).toString("base64")), undefined, "wrong COBRA_SECRET_KEY: no key");
   const cleared = setOpenRouterKey(db, admin, null, KEY, 43);
   assert.equal(cleared.set, false); assert.equal(getOpenRouterKey(db, KEY), undefined);
-  const audit = listProviderAudit(db).filter((a) => a.engine === "openrouter");
+  const audit = listProviderAudit(db, 1).filter((a) => a.engine === "openrouter");
   assert.deepEqual(audit.map((a) => [a.actorEmail, a.detail, a.at]), [["admin@a.com", "OPENROUTER_API_KEY cleared", 43], ["admin@a.com", "OPENROUTER_API_KEY set", 42]]);
   assert.ok(!JSON.stringify(db.prepare("SELECT * FROM provider_audit").all()).includes(OR));
 });

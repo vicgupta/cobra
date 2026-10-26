@@ -15,9 +15,10 @@ import { localRunner, opencodeAuthFromCodex } from "../lib/workflows/local-runne
 import { WorkflowSchema } from "../lib/workflows/schema";
 
 const KEY = Buffer.alloc(32, 7).toString("base64");
+const tid = (db: ReturnType<typeof openDb>, id: number) => (db.prepare("SELECT tenant_id t FROM users WHERE id = ?").get(id) as { t: number }).t;
 function setup() {
   const db = openDb(":memory:");
-  const mk = (email: string, role: "admin" | "team_lead" | "member") => ({ id: createUser(db, { email, tenant: "a", tenantName: "a", role, password: "pw-1234567890" }), email, role });
+  const mk = (email: string, role: "admin" | "team_lead" | "member") => { const id = createUser(db, { email, tenant: "a", tenantName: "a", role, password: "pw-1234567890" }); return { id, email, role, tenantId: tid(db, id) }; };
   return { db, admin: mk("admin@a.com", "admin"), lead: mk("lead@a.com", "team_lead"), member: mk("m@a.com", "member") };
 }
 const is = (status: number) => (e: unknown) => e instanceof CollabError && e.status === status;
@@ -65,23 +66,24 @@ test("engines: workflow schema accepts opencode/cursor engines", () => {
   assert.ok(!bad.success && bad.error.issues.some((i) => i.path.includes("engine")));
 });
 
-test("engines: Cursor API key is encrypted, never returned, admin-only, redacted list", () => {
+test("engines: Cursor API key is encrypted, never returned, team members only, redacted list", () => {
   const { db, admin, lead, member } = setup();
-  assert.equal(providerSecretStatus(db, "cursor")!.set, false);
-  assert.equal(providerSecretStatus(db, "codex"), null);
-  assert.throws(() => setProviderSecret(db, member, "cursor", "key_abcdefgh123", KEY), is(403));
-  assert.throws(() => setProviderSecret(db, lead, "cursor", "key_abcdefgh123", KEY), is(403));
-  assert.throws(() => setProviderSecret(db, admin, "codex", "key_abcdefgh123", KEY), is(400));
-  assert.throws(() => setProviderSecret(db, admin, "cursor", "short", KEY), is(400));
-  const v = setProviderSecret(db, admin, "cursor", "key_abcdefgh123", KEY, 5);
+  const t = lead.tenantId;
+  assert.equal(providerSecretStatus(db, t, "cursor")!.set, false);
+  assert.equal(providerSecretStatus(db, t, "codex"), null);
+  assert.throws(() => setProviderSecret(db, admin, "cursor", "key_abcdefgh123", KEY), is(403));
+  assert.throws(() => setProviderSecret(db, lead, "codex", "key_abcdefgh123", KEY), is(400));
+  assert.throws(() => setProviderSecret(db, lead, "cursor", "short", KEY), is(400));
+  assert.equal(setProviderSecret(db, member, "cursor", "key_member_0001", KEY, 4).set, true);
+  const v = setProviderSecret(db, lead, "cursor", "key_abcdefgh123", KEY, 5);
   assert.equal(v.set, true);
   assert.ok(!JSON.stringify(v).includes("key_abcdefgh123"));
-  const raw = (db.prepare("SELECT value_enc FROM provider_secrets").get() as { value_enc: string }).value_enc;
+  const raw = (db.prepare("SELECT value_enc FROM team_provider_secrets").get() as { value_enc: string }).value_enc;
   assert.ok(!raw.includes("key_abcdefgh123"));
-  assert.equal(getProviderSecret(db, "cursor", KEY), "key_abcdefgh123");
-  assert.deepEqual(providerSecretValues(db, KEY), ["key_abcdefgh123"]);
-  assert.equal(setProviderSecret(db, admin, "cursor", null, KEY).set, false);
-  assert.equal(getProviderSecret(db, "cursor", KEY), undefined);
+  assert.equal(getProviderSecret(db, t, "cursor", KEY), "key_abcdefgh123");
+  assert.deepEqual(providerSecretValues(db, t, KEY), ["key_abcdefgh123"]);
+  assert.equal(setProviderSecret(db, lead, "cursor", null, KEY).set, false);
+  assert.equal(getProviderSecret(db, t, "cursor", KEY), undefined);
 });
 
 test("engines: runner flags for opencode and cursor; cursor without a key fails clearly", async () => {

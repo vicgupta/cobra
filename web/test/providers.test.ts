@@ -35,7 +35,7 @@ test("providers: only system admins can set defaults", () => {
   assert.throws(() => setProviderDefaults(db, member, "codex", { effort: "high" }), is(403));
   assert.throws(() => setProviderDefaults(db, lead, "codex", { effort: "high" }), is(403));
   assert.deepEqual(getProviderDefaults(db, "codex", {}), { model: null, effort: null });
-  assert.equal(listProviderAudit(db).length, 0);
+  assert.equal(listProviderAudit(db, 1).length, 0);
 });
 
 test("providers: validation of models and tiers per provider, and audit", () => {
@@ -51,7 +51,7 @@ test("providers: validation of models and tiers per provider, and audit", () => 
   assert.deepEqual(setProviderDefaults(db, admin, "codex", { effort: "medium" }, 12, {}), { model: "gpt-6-luna", effort: "medium" }, "omitted model is kept");
   setProviderDefaults(db, admin, "codex", { effort: "medium" }, 13, {}); // no-op: not audited
   assert.deepEqual(setProviderDefaults(db, admin, "codex", { model: "default", effort: null }, 14, {}), { model: null, effort: null });
-  const log = listProviderAudit(db);
+  const log = listProviderAudit(db, 1);
   assert.equal(log.length, 4);
   assert.deepEqual({ ...log[0] }, { actorEmail: "admin@a.com", engine: "codex", oldModel: "gpt-6-luna", newModel: null, oldEffort: "medium", newEffort: null, detail: null, at: 14 });
   // a stored model dropped from the env list reads as default

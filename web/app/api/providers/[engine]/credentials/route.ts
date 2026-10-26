@@ -6,8 +6,9 @@ import { getDb, secretValue } from "@/lib/workflows/server";
 import { OPENROUTER, setOpenRouterKey } from "@/lib/openrouter";
 
 /** Settings > Providers: set / replace ({ name, value }) or delete ({ name, value: null }) one credential slot.
- *  System admins only. The response is masked status (set, last 4, who, when), never the value.
- *  OpenRouter (on hold) goes through its existing set/clear path unchanged. */
+ *  Team members only, for their own team. The response is masked status (set, last 4, who, when), never the value.
+ *  OpenRouter (on hold) goes through its existing set/clear path unchanged: one global key, system admins
+ *  only, used by team 1's runs only. */
 export async function PUT(req: Request, ctx: { params: Promise<{ engine: string }> }) {
   const g = await apiGuard(req);
   if (g.error) return g.error;

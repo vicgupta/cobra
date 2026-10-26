@@ -6,7 +6,7 @@ import { getDb, secretValue } from "@/lib/workflows/server";
 import { OPENROUTER, setOpenRouterKey } from "@/lib/openrouter";
 
 /** Settings > Providers secret (Cursor: CURSOR_API_KEY; openrouter: the global OPENROUTER_API_KEY). { value: string } sets, { value: null } clears.
- *  System admins only. The response carries set / not set, never the value. */
+ *  Team members for their own team (OpenRouter: system admins). The response carries set / not set, never the value. */
 export async function PUT(req: Request, ctx: { params: Promise<{ engine: string }> }) {
   const g = await apiGuard(req);
   if (g.error) return g.error;
