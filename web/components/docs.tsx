@@ -10,7 +10,7 @@ const Note = ({ children }: { children: ReactNode }) => <p className="mt-2 round
 
 export function DocsNav({ active }: { active: "overview" | "workflows" | "templates" | "skills" }) {
   const l = (href: string, label: string, k: string) => <Link href={href} className={`rounded px-2 py-1 text-sm ${active === k ? "bg-surface-2 text-fg" : "text-muted hover:text-fg"}`}>{label}</Link>;
-  return <nav className="flex gap-2" aria-label="Docs sections">{l("/settings/docs", "Overview", "overview")}{l("/settings/docs/workflows", "Workflows", "workflows")}{l("/settings/docs/templates", "Templates", "templates")}{l("/settings/docs/skills", "Skills", "skills")}</nav>;
+  return <nav className="flex gap-2" aria-label="Docs sections">{l("/settings/docs", "Overview", "overview")}{l("/settings/docs/skills", "Skills", "skills")}</nav>;
 }
 
 export function DocsShell({ active, children }: { active: "overview" | "workflows" | "templates" | "skills"; children: ReactNode }) {

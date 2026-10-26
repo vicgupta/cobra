@@ -240,7 +240,7 @@ export function RunLog({ initial }: { initial: Detail }) {
         <StatusBadge status={run.status} />
         {run.workflow && (run.workflow.startsWith("agent:")
           ? <Link className="text-success hover:underline" href="/agents">{run.workflow}</Link>
-          : <Link className="text-success hover:underline" href={`/workflows/${encodeURIComponent(run.workflow)}`}>{run.workflow}</Link>)}
+          : <span className="text-success">{run.workflow}</span>)}
         <span className="font-mono text-xs text-subtle">version {run.workflowHash?.slice(0, 12)}</span>
         <span className="text-xs text-subtle">started {new Date(run.startedAt).toLocaleString()}{run.endedAt ? ` · ended ${t(run.endedAt)}` : ""}</span>
       </div>

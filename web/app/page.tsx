@@ -51,7 +51,7 @@ async function DashboardBody({ user }: { user: SessionUser }) {
           <h1 className="text-2xl font-semibold tracking-tight">Factory output</h1>
           <p className="text-sm text-muted">Approved issues → agent PRs → human review. Nothing auto-merges.</p>
         </div>
-        <Link href="/workflows" className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400">Run a workflow</Link>
+        <Link href="/skills" className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400">Run a skill</Link>
       </div>
 
       {(
@@ -64,7 +64,7 @@ async function DashboardBody({ user }: { user: SessionUser }) {
 
           <Card title="Recent runs" subtitle="Latest workflow and skill runs">
             {runs.length === 0 ? (
-              <p className="py-6 text-center text-sm text-subtle">No runs yet. <Link href="/workflows" className="text-accent hover:underline">Run a workflow</Link>.</p>
+              <p className="py-6 text-center text-sm text-subtle">No runs yet. <Link href="/skills" className="text-accent hover:underline">Run a skill</Link>.</p>
             ) : (
               <ul className="divide-y divide-border">
                 {runs.slice(0, 15).map((r) => (

@@ -9,7 +9,6 @@ import type { Theme } from "@/lib/theme";
 
 const userLinks = [
   { href: "/", label: "Dashboard" },
-  { href: "/workflows", label: "Workflows" },
   { href: "/skills", label: "Skills" },
   { href: "/agents", label: "Agents" },
   { href: "/repos", label: "Repos" },
