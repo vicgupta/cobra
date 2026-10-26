@@ -47,7 +47,7 @@ test("repo PAT: stored encrypted, list/API shape never has the token, legacy row
   assert.ok(!String(row.pat_enc).includes(PAT) && typeof row.pat_set_at === "number");
   const json = JSON.stringify(listTeamRepos(db, lead.tenantId));
   assert.ok(!json.includes(PAT) && !json.includes(String(row.pat_enc)), "list never carries the token or ciphertext");
-  for (const x of listTeamRepos(db, lead.tenantId)) assert.deepEqual(Object.keys(x).sort(), ["createdAt", "defaultBranch", "patLast4", "patSet", "repo"]);
+  for (const x of listTeamRepos(db, lead.tenantId)) assert.deepEqual(Object.keys(x).sort(), ["createdAt", "createdBy", "createdByEmail", "defaultBranch", "patLast4", "patSet", "repo"]);
   assert.equal(repoPat(db, lead.tenantId, "ACME/with-pat", KEY), PAT);
   setRepoPat(db, lead, "acme/with-pat", null, KEY);
   assert.equal(listTeamRepos(db, lead.tenantId).find((x) => x.repo === "acme/with-pat")!.patSet, false);

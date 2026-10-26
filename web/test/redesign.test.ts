@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { openDb } from "../lib/db";
 import { createUser } from "../lib/auth/users";
-import { addTeamRepo, checkTeamRepo, listTeamRepos, removeTeamRepo, RepoError } from "../lib/repos";
+import { addTeamRepo, checkTeamRepo, listTeamRepos, removeTeamRepo, RepoError, setRepoPat } from "../lib/repos";
 import { parseWorkflow } from "../lib/workflows/loader";
 import { recordDecision } from "../lib/workflows/approvals";
 import { builtinHandlers, github } from "../lib/workflows/handlers";
@@ -52,12 +52,11 @@ async function approved(db: ReturnType<typeof openDb>, u: Actor, src: string) {
   return name;
 }
 
-test("repos: per-team lists; admin/lead manage, members view only; team A can't use team B's repo", () => {
+test("repos: per-team lists; members can add (Job 8); team A can't use team B's repo", () => {
   const { db, a, lead, member, b } = setup();
   addTeamRepo(db, a, "vicgupta/factory-demo-app", "main");
   addTeamRepo(db, lead, "vicgupta/cobra-sandbox");
   addTeamRepo(db, b, "other/b-repo");
-  assert.throws(() => addTeamRepo(db, member, "x/y"), (e: unknown) => e instanceof RepoError && e.status === 403);
   assert.throws(() => addTeamRepo(db, a, "not a repo"), (e: unknown) => e instanceof RepoError && e.status === 400);
   assert.throws(() => addTeamRepo(db, a, "vicgupta/cobra-sandbox"), (e: unknown) => e instanceof RepoError && e.status === 409);
   assert.deepEqual(listTeamRepos(db, a.tenantId).map((r) => r.repo), ["vicgupta/cobra-sandbox", "vicgupta/factory-demo-app"]);
@@ -83,7 +82,7 @@ test("regression: rows passed to Client Components are plain objects (node:sqlit
   assert.equal(list.length, 1);
   for (const r of list) {
     assert.equal(Object.getPrototypeOf(r), Object.prototype);
-    assert.deepEqual(Object.keys(r).sort(), ["createdAt", "defaultBranch", "patLast4", "patSet", "repo"]);
+    assert.deepEqual(Object.keys(r).sort(), ["createdAt", "createdBy", "createdByEmail", "defaultBranch", "patLast4", "patSet", "repo"]);
   }
   for (const r of [...listWorkflowRuns(db, a.tenantId, "x"), ...instancesOf(db, a.tenantId, "x")]) assert.equal(Object.getPrototypeOf(r), Object.prototype);
 });
@@ -168,8 +167,9 @@ test("members: start runs of approved workflows in their own tenant; not unappro
   assert.equal(startRun(db, member, un.name, { mode: "simulated" }, d).status, 409);
   // other tenant: not visible at all
   assert.equal(startRun(db, b, name, { mode: "simulated" }, deps(db, b.tenantId)).status, 404);
-  // members still can't manage repos
-  assert.throws(() => addTeamRepo(db, member, "x/y"), (e: unknown) => e instanceof RepoError && e.status === 403);
+  // Job 8: members can add repos to their own team, but still can't set tokens
+  assert.equal(addTeamRepo(db, member, "x/y").createdBy, member.id);
+  assert.throws(() => setRepoPat(db, member, "x/y", "ghp_" + "a".repeat(30), undefined), (e: unknown) => e instanceof RepoError && e.status === 403);
 });
 
 test("YAML: engine/prompt optional (backward compatible) and validated", () => {

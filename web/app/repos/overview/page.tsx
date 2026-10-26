@@ -39,7 +39,7 @@ export default function ReposOverview() {
   return <CollabPage title="Overview">{(u) => {
     const repos = listTeamRepos(getDb(), u.tenantId);
     return <div className="space-y-4">
-      {canManageRepos(u) && <p className="text-sm text-muted">Add repos and tokens on <Link className="underline" href="/settings/repos">Settings &gt; Repos</Link>.</p>}
+      <p className="text-sm text-muted">Add a repo for your team on <Link className="underline" href="/settings/repos">Settings &gt; Repos</Link>{canManageRepos(u) ? " (tokens too)" : ""}.</p>
       {repos.length === 0 ? <p className="text-sm text-subtle">No team repos yet.</p> : <div className="grid gap-4 md:grid-cols-2">{repos.map((r) => <RepoCard key={r.repo} u={u} r={r} />)}</div>}
     </div>;
   }}</CollabPage>;

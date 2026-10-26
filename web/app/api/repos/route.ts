@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiGuard } from "@/lib/auth/server";
-import { addTeamRepo, canManageRepos, cleanPat, globalCeiling, listTeamRepos, removeTeamRepo, RepoError, setRepoPat, verifyPat } from "@/lib/repos";
+import { addTeamRepo, canAddRepo, canEditRepo, canManageRepos, listRepoAudit, updateTeamRepo, cleanPat, globalCeiling, listTeamRepos, removeTeamRepo, RepoError, setRepoPat, verifyPat } from "@/lib/repos";
 import { parseKey, SecretKeyError } from "@/lib/secret-box";
 import { actor, getDb, githubTokenSet, secretKey } from "@/lib/workflows/server";
 
@@ -8,7 +8,8 @@ import { actor, getDb, githubTokenSet, secretKey } from "@/lib/workflows/server"
 export async function GET(req: Request) {
   const g = await apiGuard(req);
   if (g.error) return g.error;
-  return NextResponse.json({ repos: listTeamRepos(getDb(), g.user.tenantId), canManage: canManageRepos(g.user), ceiling: globalCeiling(), githubTokenSet: githubTokenSet() });
+  const db = getDb(), u = actor(g.user);
+  return NextResponse.json({ repos: listTeamRepos(db, u.tenantId).map((r) => ({ ...r, canEdit: canEditRepo(db, u, r) })), canAdd: canAddRepo(u), canManage: canManageRepos(u), audit: listRepoAudit(db, u.tenantId), ceiling: globalCeiling(), githubTokenSet: githubTokenSet() });
 }
 
 const fail = (e: unknown) => {
@@ -25,7 +26,8 @@ export async function POST(req: Request) {
   const pat = typeof b.pat === "string" && b.pat.trim() ? b.pat : null;
   const db = getDb(), u = actor(g.user);
   try {
-    if (!canManageRepos(u)) throw new RepoError(403, "only admins and team leads can manage repos");
+    // Job 8: any member can add; attaching a token at add time stays admin/team-lead only.
+    if (pat && !canManageRepos(u)) throw new RepoError(403, "only admins and team leads can set repo tokens");
     // Check the token (key present, well-formed, accepted by GitHub) before registering anything.
     let check: { push: boolean | null } | undefined;
     if (pat) { keyOrFail(); check = await verifyPat(b.repo.trim(), cleanPat(pat)); }
@@ -43,8 +45,12 @@ function keyOrFail() {
 export async function PATCH(req: Request) {
   const g = await apiGuard(req);
   if (g.error) return g.error;
-  const b = (await req.json().catch(() => null)) as { repo?: unknown; pat?: unknown } | null;
+  const b = (await req.json().catch(() => null)) as { repo?: unknown; pat?: unknown; defaultBranch?: unknown } | null;
   if (!b || typeof b.repo !== "string") return NextResponse.json({ error: "repo is required" }, { status: 400 });
+  if (b.defaultBranch !== undefined && b.pat === undefined) {
+    if (b.defaultBranch !== null && typeof b.defaultBranch !== "string") return NextResponse.json({ error: "defaultBranch must be a string or null" }, { status: 400 });
+    try { return NextResponse.json(updateTeamRepo(getDb(), actor(g.user), b.repo, b.defaultBranch)); } catch (e) { return fail(e); }
+  }
   if (b.pat !== null && typeof b.pat !== "string") return NextResponse.json({ error: "pat must be a string, or null to clear" }, { status: 400 });
   const db = getDb(), u = actor(g.user);
   try {

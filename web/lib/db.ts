@@ -655,6 +655,22 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     ALTER TABLE team_audit_new RENAME TO team_audit;
     CREATE INDEX team_audit_tenant ON team_audit(tenant_id, at);
   `),
+  // 26 (Job 8): any team member can add repos to their team; audit of repo adds/edits/removals.
+  // Repos were already per team (team_repos.tenant_id); rows without a valid team go to team 1.
+  (db) => db.exec(`
+    CREATE TABLE repo_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('add','edit','remove','token_set','token_clear')),
+      repo TEXT NOT NULL,
+      detail TEXT NOT NULL DEFAULT '',
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX repo_audit_tenant ON repo_audit(tenant_id, at);
+    UPDATE team_repos SET tenant_id = 1 WHERE tenant_id NOT IN (SELECT id FROM tenants) AND EXISTS (SELECT 1 FROM tenants WHERE id = 1);
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */
