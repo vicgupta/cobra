@@ -107,3 +107,13 @@ test("Settings > Providers UI: no helper copy, Sources or Recent provider change
   assert.ok(v.indexOf("data-credentials-manager") < v.indexOf("data-providers>"), "summary table below credentials");
   assert.match(readFileSync(new URL("../lib/providers.ts", import.meta.url), "utf8"), /export function listProviderAudit/);
 });
+
+test("Settings > Providers redesign: one card per provider with badge, segmented auth, pills, inline replace", async () => {
+  const { readFileSync } = await import("node:fs");
+  const v = readFileSync(new URL("../components/providers.tsx", import.meta.url), "utf8");
+  const f = readFileSync(new URL("../components/provider-credentials-form.tsx", import.meta.url), "utf8");
+  for (const s of ["data-cred-provider={e}", "data-provider-connected", '"Connected"', '"Not connected"', '"From server env"', '"Not set"', "data-cred-meta", "data-primary"]) assert.ok(v.includes(s), s);
+  for (const s of ['role="radiogroup"', 'type="radio"', "aria-expanded", "focus-visible:ring-2", '"Replace"', "data-confirm-delete", "disabled={busy || !value.trim()}", 'role={msg.ok ? "status" : "alert"}']) assert.ok(f.includes(s), s);
+  // same APIs as before (UI only)
+  assert.ok(f.includes("/api/providers/${engine}/credentials") && f.includes("/api/providers/${engine}/auth"));
+});

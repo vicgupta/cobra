@@ -1,12 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useId, useState } from "react";
 
-const input = "rounded-md border border-border-strong bg-bg px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none";
-const button = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
-const ghost = "rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-soft hover:bg-surface-2 disabled:opacity-50";
-const danger = "rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50";
+const focus = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg";
+const input = `w-full rounded-md border border-border-strong bg-bg px-3 py-2 font-mono text-sm placeholder:font-sans placeholder:text-subtle focus:border-emerald-500 ${focus}`;
+const primary = `rounded-md bg-accent-solid px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${focus}`;
+const ghost = `rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-soft hover:bg-surface-2 disabled:opacity-50 ${focus}`;
+const subtleDanger = `rounded-md px-2.5 py-1.5 text-sm text-danger hover:bg-rose-500/10 disabled:opacity-50 ${focus}`;
+const danger = `rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 ${focus}`;
 
 type Msg = { ok: boolean; text: string } | null;
 async function call(url: string, method: string, body?: unknown): Promise<{ ok: boolean; error?: string }> {
@@ -14,62 +16,86 @@ async function call(url: string, method: string, body?: unknown): Promise<{ ok: 
   const d = (await r.json().catch(() => ({}))) as { error?: string };
   return { ok: r.ok, error: d.error ?? (r.ok ? undefined : `HTTP ${r.status}`) };
 }
-const Note = ({ msg }: { msg: Msg }) => msg && <p role={msg.ok ? undefined : "alert"} className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</p>;
+const Note = ({ msg }: { msg: Msg }) => msg && <p role={msg.ok ? "status" : "alert"} className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</p>;
 
 /** Two-step delete: the first click asks, the second deletes. */
 function ConfirmDelete({ what, busy, onConfirm }: { what: string; busy: boolean; onConfirm: () => void }) {
   const [ask, setAsk] = useState(false);
-  if (!ask) return <button type="button" className={ghost} disabled={busy} onClick={() => setAsk(true)}>Delete</button>;
+  if (!ask) return <button type="button" className={subtleDanger} disabled={busy} onClick={() => setAsk(true)}>Delete</button>;
   return (
-    <span className="inline-flex items-center gap-2" data-confirm-delete>
-      <span className="text-xs text-danger">Delete {what}?</span>
-      <button type="button" className={danger} disabled={busy} onClick={() => { setAsk(false); onConfirm(); }}>Yes, delete</button>
+    <span className="inline-flex flex-wrap items-center gap-2" data-confirm-delete>
+      <span className="text-sm text-danger">Delete {what}?</span>
+      <button type="button" className={danger} disabled={busy} onClick={() => { setAsk(false); onConfirm(); }} autoFocus>Yes, delete</button>
       <button type="button" className={ghost} disabled={busy} onClick={() => setAsk(false)}>Cancel</button>
     </span>
   );
 }
 
-/** One masked credential slot: enter / replace / delete. The value is write-only. Team members only, own team (server-enforced). */
-export function CredentialForm({ engine, name, label, stored }: { engine: string; name: string; label: string; stored: boolean }) {
+/** Actions for one masked credential slot: add (or override env), inline Replace, Delete. The value is write-only.
+ *  Team members only, own team (server-enforced). `open` = show the input straight away (the slot the auth method uses). */
+export function CredentialForm({ engine, name, label, stored, open = false }: { engine: string; name: string; label: string; stored: boolean; open?: boolean }) {
   const router = useRouter();
+  const id = useId();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
+  const [expanded, setExpanded] = useState(open && !stored);
   const send = async (v: string | null) => {
     setBusy(true); setMsg(null);
     try {
       const r = await call(`/api/providers/${engine}/credentials`, "PUT", { name, value: v });
       setMsg(r.ok ? { ok: true, text: v ? (stored ? "Replaced" : "Saved") : "Deleted" } : { ok: false, text: r.error! });
-      if (r.ok) { setValue(""); router.refresh(); }
+      if (r.ok) { setValue(""); setExpanded(open && !stored && v === null); router.refresh(); }
     } finally { setBusy(false); }
   };
+  if (!expanded) {
+    return (
+      <div className="flex flex-wrap items-center gap-2" data-credential={name}>
+        <button type="button" className={ghost} onClick={() => setExpanded(true)} aria-expanded={false} aria-controls={id}>{stored ? "Replace" : "Add"}</button>
+        {stored && <ConfirmDelete what={label} busy={busy} onConfirm={() => void send(null)} />}
+        <Note msg={msg} />
+      </div>
+    );
+  }
   return (
-    <form className="flex flex-wrap items-center gap-2" data-credential={name} onSubmit={(e) => { e.preventDefault(); if (value.trim()) void send(value.trim()); }}>
-      <input aria-label={`${engine} ${name}`} type="password" autoComplete="off" spellCheck={false} className={`${input} min-w-64`} value={value} onChange={(e) => setValue(e.target.value)} placeholder={label} />
-      <button className={button} disabled={busy || !value.trim()}>{stored ? "Replace" : "Save"}</button>
-      {stored && <ConfirmDelete what={name} busy={busy} onConfirm={() => void send(null)} />}
+    <form id={id} className="space-y-2" data-credential={name} data-expanded onSubmit={(e) => { e.preventDefault(); if (value.trim()) void send(value.trim()); }}>
+      <label htmlFor={`${id}-v`} className="sr-only">{label}</label>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <input id={`${id}-v`} aria-label={`${engine} ${name}`} type="password" autoComplete="off" spellCheck={false} className={input} value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape" && (stored || !open)) { setValue(""); setExpanded(false); } }} placeholder={stored ? `New ${label}` : label} autoFocus={stored || !open} />
+        <div className="flex shrink-0 items-center gap-2">
+          <button className={primary} disabled={busy || !value.trim()}>{stored ? "Replace" : "Save"}</button>
+          {(stored || !open) && <button type="button" className={ghost} disabled={busy} onClick={() => { setValue(""); setExpanded(false); }}>Cancel</button>}
+        </div>
+      </div>
       <Note msg={msg} />
     </form>
   );
 }
 
-const MODE_LABEL: Record<string, string> = { auto: "Auto (subscription first, else API key)", api_key: "API key", subscription: "Subscription" };
+const MODE_LABEL: Record<string, string> = { auto: "Auto", api_key: "API key", subscription: "Subscription" };
 
-export function AuthModeForm({ engine, modes, current }: { engine: string; modes: string[]; current: string }) {
+/** Segmented auth-method control (native radios: arrow keys move, the change saves at once). */
+export function AuthModeForm({ engine, modes, current, disabled = false }: { engine: string; modes: string[]; current: string; disabled?: boolean }) {
   const router = useRouter();
   const [mode, setMode] = useState(current);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
+  const pick = async (m: string) => {
+    if (m === mode) return;
+    const prev = mode; setMode(m); setBusy(true); setMsg(null);
+    try { const r = await call(`/api/providers/${engine}/auth`, "PUT", { mode: m }); if (r.ok) router.refresh(); else { setMode(prev); setMsg({ ok: false, text: r.error! }); } } finally { setBusy(false); }
+  };
   return (
-    <form className="flex flex-wrap items-center gap-2" data-auth-mode={engine} onSubmit={async (e) => {
-      e.preventDefault(); setBusy(true); setMsg(null);
-      try { const r = await call(`/api/providers/${engine}/auth`, "PUT", { mode }); setMsg(r.ok ? { ok: true, text: "Saved" } : { ok: false, text: r.error! }); if (r.ok) router.refresh(); } finally { setBusy(false); }
-    }}>
-      <label className="text-xs text-muted">Auth method <select aria-label={`${engine} auth method`} className={input} value={mode} onChange={(e) => setMode(e.target.value)}>
-        {modes.map((m) => <option key={m} value={m}>{MODE_LABEL[m] ?? m}</option>)}
-      </select></label>
-      <button className={button} disabled={busy || mode === current}>Save</button>
+    <div className="flex flex-col items-end gap-1" data-auth-mode={engine}>
+      <fieldset role="radiogroup" aria-label={`${engine} auth method`} disabled={disabled || busy} className="inline-flex rounded-lg border border-border bg-surface-2 p-0.5 text-xs">
+        {modes.map((m) => (
+          <label key={m} className={`cursor-pointer rounded-md px-2.5 py-1 font-medium transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-emerald-500/60 ${mode === m ? "bg-bg text-fg shadow-sm ring-1 ring-border-strong" : "text-muted hover:text-fg"} ${disabled ? "cursor-default" : ""}`}>
+            <input type="radio" className="sr-only" name={`auth-${engine}`} value={m} checked={mode === m} onChange={() => void pick(m)} />
+            {MODE_LABEL[m] ?? m}
+          </label>
+        ))}
+      </fieldset>
       <Note msg={msg} />
-    </form>
+    </div>
   );
 }
