@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { AgentBadge, AuthBadge } from "@/components/badges";
-import { Badge, Card, Stat } from "@/components/ui";
+import { AuthBadge } from "@/components/badges";
+import { Card, Stat } from "@/components/ui";
 import { AuthGate } from "@/components/auth-gate";
 import { canUseSharedConfig, type SessionUser } from "@/lib/auth/sessions";
 import { getDb } from "@/lib/db";
 import { agentModes } from "@/lib/env-file";
-import { listRunsWithTime } from "@/lib/runs-db";
-import { STEP_LABEL, stepAt } from "@/lib/runs";
+import { listRecentRunRows, listRunsWithTime } from "@/lib/runs-db";
+import { RecentRunsTable } from "@/components/recent-runs-table";
 import { AGENT_LABEL, type AgentId } from "@/lib/types";
 
 const WEEK = 7 * 24 * 60 * 60 * 1000;
@@ -38,6 +38,7 @@ async function DashboardBody({ user }: { user: SessionUser }) {
   const shared = canUseSharedConfig(user);
   // Every member of the tenant sees its runs (workflow and skill runs; legacy test-run rows are labeled); agent status stays admin-only.
   const { now, runs } = listRunsWithTime(user.tenantId);
+  const rows = listRecentRunRows(user.tenantId, 25);
   const real = runs.filter((r) => !isLegacyTestRun(r));
   const week = real.filter((r) => now - r.startedAt < WEEK);
   const modes = shared ? await agentModes() : null;
@@ -63,23 +64,10 @@ async function DashboardBody({ user }: { user: SessionUser }) {
           </div>
 
           <Card title="Recent runs" subtitle="Latest workflow and skill runs">
-            {runs.length === 0 ? (
+            {rows.length === 0 ? (
               <p className="py-6 text-center text-sm text-subtle">No runs yet. <Link href="/skills" className="text-accent hover:underline">Run a skill</Link>.</p>
             ) : (
-              <ul className="divide-y divide-border">
-                {runs.slice(0, 15).map((r) => (
-                  <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3 text-sm">
-                    <Link href={`/runs/${r.id}`} className="font-medium hover:underline">{r.issue > 0 && <span className="text-subtle">#{r.issue} </span>}{r.title}</Link>
-                    {r.repo && <span className="font-mono text-xs text-muted">{r.repo}</span>}
-                    {!isLegacyTestRun(r) ? (
-                      <><Badge tone="violet">{r.workflow}</Badge><Badge tone="gray" dot>{r.status ?? "unknown"}</Badge></>
-                    ) : (
-                      <><AgentBadge agent={r.agent} /><Badge tone="gray" dot>{STEP_LABEL[stepAt(r, now)]}</Badge><Badge tone="amber">Legacy test run</Badge></>
-                    )}
-                    <span className="ml-auto text-xs text-subtle">{ago(now - r.startedAt)}</span>
-                  </li>
-                ))}
-              </ul>
+              <RecentRunsTable runs={rows} now={now} />
             )}
           </Card>
         </>
