@@ -24,11 +24,6 @@ export default function SkillDocsPage() {
       <li>Approvers: system admins and team leads of the skill&apos;s team; an author&apos;s own approval only counts for an admin. One approval approves; any reject blocks.</li>
       <li>Simulated runs are dry runs and need no approval: agent steps are simulated, GitHub steps are never sent to GitHub and shell commands are not executed (both reported as would-run), approval steps auto-pass.</li>
     </ul>
-    <h2 className="mt-8 text-lg font-semibold">Review</h2>
-    <ul className={li}>
-      <li>Every create and edit is graded against the admin rulebook (Settings &gt; Skill rules) and the review is stored with the rules version. The score is shown to approvers and never blocks anything. Admins can re-review.</li>
-      <li>Request review (author, team leads, admins) builds pros, cons and suggested corrections. Apply saves a new version (re-graded, needs re-approval); dismiss records the decision. Both are audited.</li>
-    </ul>
     <h2 className="mt-8 text-lg font-semibold">Visibility</h2>
     <p className="mt-2 text-sm text-fg-soft">Skills are visible only to their team (others get 404). System admins see every team&apos;s skills.</p>
   </DocsShell>;

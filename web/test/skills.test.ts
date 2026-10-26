@@ -3,11 +3,10 @@ import assert from "node:assert/strict";
 import { openDb } from "../lib/db";
 import { createUser } from "../lib/auth/users";
 import { builtinHandlers } from "../lib/workflows/handlers";
-import { validatePlan, MAX_STEPS, type Plan } from "../lib/skills/plan";
+import { validatePlan, MAX_STEPS } from "../lib/skills/plan";
 import { sections, sectionText } from "../lib/skills/sections";
 import { approvalState, canEdit, createSkill, decide, effectiveHash, getSkill, listSkills, MASTER, SkillError, skillByName, updateSkill, type Actor } from "../lib/skills/store";
 import { startSkillRun, type SkillDeps } from "../lib/skills/executor";
-import { grade, listRules, latestReview, requestReview, resolveCorrection, saveRule, listCycles, reReview } from "../lib/skills/review";
 import * as svc from "../lib/skills/service";
 
 function setup() {
@@ -124,36 +123,6 @@ test("approval hash covers body, plan, composed skills (recursive) and agents; a
   assert.notEqual(effectiveHash(db, ag).hash, ha);
 });
 
-test("review scoring: rules, advisory prompt length, admin-only rule management and re-review", () => {
-  const { db, member, admin, lead } = setup();
-  const good = grade(db, { description: "d", body: "", plan: validatePlan({ steps: [step("work"), step("verify")] }).ok ? (validatePlan({ steps: [step("work"), step("verify")] }) as { plan: Plan }).plan : ({} as Plan) });
-  assert.equal(good.score, 100);
-  const p = (validatePlan({ steps: [{ id: "work", action: "agent", with: { prompt: "x".repeat(30000) } }] }) as { plan: Plan }).plan;
-  const weak = grade(db, { description: "", body: "token ghp_abcdefghijklmnopqrstuvwxyz0123", plan: p });
-  const by = Object.fromEntries(weak.results.map((r) => [r.code, r.status]));
-  assert.equal(by.explicit_on_failure, "fail"); assert.equal(by.final_verification, "fail"); assert.equal(by.secrets_declared, "fail"); assert.equal(by.description_present, "fail");
-  assert.equal(by.prompt_length, "fail");
-  assert.ok(weak.results.find((r) => r.code === "prompt_length")!.advisory);
-  assert.ok(!weak.results.some((r) => r.code === "llm_sop_clarity"), "LLM rule seeded disabled");
-  assert.ok(weak.score < 100);
-  // merge guard
-  const m = (validatePlan({ steps: [{ id: "merge", action: "github", with: { action: "merge", repo: "a/b", number: 1 }, on_failure: "stop" }] }) as { plan: Plan }).plan;
-  assert.equal(grade(db, { description: "d", body: "", plan: m }).results.find((r) => r.code === "no_unguarded_merge")!.status, "fail");
-  // admin-only rules
-  assert.throws(() => saveRule(db, lead, { id: 1, enabled: false }), /admins/);
-  assert.equal(svc.rules(db, member).status, 404);
-  const pl = listRules(db).find((r) => r.code === "prompt_length")!;
-  saveRule(db, admin, { id: pl.id, config: { max_chars: 50000 } });
-  assert.equal(grade(db, { description: "", body: "", plan: p }).results.find((r) => r.code === "prompt_length")!.status, "pass");
-  const s = createSkill(db, member, { name: "s", description: "d", plan: { steps: [step("verify")] } });
-  assert.throws(() => reReview(db, member, s), /admins/);
-  assert.ok(reReview(db, admin, s).score >= 0);
-  assert.ok((db.prepare("SELECT COUNT(*) n FROM skill_audit WHERE action = 'rule_update'").get() as { n: number }).n === 1);
-  const r = svc.create(db, member, { name: "low", plan: JSON.stringify({ steps: [{ id: "a", action: "simulate" }] }) });
-  assert.equal(r.status, 201, "low score never blocks saving");
-  assert.ok(((r.body as { review: { score: number } }).review.score) < 100);
-});
-
 test("team scoping: create/view/edit within team, 404 across teams, admin sees all", () => {
   const { db, member, member2, lead, admin, bMember, bLead } = setup();
   const s = createSkill(db, member, { name: "mine", description: "d", body: "one line" });
@@ -170,33 +139,6 @@ test("team scoping: create/view/edit within team, 404 across teams, admin sees a
   assert.equal(svc.update(db, member2, s.id, { body: "edit" }).status, 403);
   assert.equal(svc.update(db, lead, s.id, { body: "lead edit" }).status, 200);
   assert.throws(() => createSkill(db, member, { name: "mine", body: "dup" }), /already exists/);
-});
-
-test("opt-in review cycle: pros, cons, corrections; apply creates a re-graded version; dismiss; never blocks", async () => {
-  const { db, member, member2, lead, bLead } = setup();
-  const s = createSkill(db, member, { name: "rough", description: "", body: "# Release checklist\nDo it.", plan: { steps: [{ id: "work", action: "simulate" }] } });
-  assert.throws(() => requestReview(db, member2, s), /author/);
-  assert.equal(svc.startReview(db, bLead, s.id).status, 404);
-  const c = requestReview(db, member, s);
-  assert.ok(c.pros.length > 0 && c.cons.length >= 3);
-  const ids = Object.fromEntries(c.corrections.map((x) => [x.rule, x.id]));
-  assert.ok(ids.explicit_on_failure && ids.final_verification && ids.description_present);
-  const before = latestReview(db, s.id)!.score;
-  const a = resolveCorrection(db, member, s.id, c.id, ids.explicit_on_failure, "apply");
-  assert.equal(a.skill.version, 2);
-  assert.equal(a.skill.plan.steps[0].on_failure, "stop");
-  assert.ok(a.review!.score > before, "re-graded");
-  resolveCorrection(db, lead, s.id, c.id, ids.final_verification, "apply");
-  const d = resolveCorrection(db, lead, s.id, c.id, ids.description_present, "dismiss");
-  assert.equal(d.cycle.corrections.find((x) => x.id === ids.description_present)!.status, "dismissed");
-  assert.throws(() => resolveCorrection(db, member, s.id, c.id, ids.description_present, "apply"), /already/);
-  assert.equal(listCycles(db, member2, s).length, 0, "only author/leads see cycles");
-  assert.equal(listCycles(db, lead, s).length, 1);
-  const cur = getSkill(db, member, s.id)!;
-  assert.equal(cur.plan.steps.at(-1)!.id, "verify");
-  const r = await startSkillRun(db, who(member), cur, {}, deps).done;
-  assert.equal(r.status, "succeeded", "review never blocks running");
-  assert.ok((db.prepare("SELECT COUNT(*) n FROM skill_audit WHERE action IN ('review_request','correction_apply','correction_dismiss')").get() as { n: number }).n === 4);
 });
 
 test("one-line skill: derived plan, validates, runs in simulate", async () => {
@@ -295,11 +237,6 @@ test("any length, explicit: huge skill with sections, when, handoffs and goto; p
     assert.match(String(st.outputs.summary), new RegExp(`SOP section #part-${i}\\b`));
     assert.match(String(st.outputs.summary), new RegExp(`work on v${i - 1}\\b`), "handoff");
   }
-  // the length rule only warns: advisory, never counts against the score
-  const g = grade(db, { ...s, body: body + "x".repeat(50000) });
-  const pl = g.results.find((x) => x.code === "prompt_length")!;
-  assert.equal(pl.advisory, true);
-  assert.equal(grade(db, s).score, g.score, "advisory rule doesn't change the score");
   // no length rejection anywhere between one line and huge
   for (const n of [1, 10, 100, 1000, 10000, 100000, 500000]) {
     const sk = createSkill(db, member, { name: `sweep-${n}`, description: "d", body: Array.from({ length: Math.max(1, Math.floor(n / 20)) }, (_, k) => `Line ${k} of the SOP.`).join("\n").slice(0, Math.max(n, 1)) });
@@ -308,9 +245,19 @@ test("any length, explicit: huge skill with sections, when, handoffs and goto; p
   }
 });
 
-test("built-in master skill is graded (never '—'): first list/view records a review", () => {
-  const { db, member } = setup();
-  const list = svc.list(db, member);
-  const m = (list.body as { skills: { name: string; score: number | null }[] }).skills.find((x) => x.name === MASTER)!;
-  assert.equal(typeof m.score, "number");
+test("no rulebook: create, list, detail and approve work without a review score, also with old skill_reviews rows", () => {
+  const { db, member, lead } = setup();
+  const r = svc.create(db, member, { name: "plain", description: "d", body: "one line" });
+  assert.equal(r.status, 201);
+  const s = (r.body as { skill: { id: number; contentHash: string; tenantId: number } }).skill;
+  assert.ok(!("review" in (r.body as object)));
+  // a row left by the old rulebook build: kept in the DB, ignored by this build
+  db.prepare("INSERT INTO skill_reviews (tenant_id, skill_id, content_hash, rules_version, score, results_json, trigger, created_at) VALUES (?, ?, ?, 'v', 42, '[]', 'create', 1)").run(s.tenantId, s.id, s.contentHash);
+  const row = (svc.list(db, member).body as { skills: Array<Record<string, unknown>> }).skills.find((x) => x.name === "plain")!;
+  assert.ok(!("score" in row));
+  const d = svc.detail(db, member, s.id);
+  assert.equal(d.status, 200);
+  assert.ok(!("review" in (d.body as object)));
+  assert.equal(svc.approve(db, lead, s.id, { decision: "approve" }).status, 200);
+  assert.equal(((svc.detail(db, member, s.id).body as { approval: { status: string } }).approval.status), "approved");
 });

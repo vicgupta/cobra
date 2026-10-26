@@ -3,58 +3,25 @@ import { notFound } from "next/navigation";
 import { CollabPage } from "@/components/collab-page";
 import { Badge, Card } from "@/components/ui";
 import { StatusBadge } from "@/components/workflows";
-import { ActionButton, Approve, RunSkill } from "@/components/skills";
+import { Approve, RunSkill } from "@/components/skills";
 import { getDb } from "@/lib/workflows/server";
 import { detail } from "@/lib/skills/service";
 import { sections } from "@/lib/skills/sections";
 import type { Actor, ApprovalState, Skill } from "@/lib/skills/store";
-import type { Cycle, Review } from "@/lib/skills/review";
 
 export const metadata = { title: "Skill · Cobra" };
 
 type D = {
   skill: Skill; summary: { team: string; status: string }; effective: { hash: string; parts: string[]; errors: string[] }; composed: Array<{ id: number; name: string; version: number }>; composeError: string | null;
-  approval: ApprovalState; review: Review | null; reviews: Review[]; cycles: Cycle[]; versions: Array<{ version: number; hash: string; savedAt: number; note: string | null; savedBy: string | null }>;
+  approval: ApprovalState; versions: Array<{ version: number; hash: string; savedAt: number; note: string | null; savedBy: string | null }>;
   runs: Array<{ id: string; status: string | null; mode: string | null; startedAt: number; triggeredBy: string | null }>; audit: Array<{ actor: string; action: string; detail: string; at: number }>;
-  can: { edit: boolean; approve: boolean; review: boolean; rereview: boolean; run: boolean };
+  can: { edit: boolean; approve: boolean; run: boolean };
 };
 const C = ({ children }: { children: React.ReactNode }) => <code className="rounded bg-surface-2 px-1 text-[0.85em]">{children}</code>;
 const when = (t: number) => new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 
 export default function SkillPage({ params }: PageProps<"/skills/[id]">) {
   return <CollabPage title="Skill" crumbs={<Link href="/skills" className="hover:underline">Skills</Link>}>{(u) => <Body u={u} params={params} />}</CollabPage>;
-}
-
-function ReviewCard({ r, id, can }: { r: Review | null; id: number; can: D["can"] }) {
-  return (
-    <Card title={<>Rulebook review {r && <span className="ml-2 tabular-nums" data-testid="review-score">{r.score}/100</span>}</>} subtitle={r ? `rules ${r.rulesVersion} · skill @${r.contentHash.slice(0, 12)} · ${r.trigger} · ${when(r.createdAt)} · advice only, never blocks` : "Not reviewed yet"}
-      action={<div className="flex gap-2">{can.review && <ActionButton url={`/api/skills/${id}/review`} label="Request review" testid="request-review" />}{can.rereview && <ActionButton url={`/api/skills/${id}/rereview`} label="Re-review (admin)" />}</div>}>
-      {r && <ul className="space-y-1 text-sm">{r.results.map((x) => (
-        <li key={x.code} className="flex gap-2"><span className={x.status === "pass" ? "text-success" : x.status === "fail" ? (x.advisory ? "text-warning" : "text-danger") : "text-subtle"}>{x.status === "pass" ? "✓" : x.status === "fail" ? "✗" : "–"}</span>
-          <span><b className="font-medium">{x.title}</b>{x.advisory && <Badge tone="amber">advisory</Badge>}{x.kind === "llm" && <Badge tone="violet">LLM-judged</Badge>} <span className="text-muted">{x.status === "not_evaluated" ? "not evaluated: " : ""}{x.reason}</span></span></li>))}</ul>}
-    </Card>
-  );
-}
-
-function Cycles({ cycles, id }: { cycles: Cycle[]; id: number }) {
-  if (!cycles.length) return null;
-  return (
-    <Card title="Review requests" subtitle="Shown to the author and team leads. Apply creates a new version (re-graded, needs re-approval); dismiss records the decision.">
-      <div className="space-y-4">{cycles.map((c) => (
-        <div key={c.id} className="rounded-md border border-border p-3 text-sm" data-testid="review-cycle">
-          <p className="text-xs text-subtle">#{c.id} · requested by {c.requestedBy ?? "?"} · {when(c.createdAt)} · {c.status} · for @{c.contentHash.slice(0, 12)}</p>
-          {c.narrative ? <p className="mt-2"><Badge tone="violet">LLM narrative</Badge> {c.narrative}</p> : <p className="mt-1 text-xs text-subtle">Derived from the rule results (no LLM narrative: no engine credentials configured for reviews).</p>}
-          <div className="mt-2 grid gap-3 sm:grid-cols-2">
-            <div><h4 className="font-medium text-success">Pros</h4><ul className="list-disc pl-5 text-fg-soft">{c.pros.map((p, i) => <li key={i}>{p}</li>)}</ul></div>
-            <div><h4 className="font-medium text-danger">Cons</h4>{c.cons.length ? <ul className="list-disc pl-5 text-fg-soft">{c.cons.map((p, i) => <li key={i}>{p}</li>)}</ul> : <p className="text-muted">None</p>}</div>
-          </div>
-          {c.corrections.length > 0 && <><h4 className="mt-2 font-medium">Suggested corrections</h4><ul className="mt-1 space-y-2">{c.corrections.map((x) => (
-            <li key={x.id} className="flex flex-wrap items-center gap-2"><span>{x.detail}</span>
-              {x.status === "open" ? <>{x.patch && <ActionButton url={`/api/skills/${id}/correction`} label="Apply" body={{ cycle: c.id, correction: x.id, action: "apply" }} />}<ActionButton url={`/api/skills/${id}/correction`} label="Dismiss" body={{ cycle: c.id, correction: x.id, action: "dismiss" }} /></>
-                : <Badge tone={x.status === "applied" ? "green" : "gray"}>{x.status}{x.version ? ` → v${x.version}` : ""} by {x.by}</Badge>}</li>))}</ul></>}
-        </div>))}</div>
-    </Card>
-  );
 }
 
 function PlanView({ s }: { s: Skill }) {
@@ -119,13 +86,10 @@ async function Body({ u, params }: { u: Actor; params: PageProps<"/skills/[id]">
         <Card title="Approval" subtitle={<>Effective hash <C>{d.effective.hash.slice(0, 12)}</C> covers the SOP, plan, composed skills and agents</>}>
           <p className="text-sm"><StatusBadge status={d.approval.status} /> <span className="text-muted">{d.approval.reason}</span></p>
           {d.approval.decisions.length > 0 && <ul className="mt-2 text-xs text-fg-soft">{d.approval.decisions.map((x, i) => <li key={i}>{x.decision} by {x.email} ({x.role}) {x.comment && `“${x.comment}”`} · {when(x.createdAt)}</li>)}</ul>}
-          {d.review && <p className="mt-2 text-xs text-muted">Review score for approvers: <b>{d.review.score}/100</b> (rules {d.review.rulesVersion}{d.review.contentHash !== s.contentHash ? ", older version" : ""}) — advice only.</p>}
           <details className="mt-2 text-xs"><summary className="cursor-pointer text-muted">Hash parts</summary><ul className="mt-1 font-mono">{d.effective.parts.map((p) => <li key={p}>{p.slice(0, 80)}</li>)}</ul></details>
           {d.can.approve && d.approval.status !== "approved" && <div className="mt-3"><Approve id={s.id} /></div>}
         </Card>
       </div>
-      <ReviewCard r={d.review} id={s.id} can={d.can} />
-      <Cycles cycles={d.cycles} id={s.id} />
       {(d.composed.length > 0 || d.composeError) && <Card title="Composed skills" subtitle="call_skill targets (recursive); each runs as its own run with its own audit trail">
         {d.composeError && <p className="text-sm text-danger">{d.composeError}</p>}
         <ul className="text-sm">{d.composed.map((k) => <li key={k.id}><Link className="text-success hover:underline" href={`/skills/${k.id}`}>{k.name}</Link> <span className="text-subtle">v{k.version}</span></li>)}</ul></Card>}

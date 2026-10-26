@@ -1,5 +1,5 @@
 "use client";
-// Client pieces for SOP skills: editor with live validation, run/approve/review actions, rule editor.
+// Client pieces for SOP skills: editor with live validation, run/approve actions.
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -16,14 +16,14 @@ const Errors = ({ e }: { e: string[] }) => e.length ? <ul className="mt-2 list-d
 
 export type Starter = { key: string; label: string; description: string; body: string; plan: string };
 
-/** New/edit form: SOP body + JSON plan with live validation and a rulebook preview (score never blocks saving). */
+/** New/edit form: SOP body + JSON plan with live validation. */
 export function SkillEditor({ id, initial, starters = [] }: { id?: number; initial?: { name: string; description: string; body: string; plan: string }; starters?: Starter[] }) {
   const router = useRouter();
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [body, setBody] = useState(initial?.body ?? "");
   const [plan, setPlan] = useState(initial?.plan ?? "");
-  const [check, setCheck] = useState<{ ok: boolean; errors?: string[]; steps?: number; score?: number; derived?: boolean; results?: Array<{ code: string; title: string; status: string; reason: string; advisory: boolean }> } | null>(null);
+  const [check, setCheck] = useState<{ ok: boolean; errors?: string[]; steps?: number; derived?: boolean } | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -61,8 +61,7 @@ export function SkillEditor({ id, initial, starters = [] }: { id?: number; initi
       </label>
       <div className="rounded-md border border-border p-3 text-sm" data-testid="live-validation">
         {!check ? <span className="text-subtle">Checking…</span> : check.ok
-          ? <><span className="text-success">Plan valid</span> · {check.steps} step(s){check.derived && " (derived from the SOP)"} · rulebook preview score <b>{check.score}</b> <span className="text-subtle">(advice only; never blocks)</span>
-            <ul className="mt-2 grid gap-1 sm:grid-cols-2">{check.results?.map((r) => <li key={r.code} className={r.status === "pass" ? "text-fg-soft" : r.status === "fail" ? (r.advisory ? "text-warning" : "text-danger") : "text-subtle"}>{r.status === "pass" ? "✓" : r.status === "fail" ? "✗" : "–"} {r.title}{r.status === "fail" && `: ${r.reason}`}</li>)}</ul></>
+          ? <><span className="text-success">Plan valid</span> · {check.steps} step(s){check.derived && " (derived from the SOP)"}</>
           : <><span className="text-danger">Plan invalid</span><Errors e={check.errors ?? []} /></>}
       </div>
       <Errors e={errors} />
@@ -115,27 +114,3 @@ export function ActionButton({ url, label, body = {}, testid }: { url: string; l
   return <span><button className={btn} disabled={busy} data-testid={testid} onClick={async () => { setBusy(true); const r = await post(url, body); setBusy(false); if (!r.ok) setErr((r.j.errors as string[]) ?? [String(r.j.error)]); else router.refresh(); }}>{label}</button><Errors e={err} /></span>;
 }
 
-export function RuleRow({ rule }: { rule: { id: number; code: string; title: string; description: string; kind: string; weight: number; advisory: boolean; enabled: boolean; config: Record<string, unknown> } }) {
-  const router = useRouter();
-  const [title, setTitle] = useState(rule.title), [weight, setWeight] = useState(String(rule.weight)), [enabled, setEnabled] = useState(rule.enabled), [advisory, setAdvisory] = useState(rule.advisory), [config, setConfig] = useState(JSON.stringify(rule.config));
-  const [msg, setMsg] = useState("");
-  const save = async () => { const r = await post("/api/skill-rules", { id: rule.id, title, weight: Number(weight), enabled, advisory, config }); setMsg(r.ok ? "Saved" : String(r.j.error)); if (r.ok) router.refresh(); };
-  return (
-    <tr className="border-t border-border align-top">
-      <td className="py-2 pr-2"><code className="text-xs">{rule.code}</code>{rule.kind === "llm" && <div className="text-xs text-warning">LLM-judged</div>}</td>
-      <td className="pr-2"><input className={input} value={title} onChange={(e) => setTitle(e.target.value)} /><div className="mt-1 text-xs text-subtle">{rule.description}</div></td>
-      <td className="pr-2 w-16"><input className={input} value={weight} onChange={(e) => setWeight(e.target.value)} /></td>
-      <td className="pr-2 text-center"><input type="checkbox" checked={advisory} onChange={(e) => setAdvisory(e.target.checked)} /></td>
-      <td className="pr-2 text-center"><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /></td>
-      <td className="pr-2"><input className={`${input} font-mono text-xs`} value={config} onChange={(e) => setConfig(e.target.value)} /></td>
-      <td><button className={btn} onClick={save}>Save</button><div className="text-xs text-subtle">{msg}</div></td>
-    </tr>
-  );
-}
-
-export function NewRule() {
-  const router = useRouter();
-  const [code, setCode] = useState(""), [title, setTitle] = useState(""), [msg, setMsg] = useState("");
-  return <div className="flex flex-wrap items-end gap-2 text-sm"><label>Code<input className={input} value={code} onChange={(e) => setCode(e.target.value)} /></label><label>Title<input className={input} value={title} onChange={(e) => setTitle(e.target.value)} /></label>
-    <button className={btn} onClick={async () => { const r = await post("/api/skill-rules", { code, title }); setMsg(r.ok ? "Added (no code check exists for new codes, so it reports not evaluated)" : String(r.j.error)); if (r.ok) router.refresh(); }}>Add rule</button><span className="text-xs text-subtle">{msg}</span></div>;
-}

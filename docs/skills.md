@@ -1,6 +1,6 @@
 # Skills (SOPs)
 
-A skill is a standard operating procedure: markdown text (the SOP) plus an ordered JSON plan. Skills are stored and executed natively; they are never converted to workflow YAML and the workflow tables and Workflows UI are unchanged. UI: **Skills** in the nav (`/skills`, `/skills/new`, `/skills/<id>`, `/skills/<id>/edit`); rulebook at **Settings > Skill rules** (system admins); docs at Settings > Docs > Skills.
+A skill is a standard operating procedure: markdown text (the SOP) plus an ordered JSON plan. Skills are stored and executed natively; they are never converted to workflow YAML and the workflow tables and Workflows UI are unchanged. UI: **Skills** in the nav (`/skills`, `/skills/new`, `/skills/<id>`, `/skills/<id>/edit`); docs at Settings > Docs > Skills.
 
 ## Plan
 
@@ -39,9 +39,7 @@ Each team has a built-in `workflow` skill (kind `master`). It is an ordinary ski
 
 ## Review
 
-- Every create/edit is graded against the rulebook and stored (`skill_reviews`, with the rules version). Score = weighted pass rate of enabled, non-advisory, evaluated rules. Shown to approvers; never blocks saving, approving or running. Admins can **Re-review**.
-- Seed rules: plan_valid, explicit_on_failure, no_unguarded_merge, secrets_declared, prompt_length (advisory), outputs_exist, final_verification, deterministic, description_present, llm_sop_clarity (LLM-judged, disabled; reported as not evaluated — no LLM is called).
-- **Request review** (author, team leads, designated lead, admins) creates a cycle with pros, cons and corrections. Apply saves a new version (re-graded, needs re-approval); dismiss records it. All audited in `skill_audit`.
+The MVP has no rulebook or review score: approval alone gates real runs. Old `skill_review_rules`, `skill_reviews` and `skill_review_cycles` rows stay in the database (kept for v1 rollback) and are not read.
 
 ## Visibility
 
@@ -49,4 +47,4 @@ Skills are team-scoped: other teams get 404. System admins see all teams. Isolat
 
 ## API
 
-`GET/POST /api/skills`, `GET/PUT /api/skills/<id>`, `POST /api/skills/<id>/{approval,review,correction,rereview,run}`, `POST /api/skills/validate`, `GET/POST /api/skill-rules` (admin).
+`GET/POST /api/skills`, `GET/PUT /api/skills/<id>`, `POST /api/skills/<id>/{approval,run}`, `POST /api/skills/validate`.

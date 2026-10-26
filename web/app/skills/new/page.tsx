@@ -23,6 +23,6 @@ export default function NewSkillPage() {
       { key: "reviewed", label: "Implement + review", description: "Two agent steps, each given its own SOP section", body: "# Reviewed change\n\n## Implement\nMake the change with tests.\n\n## Review\nCheck correctness, tests and style.\n", plan: JSON.stringify(REVIEWED, null, 2) },
       ...(master ? [{ key: "master", label: "Master skill (workflow)", description: "Compose skills with call_skill steps", body: master.body, plan: JSON.stringify(master.plan, null, 2) }] : []),
     ];
-    return <Card title="Create a skill" subtitle="Visible to your team only. Saving is never blocked by the review score."><SkillEditor starters={starters} /></Card>;
+    return <Card title="Create a skill" subtitle="Visible to your team only."><SkillEditor starters={starters} /></Card>;
   }}</CollabPage>;
 }

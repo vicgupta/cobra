@@ -12,7 +12,7 @@ import { ENGINES } from "@/lib/engines";
 
 export const metadata = { title: "Skills · Cobra" };
 
-type Row = { id: number; name: string; kind: string; version: number; description: string; team: string; steps: number; status: string; score: number | null };
+type Row = { id: number; name: string; kind: string; version: number; description: string; team: string; steps: number; status: string };
 
 export default function SkillsPage({ searchParams }: PageProps<"/skills">) {
   return <CollabPage title="Skills">{(u) => <Body u={u} searchParams={searchParams} />}</CollabPage>;
@@ -39,14 +39,13 @@ async function Body({ u, searchParams }: { u: Actor; searchParams: PageProps<"/s
         <Link href="/skills/new" className="rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90">New skill</Link></div>}>
       {rows.length === 0 ? <p className="text-sm text-muted">No skills match.</p> : (
         <table className="w-full text-left text-sm">
-          <thead className="text-xs text-subtle"><tr><th className="py-2">Name</th>{admin && <th>Team</th>}<th>Kind</th><th>Steps</th><th>Review</th><th>Status</th></tr></thead>
+          <thead className="text-xs text-subtle"><tr><th className="py-2">Name</th>{admin && <th>Team</th>}<th>Kind</th><th>Steps</th><th>Status</th></tr></thead>
           <tbody className="divide-y divide-border">{rows.map((r) => (
             <tr key={r.id}>
               <td className="py-2"><Link className="text-success hover:underline" href={`/skills/${r.id}`}>{r.name}</Link> <span className="text-xs text-subtle">v{r.version}</span>{r.description && <div className="text-xs text-subtle">{r.description}</div>}</td>
               {admin && <td className="text-xs">{r.team}</td>}
               <td>{r.kind === "master" ? <Badge tone="violet">master</Badge> : <Badge>sop</Badge>}</td>
               <td className="tabular-nums">{r.steps}</td>
-              <td className="tabular-nums">{r.score ?? "—"}</td>
               <td><StatusBadge status={r.status} /></td>
             </tr>))}</tbody>
         </table>)}
