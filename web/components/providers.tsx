@@ -32,19 +32,6 @@ export function ProvidersView() {
         const codexLogin = team1 && codexServerLogin();
         return (
           <div className="space-y-6">
-            <table className="w-full text-sm" data-providers>
-              <thead><tr className="text-left text-xs text-subtle"><th className="py-2">Provider</th><th>Models</th><th>Effort tiers</th><th>Default model</th><th>Default effort</th><th>Credentials</th></tr></thead>
-              <tbody className="divide-y divide-border">{providers.map((p) => (
-                <tr key={p.engine} data-provider={p.engine} className="align-top">
-                  <td className="py-2"><div className="font-medium">{p.label}</div><div className="font-mono text-xs text-subtle">{p.engine} · {p.cli}</div></td>
-                  <td className="py-2 font-mono text-xs" data-models>{p.models.join(", ")}<div className="mt-1 font-sans text-subtle">flag {p.modelFlag}</div></td>
-                  <td className="py-2 text-xs" data-tiers>{p.tiers.length ? p.tiers.join(" / ") : "Not supported"}<div className="mt-1 font-mono text-subtle">{p.effortFlag}</div></td>
-                  <td className="py-2 font-mono text-xs" data-default-model>{p.defaults.model ?? "CLI default"}</td>
-                  <td className="py-2 text-xs" data-default-effort>{p.tiers.length ? tier(p.defaults.effort) : "Not supported"}</td>
-                  <td className="py-2 text-xs" data-credentials><ul className="space-y-0.5">{creds(p.engine).map((c) => <li key={c.name} data-secret-status={c.set ? "set" : "empty"}>{TYPE[c.type]}: {c.set ? "set" : "not set"}</li>)}{p.engine === "codex" && <li>Server ChatGPT login: {codexLogin ? "yes" : "no"}</li>}</ul></td>
-                </tr>
-              ))}</tbody>
-            </table>
             {admin && providers.map((p) => (
               <Card key={p.engine} title={`${p.label} defaults`}>
                 <ProviderDefaultsForm engine={p.engine} models={p.models} tiers={[...p.tiers]} current={p.defaults} />
@@ -71,6 +58,19 @@ export function ProvidersView() {
                 })}
               </div>
             </Card>
+            <table className="w-full text-sm" data-providers>
+              <thead><tr className="text-left text-xs text-subtle"><th className="py-2">Provider</th><th>Models</th><th>Effort tiers</th><th>Default model</th><th>Default effort</th><th>Credentials</th></tr></thead>
+              <tbody className="divide-y divide-border">{providers.map((p) => (
+                <tr key={p.engine} data-provider={p.engine} className="align-top">
+                  <td className="py-2"><div className="font-medium">{p.label}</div><div className="font-mono text-xs text-subtle">{p.engine} · {p.cli}</div></td>
+                  <td className="py-2 font-mono text-xs" data-models>{p.models.join(", ")}<div className="mt-1 font-sans text-subtle">flag {p.modelFlag}</div></td>
+                  <td className="py-2 text-xs" data-tiers>{p.tiers.length ? p.tiers.join(" / ") : "Not supported"}<div className="mt-1 font-mono text-subtle">{p.effortFlag}</div></td>
+                  <td className="py-2 font-mono text-xs" data-default-model>{p.defaults.model ?? "CLI default"}</td>
+                  <td className="py-2 text-xs" data-default-effort>{p.tiers.length ? tier(p.defaults.effort) : "Not supported"}</td>
+                  <td className="py-2 text-xs" data-credentials><ul className="space-y-0.5">{creds(p.engine).map((c) => <li key={c.name} data-secret-status={c.set ? "set" : "empty"}>{TYPE[c.type]}: {c.set ? "set" : "not set"}</li>)}{p.engine === "codex" && <li>Server ChatGPT login: {codexLogin ? "yes" : "no"}</li>}</ul></td>
+                </tr>
+              ))}</tbody>
+            </table>
           </div>
         );
       }}
