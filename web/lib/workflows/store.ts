@@ -34,9 +34,9 @@ export function systemTemplates(db: DB): LoadedWorkflow[] {
   return rows.map((r) => parseWorkflow(r.source, `templates/${r.name}.yaml`, "template"));
 }
 
-type TenantRow = { name: string; source: string; author: string | null };
+type TenantRow = { name: string; source: string; author: string | null; created_by: number | null };
 function tenantRows(db: DB, tenantId: number): TenantRow[] {
-  return db.prepare("SELECT w.name, w.source, u.email AS author FROM tenant_workflows w LEFT JOIN users u ON u.id = w.updated_by WHERE w.tenant_id = ? ORDER BY w.name").all(tenantId) as TenantRow[];
+  return db.prepare("SELECT w.name, w.source, u.email AS author, w.created_by FROM tenant_workflows w LEFT JOIN users u ON u.id = w.updated_by WHERE w.tenant_id = ? ORDER BY w.name").all(tenantId) as TenantRow[];
 }
 /** Names of team agents referenced by `uses: agent` steps with `with: { agent }`. */
 export function agentRefs(wf: LoadedWorkflow["workflow"]): string[] {
@@ -61,7 +61,7 @@ export function withAgents(db: DB, tenantId: number, loaded: LoadedWorkflow): Lo
   return { ...loaded, hash, sourceHash: loaded.hash, agents, agentErrors };
 }
 
-const parseTenant = (r: TenantRow): LoadedWorkflow => ({ ...parseWorkflow(r.source, `db:${r.name}`, "tenant"), author: r.author ?? undefined });
+const parseTenant = (r: TenantRow): LoadedWorkflow => ({ ...parseWorkflow(r.source, `db:${r.name}`, "tenant"), author: r.author ?? undefined, createdBy: r.created_by ?? undefined });
 
 /** Everything visible to a tenant; invalid tenant rows are listed with their errors. */
 export function listAll(db: DB, tenantId: number, dir = workflowsDir()): Listed[] {
@@ -81,10 +81,11 @@ export function findWorkflow(db: DB, tenantId: number, name: string, dir = workf
   return listAll(db, tenantId, dir).find((l) => l.name === name && l.loaded)?.loaded ?? null;
 }
 
-/** Owners, approvers, team leads and admins may edit a tenant workflow; anyone in the tenant may create one. */
+/** The creator, owners, approvers, team leads and admins may edit a tenant workflow; anyone in the tenant may create one.
+ * Editing never bypasses run approval: any content change gets a new hash that needs approving again. */
 export function canEdit(user: Actor, w: LoadedWorkflow): boolean {
   if (w.origin !== "tenant") return false;
-  return user.role === "admin" || user.role === "team_lead" || user.email === w.workflow.governance.owner || canApprove(user, w.workflow.governance);
+  return user.role === "admin" || user.role === "team_lead" || (w.createdBy !== undefined && w.createdBy === user.id) || user.email === w.workflow.governance.owner || canApprove(user, w.workflow.governance);
 }
 
 /** Admins, team leads, the owner and allowed approvers may run an approved workflow. */
@@ -133,7 +134,7 @@ export async function saveTenantWorkflow(db: DB, user: Actor, source: string, op
   const existing = opts.previousName ? all.find((l) => l.origin === "tenant" && l.name === opts.previousName) : undefined;
   if (opts.previousName) {
     if (!existing) throw new SaveError(404, [`workflow '${opts.previousName}' not found`]);
-    if (existing.loaded && !canEdit(user, existing.loaded)) throw new SaveError(403, ["you can't edit this workflow (owner, approvers, team leads and admins can)"]);
+    if (existing.loaded && !canEdit(user, existing.loaded)) throw new SaveError(403, ["you can't edit this workflow (its creator, owner, approvers, team leads and admins can)"]);
   }
   const prev = opts.previousName ? storageOf(db, user.tenantId, opts.previousName) : null;
   const storage: Storage = opts.storage ?? prev ?? { kind: "database" };

@@ -203,10 +203,11 @@ test("tenant workflows: save validates, names can't shadow built-ins, edit rules
   await assert.rejects(saveTenantWorkflow(db, member, src.replace("name: mine", "name: test-run")), (e: SaveError) => e.status === 409);
   await assert.rejects(saveTenantWorkflow(db, member, src.replace("name: mine", "name: issue-to-merge")), (e: SaveError) => e.status === 409);
   await assert.rejects(saveTenantWorkflow(db, member, src.replace("version: 1", "version: 1\nsystem: true")), (e: SaveError) => e.status === 400);
-  const w = await saveTenantWorkflow(db, member, src);
+  await saveTenantWorkflow(db, member, src);
   await assert.rejects(saveTenantWorkflow(db, member, src), (e: SaveError) => e.status === 409);
-  assert.ok(!canEdit(member, w)); // member is neither owner nor approver
-  await assert.rejects(saveTenantWorkflow(db, member, src + "\n", { previousName: "mine" }), (e: SaveError) => e.status === 403);
+  // member is neither owner nor approver, but created it: the creator may edit their own workflow.
+  assert.ok(canEdit(member, listAll(db, member.tenantId).find((l) => l.name === "mine")!.loaded!));
+  await saveTenantWorkflow(db, member, src + "\n", { previousName: "mine" });
   await saveTenantWorkflow(db, admin, src.replace("version: 1", "version: 2"), { previousName: "mine" });
   assert.equal(listAll(db, otherAdmin.tenantId).some((l) => l.name === "mine"), false);
   // workspace template
@@ -392,4 +393,23 @@ test("tenant run list is scoped by tenant and visible to members", async () => {
   const r = { createdBy: a, tenantId: t(a) };
   assert.ok(canViewRun({ id: m, role: "member", tenantId: t(m) }, r));
   assert.ok(!canViewRun({ id: o, role: "member", tenantId: t(o) }, r));
+});
+
+test("members create and edit their own workflows with no lead/admin step; run approval and others' workflows unchanged", async () => {
+  const { db, admin, lead, member } = setup();
+  // A member pastes YAML naming someone else as governance.owner (e.g. copied from a teammate's workflow).
+  const src = yaml("  - id: a\n    uses: noop\n").replace("name: t", "name: mine").replace(/owner: .*/, `owner: ${admin.email}`);
+  const created = await saveWorkflow(db, member, { source: src });
+  assert.equal(created.status, 201, "members can create");
+  const d = workflowDetail(db, member, "mine").body as { approval: { status: string }; can: { edit: boolean; run: boolean; approve: boolean } };
+  assert.equal(d.can.edit, true, "the creator can edit their own workflow");
+  assert.equal(d.approval.status, "pending"); assert.equal(d.can.run, false, "still needs run approval"); assert.equal(d.can.approve, false);
+  const edited = await saveWorkflow(db, member, { source: src.replace("version: 1", "version: 2"), previousName: "mine" });
+  assert.equal(edited.status, 200, "the creator saves an edit with no approval step");
+  assert.equal(startRun(db, member, "mine", { inputs: {} }, deps()).status, 409, "unapproved edit still can't run");
+  assert.equal(decide(db, member, "mine", { decision: "approve" }).status, 403, "creator can't self-approve");
+  // Someone else's workflow: still not editable by a plain member.
+  await saveWorkflow(db, lead, { source: src.replace("name: mine", "name: theirs") });
+  assert.equal(canEdit(member, listAll(db, member.tenantId).find((l) => l.name === "theirs")!.loaded!), false);
+  assert.equal((await saveWorkflow(db, member, { source: src.replace("name: mine", "name: theirs"), previousName: "theirs" })).status, 403);
 });

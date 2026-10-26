@@ -13,6 +13,8 @@ export type LoadedWorkflow = {
   workflow: Workflow; file: string; source: string; hash: string; origin: Origin;
   /** Email of whoever saved this content (tenant workflows); counts as an author for self-approval. */
   author?: string;
+  /** User id that created this tenant workflow row; the creator may always edit their own workflow. */
+  createdBy?: number;
   /** Hash of the YAML alone when `hash` is the effective hash including referenced team agents. */
   sourceHash?: string;
   /** Team agents referenced by `with: { agent }` steps, resolved for the workflow's tenant. */
