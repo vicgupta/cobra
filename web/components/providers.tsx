@@ -8,7 +8,7 @@ import { getDb, secretValue } from "@/lib/workflows/server";
 import { OPENROUTER, openRouterStatus } from "@/lib/openrouter";
 
 const tier = (t: string | null) => t ?? "Default (no flag)";
-const CREDS: Record<string, string> = { "claude-code": "Settings: OAuth token or API key", codex: "Settings: ChatGPT login or API key", opencode: "Reuses the Codex ChatGPT login (or ANTHROPIC_API_KEY / CODEX_API_KEY)", cursor: "" };
+const CREDS: Record<string, string> = { "claude-code": "Settings: OAuth token or API key", codex: "Settings: ChatGPT login or API key", opencode: "OPENCODE_API_KEY for opencode/* models; openai/* reuses the Codex ChatGPT login", cursor: "" };
 
 /** Settings > Providers: coding-agent CLIs, models and effort tiers. Defaults are editable by system admins only. */
 export function ProvidersView() {

@@ -9,7 +9,7 @@ import { assertTeamWorkspace, legacyWorkspacesDir, teamWorkspacesDir } from "../
 import { mkdirSync, readFileSync, existsSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import type { AgentRunner, RepoCheck } from "./handlers";
-import { isOpenRouterModel, modelArgs, openRouterSlug, supportsOpenRouter } from "../agent-models";
+import { isFreeOpenCodeModel, isOpenCodeModel, isOpenRouterModel, modelArgs, openRouterSlug, supportsOpenRouter } from "../agent-models";
 import { effortArgs, type ProviderDefaults } from "../providers";
 import type { Engine } from "../engines";
 import { usageCollector, type Usage } from "../usage";
@@ -181,7 +181,12 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       if (ak) env.ANTHROPIC_API_KEY = ak;
       const ok = opts.resolveSecret("CODEX_API_KEY");
       if (ok) env.OPENAI_API_KEY = ok;
-      if (!a && !ak && !ok && !orKey) note("opencode: no credentials found (Codex ChatGPT login, ANTHROPIC_API_KEY or CODEX_API_KEY)");
+      // OpenCode's own provider (opencode/<model>, OpenCode Console / Zen): its own key, never the OpenRouter one.
+      const ocKey = opts.providerSecret?.("opencode") ?? opts.resolveSecret("OPENCODE_API_KEY");
+      if (isOpenCodeModel(model) && !ocKey && !isFreeOpenCodeModel(model)) throw new Error("OpenCode has no API key: a system admin sets OPENCODE_API_KEY in Settings > Providers (OpenCode row), or pick a free opencode/*-free model");
+      if (ocKey) env.OPENCODE_API_KEY = ocKey;
+      if (isOpenCodeModel(model)) note(`opencode: using OpenCode's own provider for ${model}${ocKey ? "" : " (free model, no key)"}`);
+      if (!a && !ak && !ok && !orKey && !ocKey && !isOpenCodeModel(model)) note("opencode: no credentials found (Codex ChatGPT login, ANTHROPIC_API_KEY or CODEX_API_KEY)");
       cleanup = () => { try { rmSync(oc, { recursive: true, force: true }); } catch { /* best effort */ } };
       if (orKey) Object.assign(env, openRouterRunConfig("opencode", orKey, dir).env);
       args = ["run", ...modelArgs("opencode", model), ...effortArgs("opencode", effort), "--auto", prompt + ghNote];

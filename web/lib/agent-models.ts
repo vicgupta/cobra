@@ -55,17 +55,32 @@ export function openRouterModelsFor(engine: AgentEngine): string[] {
 /** A free-text custom OpenRouter model id is valid for this engine. */
 export const isValidOpenRouterId = (engine: AgentEngine, m: string) => supportsOpenRouter(engine) && OR_ID.test(m);
 
+// OpenCode's own provider (OpenCode Console / Zen): ids from `opencode models opencode` on nova with
+// OPENCODE_API_KEY set (opencode-ai 1.19.4, 2026-10-26); key from Settings > Providers (OpenCode row).
+export const OPENCODE_PREFIX = "opencode/";
+export const OPENCODE_ZEN_MODELS: readonly string[] = [
+  "opencode/gpt-6.1-sol", "opencode/gpt-6-sol", "opencode/gpt-5.6-terra", "opencode/claude-sonnet-5-5", "opencode/claude-opus-5-5",
+  "opencode/gemini-3.1-pro", "opencode/grok-4.7", "opencode/kimi-k3", "opencode/glm-5.3", "opencode/qwen3.8-max", "opencode/deepseek-v4-pro",
+  "opencode/big-pickle", "opencode/glm-5.3-flash-free", "opencode/deepseek-v4.1-flash-free",
+];
+export const isOpenCodeModel = (m: string | null | undefined): m is string => !!m && m.startsWith(OPENCODE_PREFIX);
+/** Free OpenCode models run without a key (`opencode models opencode` lists them with no OPENCODE_API_KEY). */
+export const isFreeOpenCodeModel = (m: string) => isOpenCodeModel(m) && (/-free$/.test(m) || m === "opencode/big-pickle");
+const OC_ID = /^opencode\/[a-z0-9][a-z0-9._-]{0,79}$/;
+/** A free-text custom opencode/<model> id is valid on the OpenCode engine only. */
+export const isValidOpenCodeId = (engine: AgentEngine, m: string) => engine === "opencode" && OC_ID.test(m);
+
 export const MODEL_SOURCES = {
   "claude-code": "claude --help (2.1.310) + code.claude.com/docs/en/model-config, 2026-10-25",
   codex: "codex exec --help (0.164.0) + ~/.codex/models_cache.json + developers.openai.com/codex/models, 2026-10-25",
-  opencode: "opencode run --help + opencode models openai (opencode-ai 1.19.4), 2026-10-25",
+  opencode: "opencode run --help + opencode models openai / opencode models opencode (opencode-ai 1.19.4), 2026-10-25/26",
   cursor: "cursor-agent --help (2026.10.22-27dcf5f) + cursor.com/docs/models, 2026-10-25 (cursor-agent models needs CURSOR_API_KEY)",
 } as const;
 
 export const DEFAULT_MODELS: Record<AgentEngine, readonly string[]> = {
   "claude-code": ["sonnet", "opus", "haiku", "fable", "claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1"],
   codex: ["gpt-6.1-sol", "gpt-6-sol", "gpt-6-astra", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
-  opencode: ["openai/gpt-6.1-sol", "openai/gpt-6-sol", "openai/gpt-6-astra", "openai/gpt-6-luna", "openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna", "openai/gpt-5.5"],
+  opencode: [...OPENCODE_ZEN_MODELS, "openai/gpt-6.1-sol", "openai/gpt-6-sol", "openai/gpt-6-astra", "openai/gpt-6-luna", "openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna", "openai/gpt-5.5"],
   cursor: ["auto", "composer-2.5", "grok-4.7", "claude-sonnet-5-5", "claude-opus-5-5", "gpt-5.6-sol", "gpt-5.6-terra", "gemini-3.1-pro"],
 };
 
@@ -79,7 +94,7 @@ export function modelsFor(engine: AgentEngine, env: Record<string, string | unde
   return o?.length ? [...new Set(o)] : [...DEFAULT_MODELS[engine], ...openRouterModelsFor(engine)];
 }
 /** Listed, or a custom openrouter/<vendor>/<model> id on an engine that supports OpenRouter. */
-export const modelAllowed = (engine: AgentEngine, m: string, env: Record<string, string | undefined> = process.env) => modelsFor(engine, env).includes(m) || isValidOpenRouterId(engine, m);
+export const modelAllowed = (engine: AgentEngine, m: string, env: Record<string, string | undefined> = process.env) => modelsFor(engine, env).includes(m) || isValidOpenRouterId(engine, m) || isValidOpenCodeId(engine, m);
 export const allModels = (env: Record<string, string | undefined> = process.env) => Object.fromEntries(ENGINES.map((e) => [e, modelsFor(e, env)])) as Record<AgentEngine, string[]>;
 
 /** null for "default"; throws a message when the model isn't allowed for the engine. */
@@ -88,6 +103,7 @@ export function checkModel(engine: AgentEngine, model: unknown, env: Record<stri
   if (typeof model !== "string") throw new Error("model must be a string or null");
   const list = modelsFor(engine, env);
   if (isOpenRouterModel(model.trim()) && !supportsOpenRouter(engine)) throw new Error(`${engine} can't use OpenRouter (not supported); pick Claude Code, Codex or OpenCode`);
+  if (isOpenCodeModel(model.trim()) && engine !== "opencode") throw new Error(`opencode/<model> ids are OpenCode's own provider; pick the OpenCode engine`);
   if (!modelAllowed(engine, model.trim(), env)) throw new Error(`model '${model}' is not available for ${engine} (allowed: ${list.join(", ")}, or default)`);
   return model.trim();
 }

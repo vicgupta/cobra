@@ -108,6 +108,10 @@ export function listProviderAudit(db: DB, limit = 20) {
 // is never returned to any client (views get set / not set), and runs pass it to the CLI as an env var
 // and redact it from logs.
 export const PROVIDER_SECRETS: Partial<Record<AgentEngine, { name: string; label: string; help: string }>> = {
+  // OpenCode as its own provider (independent of OpenRouter): the OpenCode Console / Zen key. Verified on nova
+  // (opencode-ai 1.19.4, 2026-10-26): with OPENCODE_API_KEY in env, `opencode models opencode` lists the paid
+  // opencode/<model> ids; without it only the *-free ones (and big-pickle). Docs: opencode.ai/docs/zen.
+  opencode: { name: "OPENCODE_API_KEY", label: "OpenCode API key", help: "From opencode.ai (Console / Zen) > API keys. Passed to opencode run as OPENCODE_API_KEY for opencode/<model> models. Independent of the OpenRouter key." },
   cursor: { name: "CURSOR_API_KEY", label: "Cursor API key", help: "From cursor.com/dashboard > Integrations > API keys. Passed to cursor-agent as CURSOR_API_KEY." },
 };
 export type ProviderSecretView = { engine: AgentEngine; name: string; label: string; help: string; set: boolean; setAt: number | null; setBy: string | null };
