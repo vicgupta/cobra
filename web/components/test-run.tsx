@@ -8,7 +8,7 @@ import { RUN_STEPS, STEP_AT, STEP_LABEL, stepAt, type RunStep, type SimulatedRun
 import type { AgentId } from "@/lib/types";
 
 type Run = SimulatedRun & { step: RunStep };
-const input = "w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none";
+const input = "w-full rounded-md border border-border-strong bg-bg px-3 py-2 text-sm placeholder:text-faint focus:border-emerald-500 focus:outline-none";
 
 export function TestRun() {
   const [form, setForm] = useState({ agent: "claude-code" as AgentId, repo: "vicgupta/cobra", issue: "1", title: "", prompt: "" });
@@ -89,7 +89,7 @@ export function TestRun() {
             <button disabled={running} className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400 disabled:opacity-50">
               {running ? "Running…" : "Start"}
             </button>
-            {error && <span className="text-xs text-rose-400">{error}{/approv/i.test(error) && <> — <Link className="underline" href="/workflows/test-run">review the test-run workflow</Link></>}</span>}
+            {error && <span className="text-xs text-danger">{error}{/approv/i.test(error) && <> — <Link className="underline" href="/workflows/test-run">review the test-run workflow</Link></>}</span>}
           </div>
         </form>
       </Card>
@@ -103,30 +103,30 @@ export function TestRun() {
             return (
               <li key={s} className="flex items-center gap-3">
                 <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-                  state === "done" ? "bg-emerald-500 text-zinc-950" : state === "current" ? "animate-pulse bg-sky-500 text-zinc-950" : "bg-zinc-800 text-zinc-500"
+                  state === "done" ? "bg-emerald-500 text-zinc-950" : state === "current" ? "animate-pulse bg-sky-500 text-zinc-950" : "bg-surface-2 text-subtle"
                 }`}>{state === "done" ? "✓" : i + 1}</span>
-                <span className={`flex-1 text-sm ${state === "idle" ? "text-zinc-500" : ""}`}>{STEP_LABEL[s]}</span>
-                {state === "current" && <span className="font-mono text-xs text-zinc-500">{(elapsed / 1000).toFixed(1)}s</span>}
+                <span className={`flex-1 text-sm ${state === "idle" ? "text-subtle" : ""}`}>{STEP_LABEL[s]}</span>
+                {state === "current" && <span className="font-mono text-xs text-subtle">{(elapsed / 1000).toFixed(1)}s</span>}
               </li>
             );
           })}
         </ol>
-        {done && <p className="mt-4 text-xs text-emerald-300">Simulated PR opened (placeholder) — awaiting human review.</p>}
+        {done && <p className="mt-4 text-xs text-success">Simulated PR opened (placeholder) — awaiting human review.</p>}
       </Card>
 
       <Card title="Recent test runs" subtitle="Stored locally in web/data/runs.json (gitignored)" className="lg:col-span-5">
         {recent.length === 0 ? (
-          <p className="text-sm text-zinc-500">No test runs yet.</p>
+          <p className="text-sm text-subtle">No test runs yet.</p>
         ) : (
           <div className="-mx-5 overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase tracking-wide text-zinc-500">
+              <thead className="text-xs uppercase tracking-wide text-subtle">
                 <tr><th className="px-5 pb-2 font-medium">Run</th><th className="px-3 pb-2 font-medium">Issue</th><th className="px-3 pb-2 font-medium">Repo</th><th className="px-3 pb-2 font-medium">Agent</th><th className="px-5 pb-2 font-medium">Status</th></tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800">
+              <tbody className="divide-y divide-border">
                 {recent.map((r) => (
                   <tr key={r.id}>
-                    <td className="px-5 py-2 font-mono text-xs"><a className="text-emerald-300 hover:underline" href={`/runs/${r.id}`}>{r.id}</a></td>
+                    <td className="px-5 py-2 font-mono text-xs"><a className="text-success hover:underline" href={`/runs/${r.id}`}>{r.id}</a></td>
                     <td className="px-3 py-2">#{r.issue} {r.title}</td>
                     <td className="px-3 py-2 font-mono text-xs">{r.repo}</td>
                     <td className="px-3 py-2"><AgentBadge agent={r.agent} /></td>

@@ -10,7 +10,7 @@ type Params = Promise<{ token?: string | string[] }>;
 
 export default function ResetPasswordPage({ searchParams }: { searchParams: Params }) {
   return (
-    <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}>
+    <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}>
       <ResetBody searchParams={searchParams} />
     </Suspense>
   );

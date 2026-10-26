@@ -11,7 +11,7 @@ export const metadata = { title: "Run log · Cobra" };
 
 function Log({ user, id }: { user: SessionUser; id: string }) {
   const r = runDetailFor(getDb(), actor(user), id);
-  if (r.status !== 200) return <p className="text-sm text-zinc-400">Run not found, or you don&apos;t have access (runs are visible to members of their own workspace).</p>;
+  if (r.status !== 200) return <p className="text-sm text-muted">Run not found, or you don&apos;t have access (runs are visible to members of their own workspace).</p>;
   return <RunLog initial={r.body as RunDetail} />;
 }
 
@@ -24,7 +24,7 @@ export default function RunPage({ params }: { params: Promise<{ id: string }> })
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Run</h1>
-      <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}><Body params={params} /></Suspense>
+      <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><Body params={params} /></Suspense>
     </div>
   );
 }

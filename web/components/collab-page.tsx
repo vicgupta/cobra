@@ -15,8 +15,8 @@ type Ctx = { db: DB; gh: GitHub; u: Actor; repo: string };
 export function CollabPage({ title, crumbs, children }: { title: string; crumbs?: ReactNode; children: (u: Actor) => ReactNode }) {
   return (
     <div className="space-y-6">
-      <div>{crumbs && <p className="text-xs text-zinc-500">{crumbs}</p>}<h1 className="text-2xl font-semibold tracking-tight">{title}</h1></div>
-      <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}><AuthGate>{(su) => children(actor(su))}</AuthGate></Suspense>
+      <div>{crumbs && <p className="text-xs text-subtle">{crumbs}</p>}<h1 className="text-2xl font-semibold tracking-tight">{title}</h1></div>
+      <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><AuthGate>{(su) => children(actor(su))}</AuthGate></Suspense>
     </div>
   );
 }
@@ -33,6 +33,6 @@ export async function WithRepo({ u, repo, render }: { u: Actor; repo: string; re
 
 export function RepoPicker({ u, kind }: { u: Actor; kind: "issues" | "pulls" }) {
   const repos = listTeamRepos(getDb(), u.tenantId);
-  if (!repos.length) return <p className="text-sm text-zinc-500">No team repos yet. Add one on <Link className="underline" href="/settings/repos">Repos</Link>.</p>;
-  return <ul className="space-y-2">{repos.map((r) => <li key={r.repo}><Link className="text-emerald-300 underline" href={`/repos/${kind === "pulls" ? "pull-requests" : "issues"}/${r.repo}`}>{r.repo}</Link></li>)}</ul>;
+  if (!repos.length) return <p className="text-sm text-subtle">No team repos yet. Add one on <Link className="underline" href="/settings/repos">Repos</Link>.</p>;
+  return <ul className="space-y-2">{repos.map((r) => <li key={r.repo}><Link className="text-success underline" href={`/repos/${kind === "pulls" ? "pull-requests" : "issues"}/${r.repo}`}>{r.repo}</Link></li>)}</ul>;
 }

@@ -10,8 +10,8 @@ export const metadata = { title: "Edit workflow · Cobra" };
 
 function Editor({ user, name }: { user: SessionUser; name: string }) {
   const w = findWorkflow(getDb(), user.tenantId, name);
-  if (!w) return <p className="text-sm text-zinc-400">Workflow not found.</p>;
-  if (!canEdit(actor(user), w)) return <p className="text-sm text-zinc-400">{w.origin === "tenant" ? "Only its creator, the owner, approvers, team leads and admins can edit this workflow." : "Built-in workflows and system templates are read-only here (they change through the repo). Use a template to make your own copy."}</p>;
+  if (!w) return <p className="text-sm text-muted">Workflow not found.</p>;
+  if (!canEdit(actor(user), w)) return <p className="text-sm text-muted">{w.origin === "tenant" ? "Only its creator, the owner, approvers, team leads and admins can edit this workflow." : "Built-in workflows and system templates are read-only here (they change through the repo). Use a template to make your own copy."}</p>;
   return <YamlEditor initial={w.source} previousName={name} storage={storageOf(getDb(), user.tenantId, name) ?? undefined} />;
 }
 
@@ -22,5 +22,5 @@ async function Body({ params }: { params: Promise<{ name: string }> }) {
 }
 
 export default function EditWorkflowPage({ params }: { params: Promise<{ name: string }> }) {
-  return <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}><Body params={params} /></Suspense>;
+  return <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><Body params={params} /></Suspense>;
 }

@@ -63,7 +63,7 @@ test("admin metrics: cross-tenant counts, sessions without token hashes, end any
   assert.equal(o.tenants, 2);
   assert.equal(o.users, 2);
   assert.equal(o.activeSessions, 2);
-  assert.equal(o.schemaVersion, 16);
+  assert.equal(o.schemaVersion, 17);
   assert.equal(o.systemTemplates, 0); // seeding happens in getDb(), not openDb()
   assert.deepEqual(m.tenants(db).map((t) => [t.slug, t.users]), [["default", 1], ["other", 1]]);
   const s = m.sessions(db, now);

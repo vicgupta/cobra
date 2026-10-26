@@ -8,7 +8,7 @@ export function LogoutButton() {
     window.location.assign("/login");
   }
   return (
-    <button onClick={logout} className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:bg-zinc-900">
+    <button onClick={logout} className="rounded-md border border-border-strong px-2.5 py-1 text-xs text-fg-soft hover:bg-surface">
       Log out
     </button>
   );

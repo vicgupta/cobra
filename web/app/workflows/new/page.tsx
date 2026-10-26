@@ -38,7 +38,7 @@ function Editor({ user, template, kind }: { user: SessionUser; template?: string
   const repos = listTeamRepos(getDb(), user.tenantId).map((r) => r.repo);
   if (template) {
     const r = templateCopy(getDb(), actor(user), template);
-    if (r.status !== 200) return <p role="alert" className="text-sm text-rose-300">{(r.body as { error: string }).error}</p>;
+    if (r.status !== 200) return <p role="alert" className="text-sm text-danger">{(r.body as { error: string }).error}</p>;
     const b = r.body as { source: string; templateName: string | null };
     return <YamlEditor initial={b.source} templateName={b.templateName ?? undefined} repos={repos} />;
   }
@@ -71,7 +71,7 @@ export default function NewWorkflowPage({ searchParams }: { searchParams: Promis
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">New workflow</h1>
-      <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}><Body searchParams={searchParams} /></Suspense>
+      <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><Body searchParams={searchParams} /></Suspense>
     </div>
   );
 }

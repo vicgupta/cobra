@@ -19,12 +19,12 @@ export function TeamView() {
           <div className="space-y-6">
             <Card title="Designated lead" subtitle="One of the team's team leads. Only the designated lead and system admins can merge pull requests. Only a system admin can set, change or clear it.">
               <p className="text-lg font-medium" data-designated-lead>{d ? d.email : "None set"}</p>
-              {admin && <div className="mt-3">{leads.length ? <DesignatedLeadForm leads={leads} current={d?.id ?? null} /> : <p className="text-sm text-zinc-500">No team leads yet: use “Make designated lead” on a member below.</p>}</div>}
+              {admin && <div className="mt-3">{leads.length ? <DesignatedLeadForm leads={leads} current={d?.id ?? null} /> : <p className="text-sm text-subtle">No team leads yet: use “Make designated lead” on a member below.</p>}</div>}
             </Card>
             <Card title="Members" subtitle={admin ? "System admins can promote, demote and designate. Admin roles aren't changed here." : u.role === "team_lead" ? "Team leads can promote members and demote other team leads (not themselves or the designated lead)." : "View only."}>
               <table className="w-full text-sm" data-members>
-                <thead><tr className="text-left text-xs text-zinc-500"><th className="py-2">Email</th><th>Role</th>{canAct && <th>Actions</th>}</tr></thead>
-                <tbody className="divide-y divide-zinc-800">{members.map((m) => (
+                <thead><tr className="text-left text-xs text-subtle"><th className="py-2">Email</th><th>Role</th>{canAct && <th>Actions</th>}</tr></thead>
+                <tbody className="divide-y divide-border">{members.map((m) => (
                   <tr key={m.id} data-member={m.email}>
                     <td className="py-2 font-mono">{m.email}{d?.id === m.id && <span className="ml-2"><Badge tone="blue">designated lead</Badge></span>}</td>
                     <td data-role>{ROLE[m.role] ?? m.role}</td>
@@ -35,7 +35,7 @@ export function TeamView() {
             </Card>
             {canAct && log.length > 0 && (
               <Card title="Recent team changes">
-                <ul className="space-y-1 text-xs text-zinc-400">{log.map((l, i) => <li key={i}>{new Date(l.at).toISOString().slice(0, 16).replace("T", " ")} UTC · {l.actorEmail} · {l.action} {l.targetEmail ?? ""} {l.detail && `(${l.detail})`}</li>)}</ul>
+                <ul className="space-y-1 text-xs text-muted">{log.map((l, i) => <li key={i}>{new Date(l.at).toISOString().slice(0, 16).replace("T", " ")} UTC · {l.actorEmail} · {l.action} {l.targetEmail ?? ""} {l.detail && `(${l.detail})`}</li>)}</ul>
               </Card>
             )}
           </div>

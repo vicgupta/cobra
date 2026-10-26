@@ -5,6 +5,9 @@ import { Nav } from "@/components/nav";
 import { currentUser } from "@/lib/auth/server";
 import { isSystemAdmin } from "@/lib/admin/gate";
 import { UserMenu } from "@/components/user-menu";
+import { getDb } from "@/lib/db";
+import { getUserTheme } from "@/lib/auth/theme-db";
+import { THEME_INIT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -17,11 +20,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} data-theme="system" suppressHydrationWarning>
+      <head>
+        {/* Sets html.dark/.light from the cobra_theme cookie before first paint (no flash). */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
       <body className="flex min-h-full flex-col font-sans">
         <Suspense fallback={null}><NavSlot /></Suspense>
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">{children}</main>
-        <footer className="border-t border-zinc-800 py-4 text-center text-xs text-zinc-500">
+        <footer className="border-t border-border py-4 text-center text-xs text-subtle">
           Cobra · Command Orchestration for Build and Release Automation · nothing auto-merges
         </footer>
       </body>
@@ -31,5 +38,5 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 
 async function NavSlot() {
   const u = await currentUser();
-  return <Nav admin={!!u && isSystemAdmin(u.email)} userMenu={<Suspense fallback={null}><UserMenu /></Suspense>} />;
+  return <Nav admin={!!u && isSystemAdmin(u.email)} signedIn={!!u} savedTheme={u ? getUserTheme(getDb(), u.id) : null} userMenu={<Suspense fallback={null}><UserMenu /></Suspense>} />;
 }

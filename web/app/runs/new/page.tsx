@@ -9,9 +9,9 @@ export default function NewRunPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Test run</h1>
-        <p className="text-sm text-zinc-400">Simulated only — no agent is executed and nothing is pushed or opened on GitHub.</p>
+        <p className="text-sm text-muted">Simulated only — no agent is executed and nothing is pushed or opened on GitHub.</p>
       </div>
-      <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}>
+      <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}>
         <AuthGate><TestRun /></AuthGate>
       </Suspense>
     </div>

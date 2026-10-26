@@ -294,6 +294,8 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     UPDATE runs SET triggered_by = coalesce((SELECT email FROM users WHERE users.id = runs.created_by), 'unknown');
     CREATE INDEX runs_workflow ON runs(workflow, started_at DESC);
   `),
+  // 17 (Theme): per-user Light / Dark / System preference; NULL = never chosen (browser cookie applies)
+  (db) => db.exec("ALTER TABLE users ADD COLUMN theme TEXT CHECK (theme IN ('light', 'dark', 'system'));"),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

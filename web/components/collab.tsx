@@ -5,8 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
-const input = "w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none";
-const button = "rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50";
+const input = "w-full rounded-md border border-border-strong bg-bg px-3 py-2 text-sm placeholder:text-faint focus:border-emerald-500 focus:outline-none";
+const button = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
 
 async function call(url: string, method: string, body?: unknown) {
   const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -22,7 +22,7 @@ function useAction() {
     try { const r = await f(); if (!r.ok) setError(r.data.error ?? "Failed"); else setNote(done?.(r.data) ?? null); } finally { setBusy(false); }
     return true;
   };
-  const status = <>{error && <p role="alert" className="text-sm text-rose-300">{error}</p>}{note && <p className="text-sm text-emerald-300">{note}</p>}</>;
+  const status = <>{error && <p role="alert" className="text-sm text-danger">{error}</p>}{note && <p className="text-sm text-success">{note}</p>}</>;
   return { busy, run, status };
 }
 
@@ -83,7 +83,7 @@ export function CreatePrForm({ repo, number, agents }: { repo: string; number: n
       <AgentPicker agents={agents} value={who} onChange={setWho} />
       <textarea aria-label="Extra instructions" className={`${input} h-16`} placeholder="Extra instructions (optional)" value={instructions} onChange={(e) => setInstructions(e.target.value)} />
       <button className={button} disabled={c.busy}>Create PR</button>{c.status}
-      <p className="text-xs text-zinc-500">Runs the agent for real on a <code>cobra/&lt;run-id&gt;</code> branch, then opens a PR that closes this issue. No approval needed.</p>
+      <p className="text-xs text-subtle">Runs the agent for real on a <code>cobra/&lt;run-id&gt;</code> branch, then opens a PR that closes this issue. No approval needed.</p>
     </form>
   );
 }
@@ -118,14 +118,14 @@ export function MemberControls({ member, viewer, designatedId }: { member: { id:
   const router = useRouter();
   const c = useAction();
   const admin = viewer.role === "admin", lead = viewer.role === "team_lead";
-  if (member.role === "admin" || member.id === 1) return <span className="text-xs text-zinc-600">—</span>;
+  if (member.role === "admin" || member.id === 1) return <span className="text-xs text-faint">—</span>;
   const patch = (body: unknown, done: string) => void c.run(() => call(`/api/team/members/${member.id}`, "PATCH", body), () => { router.refresh(); return done; });
   const canPromote = (admin || lead) && member.role === "member";
   const canDemote = member.role === "team_lead" && (admin || (lead && member.id !== viewer.id && member.id !== designatedId));
   return (
     <span className="flex flex-wrap items-center gap-2">
       {canPromote && <button className={button} disabled={c.busy} onClick={() => patch({ role: "team_lead" }, "Promoted")}>Make team lead</button>}
-      {canDemote && <button className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50" disabled={c.busy}
+      {canDemote && <button className="rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-soft hover:bg-surface-2 disabled:opacity-50" disabled={c.busy}
         onClick={() => { if (member.id !== designatedId || confirm(`${member.email} is the designated lead; demoting unsets that. Continue?`)) patch({ role: "member" }, "Demoted"); }}>Make member</button>}
       {admin && member.id !== designatedId && <button className={button} disabled={c.busy} onClick={() => patch({ makeDesignatedLead: true }, "Designated")}>Make designated lead</button>}
       {c.status}

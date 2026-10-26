@@ -18,8 +18,8 @@ async function RepoBranches({ u, repo }: { u: Actor; repo: string }) {
     return <Card title={repo}><GhError e={e} /></Card>;
   }
   return <Card title={b.repo} subtitle={`${b.branches.length} branch${b.branches.length === 1 ? "" : "es"}`}>
-      {b.branches.length === 0 ? <p className="text-sm text-zinc-500">None.</p> : <ul className="divide-y divide-zinc-800">{b.branches.map((x) => (
-        <li key={x.name} className="flex items-center gap-2 py-1.5 text-sm"><span className="font-mono">{x.name}</span>{x.name === b.defaultBranch && <Badge tone="green">default</Badge>}{x.protected && <Badge tone="gray">protected</Badge>}<span className="ml-auto font-mono text-xs text-zinc-500">{x.sha.slice(0, 7)}</span></li>
+      {b.branches.length === 0 ? <p className="text-sm text-subtle">None.</p> : <ul className="divide-y divide-border">{b.branches.map((x) => (
+        <li key={x.name} className="flex items-center gap-2 py-1.5 text-sm"><span className="font-mono">{x.name}</span>{x.name === b.defaultBranch && <Badge tone="green">default</Badge>}{x.protected && <Badge tone="gray">protected</Badge>}<span className="ml-auto font-mono text-xs text-subtle">{x.sha.slice(0, 7)}</span></li>
       ))}</ul>}
     </Card>;
 }
@@ -31,11 +31,11 @@ async function Body({ searchParams }: { searchParams: Promise<{ repo?: string }>
     const shown = want ? [want] : repos;
     return <div className="space-y-4">
       <RepoSelect base="/repos/branches" repos={repos} current={want} />
-      {shown.length === 0 ? <p className="text-sm text-zinc-500">No team repos yet.</p> : shown.map((r) => <RepoBranches key={r} u={u} repo={r} />)}
+      {shown.length === 0 ? <p className="text-sm text-subtle">No team repos yet.</p> : shown.map((r) => <RepoBranches key={r} u={u} repo={r} />)}
     </div>;
   }}</CollabPage>;
 }
 
 export default function ReposBranches(props: { searchParams: Promise<{ repo?: string }> }) {
-  return <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}><Body {...props} /></Suspense>;
+  return <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><Body {...props} /></Suspense>;
 }

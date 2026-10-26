@@ -4,9 +4,11 @@ import { authenticate } from "@/lib/auth/users";
 import { createSession } from "@/lib/auth/sessions";
 import { loginBlocked, recordLoginFailure, recordLoginSuccess } from "@/lib/auth/login-limit";
 import { tooMany } from "@/lib/auth/limit-response";
-import { sameOrigin } from "@/lib/auth/server";
 import { setSessionCookie } from "@/lib/auth/cookie";
 import { clientIp } from "@/lib/client-ip";
+import { getUserTheme } from "@/lib/auth/theme-db";
+import { THEME_COOKIE, THEME_COOKIE_MAX_AGE } from "@/lib/theme";
+import { sameOrigin, secureCookies } from "@/lib/auth/server";
 
 export async function POST(req: Request) {
   if (!sameOrigin(req)) return NextResponse.json({ error: "Bad origin" }, { status: 403 });
@@ -27,5 +29,8 @@ export async function POST(req: Request) {
   const { token, expiresAt } = createSession(db, userId, Date.now(), { remember, userAgent: req.headers.get("user-agent"), ip });
   const res = NextResponse.json({ ok: true });
   setSessionCookie(res, token, expiresAt, remember);
+  // On login the user's saved theme wins over this browser's cookie.
+  const theme = getUserTheme(db, userId);
+  if (theme) res.cookies.set(THEME_COOKIE, theme, { httpOnly: false, secure: secureCookies(), sameSite: "lax", path: "/", maxAge: THEME_COOKIE_MAX_AGE });
   return res;
 }

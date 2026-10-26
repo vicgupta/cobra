@@ -21,7 +21,7 @@ type Tab = (typeof TABS)[number][0];
 
 export default function AdminPage({ searchParams }: PageProps<"/admin">) {
   return (
-    <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}>
+    <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}>
       <AdminBody searchParams={searchParams} />
     </Suspense>
   );
@@ -37,11 +37,11 @@ async function AdminBody({ searchParams }: { searchParams: PageProps<"/admin">["
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Admin</h1>
-        <p className="text-sm text-zinc-400">System-wide view across all tenants. Read-only except Settings and ending sessions.</p>
+        <p className="text-sm text-muted">System-wide view across all tenants. Read-only except Settings and ending sessions.</p>
       </div>
-      <nav className="flex flex-wrap gap-1 border-b border-zinc-800 pb-2 text-sm">
+      <nav className="flex flex-wrap gap-1 border-b border-border pb-2 text-sm">
         {TABS.map(([k, label]) => (
-          <Link key={k} href={`/admin?tab=${k}`} className={`rounded-md px-3 py-1.5 ${k === tab ? "bg-zinc-800 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`}>{label}</Link>
+          <Link key={k} href={`/admin?tab=${k}`} className={`rounded-md px-3 py-1.5 ${k === tab ? "bg-surface-2 text-fg" : "text-muted hover:bg-surface hover:text-fg"}`}>{label}</Link>
         ))}
       </nav>
       {tab === "overview" && <Overview now={now} />}
@@ -62,13 +62,13 @@ const short = (h: string | null) => (h ? h.slice(0, 12) : "—");
 const statusTone = (s: string | null): Tone => (s === "succeeded" ? "green" : s === "failed" ? "red" : s === "running" || s === "queued" ? "blue" : "gray");
 
 function Table({ head, rows, empty = "Nothing yet" }: { head: string[]; rows: ReactNode[][]; empty?: string }) {
-  if (!rows.length) return <p className="text-sm text-zinc-500">{empty}</p>;
+  if (!rows.length) return <p className="text-sm text-subtle">{empty}</p>;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="text-xs uppercase text-zinc-500"><tr>{head.map((h) => <th key={h} className="px-2 py-1.5 font-medium">{h}</th>)}</tr></thead>
-        <tbody className="divide-y divide-zinc-800">
-          {rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className="px-2 py-1.5 align-top text-zinc-300">{c}</td>)}</tr>)}
+        <thead className="text-xs uppercase text-subtle"><tr>{head.map((h) => <th key={h} className="px-2 py-1.5 font-medium">{h}</th>)}</tr></thead>
+        <tbody className="divide-y divide-border">
+          {rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className="px-2 py-1.5 align-top text-fg-soft">{c}</td>)}</tr>)}
         </tbody>
       </table>
     </div>
@@ -96,7 +96,7 @@ function Overview({ now }: { now: number }) {
         <Stat label="Node" value={process.version} hint={`up ${Math.round(process.uptime() / 60)} min`} />
       </div>
       <Card title="Runs by status">
-        <div className="flex flex-wrap gap-2">{o.runsByStatus.map((s) => <Badge key={s.status} tone={statusTone(s.status)}>{s.status}: {s.c}</Badge>)}{!o.runsByStatus.length && <span className="text-sm text-zinc-500">No runs yet</span>}</div>
+        <div className="flex flex-wrap gap-2">{o.runsByStatus.map((s) => <Badge key={s.status} tone={statusTone(s.status)}>{s.status}: {s.c}</Badge>)}{!o.runsByStatus.length && <span className="text-sm text-subtle">No runs yet</span>}</div>
       </Card>
     </div>
   );
@@ -115,7 +115,7 @@ function Users({ now }: { now: number }) {
 function Sessions({ now }: { now: number }) {
   return <Card title="Active sessions" subtitle="Ending a session signs that device out immediately."><Table head={["User", "Tenant", "Started", "Last seen", "Expires", "Remember", "IP", "Browser", ""]}
     rows={m.sessions(getDb(), now).map((s) => [s.email, s.tenant, dt(s.created_at), dt(s.last_seen_at ?? s.created_at), dt(s.expires_at), s.remember ? "30 d" : "12 h", s.ip || "—",
-      <span key="ua" className="block max-w-xs truncate text-xs text-zinc-500" title={s.user_agent}>{s.user_agent || "—"}</span>, <EndSessionButton key="e" id={s.public_id} />])} /></Card>;
+      <span key="ua" className="block max-w-xs truncate text-xs text-subtle" title={s.user_agent}>{s.user_agent || "—"}</span>, <EndSessionButton key="e" id={s.public_id} />])} /></Card>;
 }
 
 function Workflows() {
@@ -138,20 +138,20 @@ function Workflows() {
 
 function Logs() {
   const runs = m.executionLogs(getDb(), 50);
-  if (!runs.length) return <Card title="Execution logs"><p className="text-sm text-zinc-500">No runs yet</p></Card>;
+  if (!runs.length) return <Card title="Execution logs"><p className="text-sm text-subtle">No runs yet</p></Card>;
   return (
     <Card title="Execution logs" subtitle="Latest 50 runs across all tenants. Outputs were redacted and capped when stored.">
       <div className="space-y-2">
         {runs.map((r) => (
-          <details key={r.id} className="rounded-lg border border-zinc-800 px-3 py-2">
+          <details key={r.id} className="rounded-lg border border-border px-3 py-2">
             <summary className="flex cursor-pointer flex-wrap items-center gap-3 text-sm">
               <code className="text-xs">{r.id}</code><Badge tone={statusTone(r.status)}>{r.status ?? "legacy"}</Badge>
-              <span>{r.workflow ?? "—"}</span><span className="text-zinc-500">{r.tenant} · {r.email ?? "deleted user"} · {dt(r.started_at)}{r.ended_at ? ` · ${((r.ended_at - r.started_at) / 1000).toFixed(1)} s` : ""}</span>
+              <span>{r.workflow ?? "—"}</span><span className="text-subtle">{r.tenant} · {r.email ?? "deleted user"} · {dt(r.started_at)}{r.ended_at ? ` · ${((r.ended_at - r.started_at) / 1000).toFixed(1)} s` : ""}</span>
             </summary>
-            {r.error && <p className="mt-2 text-xs text-rose-400">{r.error}</p>}
+            {r.error && <p className="mt-2 text-xs text-danger">{r.error}</p>}
             <Table head={["At", "Step", "Status", "Attempt", "Output"]} empty="No step events (legacy run)"
               rows={r.events.map((e) => [dt(e.at), e.step_id, <Badge key="s" tone={statusTone(e.status)}>{e.status}</Badge>, e.attempt,
-                e.output ? <pre key="o" className="max-h-40 max-w-xl overflow-auto whitespace-pre-wrap text-xs text-zinc-400">{e.output}{e.truncated ? "\n… (truncated)" : ""}</pre> : "—"])} />
+                e.output ? <pre key="o" className="max-h-40 max-w-xl overflow-auto whitespace-pre-wrap text-xs text-muted">{e.output}{e.truncated ? "\n… (truncated)" : ""}</pre> : "—"])} />
           </details>
         ))}
       </div>
@@ -181,8 +181,8 @@ function SettingsTabs({ sub }: { sub: "system" | "templates" }) {
   const tabs = [["system", "System settings", "/admin?tab=settings"], ["templates", "Templates", "/admin?tab=settings&sub=templates"]] as const;
   return (
     <div className="space-y-6">
-      <nav aria-label="Admin settings" className="flex flex-wrap gap-1 border-b border-zinc-800 pb-2 text-sm">
-        {tabs.map(([k, label, href]) => <Link key={k} href={href} className={`rounded-md px-3 py-1.5 ${k === sub ? "bg-zinc-800 text-white" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"}`}>{label}</Link>)}
+      <nav aria-label="Admin settings" className="flex flex-wrap gap-1 border-b border-border pb-2 text-sm">
+        {tabs.map(([k, label, href]) => <Link key={k} href={href} className={`rounded-md px-3 py-1.5 ${k === sub ? "bg-surface-2 text-fg" : "text-muted hover:bg-surface hover:text-fg"}`}>{label}</Link>)}
       </nav>
       {sub === "templates" ? <TemplatesView /> : <Settings />}
     </div>
@@ -192,7 +192,7 @@ function SettingsTabs({ sub }: { sub: "system" | "templates" }) {
 function Settings() {
   return (
     <div className="space-y-6">
-      <div className="rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 px-4 py-2 text-xs text-amber-200">
+      <div className="rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 px-4 py-2 text-xs text-warning">
         Values are saved to the server environment file <EnvFilePath /> and used by the agent driver on the next run (no restart needed). Saved secrets are never sent back to the browser — only the last 4 characters.
       </div>
       <SettingsForm />

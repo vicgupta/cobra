@@ -20,7 +20,7 @@ export function ReposView() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Repos</h1>
-      <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}><AuthGate>{(u) => <Repos user={u} />}</AuthGate></Suspense>
+      <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><AuthGate>{(u) => <Repos user={u} />}</AuthGate></Suspense>
     </div>
   );
 }

@@ -19,11 +19,11 @@ export function EndSessionButton({ id }: { id: string }) {
           if (r.ok) router.refresh();
           else setErr((await r.json().catch(() => ({}))).error ?? "Failed");
         }}
-        className="rounded-md border border-zinc-700 px-2 py-0.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+        className="rounded-md border border-border-strong px-2 py-0.5 text-xs text-fg-soft hover:bg-surface-2 disabled:opacity-50"
       >
         {busy ? "Ending…" : "End"}
       </button>
-      {err && <span className="text-xs text-rose-400">{err}</span>}
+      {err && <span className="text-xs text-danger">{err}</span>}
     </span>
   );
 }

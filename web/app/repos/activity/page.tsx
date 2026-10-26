@@ -20,13 +20,13 @@ async function Body({ searchParams }: { searchParams: Promise<{ repo?: string }>
     return <div className="space-y-4">
       <RepoSelect base="/repos/activity" repos={repos} current={want} />
       <Card title="Cobra activity" subtitle="Issue, PR, comment and merge actions, runs and finished steps, newest first.">
-        {want && !repo ? <p className="text-sm text-zinc-500">That repo is not on your team&apos;s list.</p> : items.length === 0 ? <p className="text-sm text-zinc-500">No activity yet.</p> : <ul className="divide-y divide-zinc-800">{items.map((x, i) => (
+        {want && !repo ? <p className="text-sm text-subtle">That repo is not on your team&apos;s list.</p> : items.length === 0 ? <p className="text-sm text-subtle">No activity yet.</p> : <ul className="divide-y divide-border">{items.map((x, i) => (
           <li key={i} className="flex flex-wrap items-center gap-2 py-1.5 text-sm">
-            <span className="w-36 shrink-0 text-xs text-zinc-500">{fmt(x.at)}</span>
+            <span className="w-36 shrink-0 text-xs text-subtle">{fmt(x.at)}</span>
             <Badge tone={x.kind === "audit" ? "violet" : x.status === "failed" ? "red" : x.kind === "run" ? "green" : "gray"}>{x.kind === "audit" ? "action" : x.kind}</Badge>
-            <span className="font-mono text-xs text-zinc-400">{x.repo}</span>
+            <span className="font-mono text-xs text-muted">{x.repo}</span>
             <span>{x.label}</span>
-            {x.actor && <span className="text-xs text-zinc-500">{x.actor}</span>}
+            {x.actor && <span className="text-xs text-subtle">{x.actor}</span>}
             {x.runId && <Link className="ml-auto font-mono text-xs underline" href={`/runs/${x.runId}`}>{x.runId}</Link>}
           </li>
         ))}</ul>}
@@ -36,5 +36,5 @@ async function Body({ searchParams }: { searchParams: Promise<{ repo?: string }>
 }
 
 export default function ReposActivity(props: { searchParams: Promise<{ repo?: string }> }) {
-  return <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}><Body {...props} /></Suspense>;
+  return <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><Body {...props} /></Suspense>;
 }

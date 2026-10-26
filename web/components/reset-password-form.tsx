@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const input = "w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none";
+const input = "w-full rounded-md border border-border-strong bg-bg px-3 py-2 text-sm placeholder:text-faint focus:border-emerald-500 focus:outline-none";
 
 export function ResetPasswordForm({ token, initialError }: { token: string; initialError: string | null }) {
   const [password, setPassword] = useState("");
@@ -23,12 +23,12 @@ export function ResetPasswordForm({ token, initialError }: { token: string; init
   }
 
   return (
-    <div className="mx-auto mt-8 max-w-sm rounded-xl border border-zinc-800 bg-zinc-900/40 p-6">
+    <div className="mx-auto mt-8 max-w-sm rounded-xl border border-border bg-surface/40 p-6">
       <h1 className="text-xl font-semibold tracking-tight">Choose a new password</h1>
       {done ? (
-        <p className="mt-5 text-sm text-zinc-300">Your password has been changed and you&apos;ve been signed out everywhere. <a href="/login" className="text-emerald-400 hover:underline">Sign in</a></p>
+        <p className="mt-5 text-sm text-fg-soft">Your password has been changed and you&apos;ve been signed out everywhere. <a href="/login" className="text-accent hover:underline">Sign in</a></p>
       ) : initialError ? (
-        <p className="mt-5 text-sm text-rose-400">{initialError} <a href="/forgot-password" className="text-emerald-400 hover:underline">Request a new link</a></p>
+        <p className="mt-5 text-sm text-danger">{initialError} <a href="/forgot-password" className="text-accent hover:underline">Request a new link</a></p>
       ) : (
         <form onSubmit={submit} className="mt-5 space-y-4">
           <label className="block space-y-1.5 text-sm">
@@ -39,7 +39,7 @@ export function ResetPasswordForm({ token, initialError }: { token: string; init
             <span>Confirm new password</span>
             <input required minLength={10} type="password" name="confirm" autoComplete="new-password" className={input} value={confirm} onChange={(e) => setConfirm(e.target.value)} />
           </label>
-          {error && <p className="text-sm text-rose-400">{error}</p>}
+          {error && <p className="text-sm text-danger">{error}</p>}
           <button disabled={busy} className="w-full rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400 disabled:opacity-50">
             {busy ? "…" : "Set new password"}
           </button>

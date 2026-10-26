@@ -47,23 +47,23 @@ export function SessionsList({ initial }: { initial: SessionInfo[] }) {
   return (
     <div className="mt-6 space-y-3">
       {sessions.map((s) => (
-        <div key={s.id} className="flex items-start justify-between gap-4 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+        <div key={s.id} className="flex items-start justify-between gap-4 rounded-lg border border-border bg-surface/40 p-4">
           <div className="min-w-0 text-sm">
-            <p className="font-medium text-zinc-200">
+            <p className="font-medium text-fg-soft">
               {describe(s.userAgent)}
-              {s.current && <span className="ml-2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs text-emerald-400">This session</span>}
+              {s.current && <span className="ml-2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-xs text-accent">This session</span>}
             </p>
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 text-xs text-subtle">
               {s.ip || "Unknown IP"} · Signed in {fmt(s.createdAt)} · Last active {fmt(s.lastSeenAt)} · {s.remember ? "Remembered (30 days)" : "Until browser closes (max 12 h)"} · Expires {fmt(s.expiresAt)}
             </p>
-            {s.userAgent && <p className="mt-1 truncate text-xs text-zinc-600" title={s.userAgent}>{s.userAgent}</p>}
+            {s.userAgent && <p className="mt-1 truncate text-xs text-faint" title={s.userAgent}>{s.userAgent}</p>}
           </div>
-          <button disabled={busy} onClick={() => end(s.id)} className="shrink-0 rounded-md border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:bg-zinc-900 disabled:opacity-50">
+          <button disabled={busy} onClick={() => end(s.id)} className="shrink-0 rounded-md border border-border-strong px-2.5 py-1 text-xs text-fg-soft hover:bg-surface disabled:opacity-50">
             {s.current ? "Sign out" : "End session"}
           </button>
         </div>
       ))}
-      {error && <p className="text-sm text-rose-400">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
       {others && (
         <button disabled={busy} onClick={endOthers} className="rounded-md bg-rose-500/90 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-rose-400 disabled:opacity-50">
           Sign out all other sessions

@@ -20,7 +20,7 @@ async function IssuePageBody({ params }: { params: Promise<{ owner: string; repo
         return (
           <div className="space-y-6">
             <Card title={issue.title} subtitle={`${issue.user?.login ?? "?"} · ${ghDate(issue.created_at)}`} action={<div className="flex items-center gap-2"><Badge tone={issue.state === "open" ? "green" : "gray"}>{issue.state}</Badge><a className="text-xs underline" href={issue.html_url} target="_blank" rel="noreferrer">GitHub</a></div>}>
-              <pre className="whitespace-pre-wrap font-sans text-sm text-zinc-200">{issue.body || "(no description)"}</pre>
+              <pre className="whitespace-pre-wrap font-sans text-sm text-fg-soft">{issue.body || "(no description)"}</pre>
               {prs.length > 0 && <p className="mt-3 text-sm">Pull requests: {prs.map((x) => <Link key={x} className="mr-2 underline" href={`/repos/pull-requests/${repo}/${x}`}>#{x}</Link>)}</p>}
             </Card>
             {!issue.pull_request && issue.state === "open" && <Card title="Create PR" subtitle="An agent works on this issue and opens a PR that references it."><CreatePrForm repo={repo} number={n} agents={listAgents(db, u.tenantId).map((a) => ({ name: a.name, engine: a.engine }))} /></Card>}
@@ -35,5 +35,5 @@ async function IssuePageBody({ params }: { params: Promise<{ owner: string; repo
 }
 
 export default function IssuePage(props: { params: Promise<{ owner: string; repo: string; number: string }> }) {
-  return <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}><IssuePageBody {...props} /></Suspense>;
+  return <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><IssuePageBody {...props} /></Suspense>;
 }

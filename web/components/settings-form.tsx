@@ -21,8 +21,8 @@ export function SettingsForm() {
       .catch(() => setError("Could not load settings"));
   }, []);
 
-  if (error) return <p className="text-sm text-rose-400">{error}</p>;
-  if (!saved) return <p className="text-sm text-zinc-500">Loading…</p>;
+  if (error) return <p className="text-sm text-danger">{error}</p>;
+  if (!saved) return <p className="text-sm text-subtle">Loading…</p>;
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -91,7 +91,7 @@ function AgentForm({ agent, saved, onSaved }: { agent: AgentId; saved: MaskedSet
           <button disabled={busy} className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400 disabled:opacity-50">
             {busy ? "Saving…" : "Save"}
           </button>
-          {msg && <span className="text-xs text-zinc-400">{msg}</span>}
+          {msg && <span className="text-xs text-muted">{msg}</span>}
         </div>
       </form>
     </Card>
@@ -102,20 +102,20 @@ function SecretField(p: {
   label: string; env: string; help?: string; value: string; savedMask: string; cleared: boolean; multiline?: boolean;
   onChange: (v: string) => void; onClear: () => void;
 }) {
-  const cls = "w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none";
+  const cls = "w-full rounded-md border border-border-strong bg-bg px-3 py-2 font-mono text-sm placeholder:text-faint focus:border-emerald-500 focus:outline-none";
   const placeholder = p.savedMask ? "Saved — type to replace" : "Not set";
   return (
     <label className="block space-y-1.5">
       <span className="flex items-center justify-between text-sm">
-        <span>{p.label} <code className="ml-1 text-xs text-zinc-500">{p.env}</code></span>
+        <span>{p.label} <code className="ml-1 text-xs text-subtle">{p.env}</code></span>
         {p.savedMask && (
-          <button type="button" onClick={p.onClear} className="text-xs text-zinc-400 hover:text-rose-300">
+          <button type="button" onClick={p.onClear} className="text-xs text-muted hover:text-danger">
             {p.cleared ? "Undo clear" : "Clear"}
           </button>
         )}
       </span>
-      {p.help && <span className="block text-xs text-zinc-500">{p.help}</span>}
-      <span className="block text-xs">Status: <span className={p.savedMask ? "text-emerald-400" : "text-zinc-400"}>{p.savedMask ? "Set" : "Not set"}</span></span>
+      {p.help && <span className="block text-xs text-subtle">{p.help}</span>}
+      <span className="block text-xs">Status: <span className={p.savedMask ? "text-accent" : "text-muted"}>{p.savedMask ? "Set" : "Not set"}</span></span>
       {p.multiline ? (
         <textarea rows={3} autoComplete="off" spellCheck={false} className={cls} placeholder={p.cleared ? "Will be cleared on save" : placeholder} value={p.value} onChange={(e) => p.onChange(e.target.value)} />
       ) : (

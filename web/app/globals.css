@@ -1,14 +1,104 @@
 @import "tailwindcss";
 
+/* Class-based dark mode: <html class="dark|light"> is set by the pre-paint script (lib/theme.ts). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Semantic color tokens (see docs/workflow-redesign.md "Theming"). Use these in new UI:
+ *   bg-bg (page), bg-surface (cards, hover), bg-surface-2 (active tab, chips), border-border, border-border-strong (inputs),
+ *   text-fg, text-fg-soft, text-muted, text-subtle, text-faint, text-accent, text-on-accent (on bg-accent buttons),
+ *   text-success / text-warning / text-danger / text-info, bg-danger-soft / bg-warning-soft, bg-code / text-code.
+ * Tinted badges (bg-emerald-500/10 ring-emerald-500/30 ...) work in both themes as-is.
+ */
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --color-bg: var(--cb-bg);
+  --color-surface: var(--cb-surface);
+  --color-surface-2: var(--cb-surface-2);
+  --color-border: var(--cb-border);
+  --color-border-strong: var(--cb-border-strong);
+  --color-fg: var(--cb-fg);
+  --color-fg-soft: var(--cb-fg-soft);
+  --color-muted: var(--cb-muted);
+  --color-subtle: var(--cb-subtle);
+  --color-faint: var(--cb-faint);
+  --color-accent: var(--cb-accent);
+  --color-accent-solid: var(--cb-accent-solid);
+  --color-on-accent: var(--cb-on-accent);
+  --color-success: var(--cb-success);
+  --color-warning: var(--cb-warning);
+  --color-danger: var(--cb-danger);
+  --color-info: var(--cb-info);
+  --color-violet: var(--cb-violet);
+  --color-orange: var(--cb-orange);
+  --color-danger-soft: var(--cb-danger-soft);
+  --color-warning-soft: var(--cb-warning-soft);
+  --color-danger-border: var(--cb-danger-border);
+  --color-warning-border: var(--cb-warning-border);
+  --color-code: var(--cb-code);
+  --color-code-fg: var(--cb-code-fg);
 }
 
-:root {
+/* Dark (also the no-JS default unless the OS prefers light). Text on bg >= 4.5:1. */
+:root, .dark {
   color-scheme: dark;
+  --cb-bg: var(--color-zinc-950);
+  --cb-surface: var(--color-zinc-900);
+  --cb-surface-2: var(--color-zinc-800);
+  --cb-border: var(--color-zinc-800);
+  --cb-border-strong: var(--color-zinc-700);
+  --cb-fg: var(--color-zinc-100);
+  --cb-fg-soft: var(--color-zinc-300);
+  --cb-muted: var(--color-zinc-400);
+  --cb-subtle: var(--color-zinc-400);
+  --cb-faint: var(--color-zinc-500);
+  --cb-accent: var(--color-emerald-400);
+  --cb-accent-solid: var(--color-emerald-600);
+  --cb-on-accent: var(--color-white);
+  --cb-success: var(--color-emerald-300);
+  --cb-warning: var(--color-amber-300);
+  --cb-danger: var(--color-rose-300);
+  --cb-info: var(--color-sky-400);
+  --cb-violet: var(--color-violet-300);
+  --cb-orange: var(--color-orange-300);
+  --cb-danger-soft: color-mix(in oklab, var(--color-rose-950) 40%, transparent);
+  --cb-warning-soft: color-mix(in oklab, var(--color-amber-950) 30%, transparent);
+  --cb-danger-border: var(--color-rose-900);
+  --cb-warning-border: color-mix(in oklab, var(--color-amber-700) 50%, transparent);
+  --cb-code: var(--color-zinc-950);
+  --cb-code-fg: var(--color-zinc-300);
+}
+
+.light {
+  color-scheme: light;
+  --cb-bg: var(--color-white);
+  --cb-surface: var(--color-zinc-50);
+  --cb-surface-2: var(--color-zinc-200);
+  --cb-border: var(--color-zinc-200);
+  --cb-border-strong: var(--color-zinc-300);
+  --cb-fg: var(--color-zinc-900);
+  --cb-fg-soft: var(--color-zinc-700);
+  --cb-muted: var(--color-zinc-600);
+  --cb-subtle: var(--color-zinc-600);
+  --cb-faint: var(--color-zinc-500);
+  --cb-accent: var(--color-emerald-700);
+  --cb-accent-solid: var(--color-emerald-700);
+  --cb-on-accent: var(--color-white);
+  --cb-success: var(--color-emerald-700);
+  --cb-warning: var(--color-amber-800);
+  --cb-danger: var(--color-rose-700);
+  --cb-info: var(--color-sky-700);
+  --cb-violet: var(--color-violet-700);
+  --cb-orange: var(--color-orange-800);
+  --cb-danger-soft: var(--color-rose-50);
+  --cb-warning-soft: var(--color-amber-50);
+  --cb-danger-border: var(--color-rose-300);
+  --cb-warning-border: var(--color-amber-300);
+  --cb-code: var(--color-zinc-100);
+  --cb-code-fg: var(--color-zinc-800);
 }
 
 body {
-  @apply bg-zinc-950 text-zinc-100;
+  @apply bg-bg text-fg;
 }

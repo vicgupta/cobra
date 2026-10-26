@@ -4,12 +4,12 @@ export function Card({ title, subtitle, action, children, className = "" }: {
   title?: ReactNode; subtitle?: ReactNode; action?: ReactNode; children: ReactNode; className?: string;
 }) {
   return (
-    <section className={`rounded-xl border border-zinc-800 bg-zinc-900/60 shadow-sm ${className}`}>
+    <section className={`rounded-xl border border-border bg-surface/60 shadow-sm ${className}`}>
       {(title || action) && (
-        <div className="flex items-start justify-between gap-4 border-b border-zinc-800 px-5 py-4">
+        <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
           <div>
-            {title && <h2 className="text-sm font-semibold text-zinc-100">{title}</h2>}
-            {subtitle && <p className="mt-0.5 text-xs text-zinc-500">{subtitle}</p>}
+            {title && <h2 className="text-sm font-semibold text-fg">{title}</h2>}
+            {subtitle && <p className="mt-0.5 text-xs text-subtle">{subtitle}</p>}
           </div>
           {action}
         </div>
@@ -20,13 +20,13 @@ export function Card({ title, subtitle, action, children, className = "" }: {
 }
 
 const tones = {
-  gray: "bg-zinc-800 text-zinc-300 ring-zinc-700",
-  green: "bg-emerald-500/10 text-emerald-300 ring-emerald-500/30",
-  blue: "bg-sky-500/10 text-sky-300 ring-sky-500/30",
-  amber: "bg-amber-500/10 text-amber-300 ring-amber-500/30",
-  red: "bg-rose-500/10 text-rose-300 ring-rose-500/30",
-  violet: "bg-violet-500/10 text-violet-300 ring-violet-500/30",
-  orange: "bg-orange-500/10 text-orange-300 ring-orange-500/30",
+  gray: "bg-surface-2 text-fg-soft ring-border-strong",
+  green: "bg-emerald-500/10 text-success ring-emerald-500/30",
+  blue: "bg-sky-500/10 text-info ring-sky-500/30",
+  amber: "bg-amber-500/10 text-warning ring-amber-500/30",
+  red: "bg-rose-500/10 text-danger ring-rose-500/30",
+  violet: "bg-violet-500/10 text-violet ring-violet-500/30",
+  orange: "bg-orange-500/10 text-orange ring-orange-500/30",
 } as const;
 export type Tone = keyof typeof tones;
 
@@ -41,17 +41,17 @@ export function Badge({ tone = "gray", children, dot }: { tone?: Tone; children:
 
 export function Stat({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
-      <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
+    <div className="rounded-xl border border-border bg-surface/60 p-4">
+      <p className="text-xs uppercase tracking-wide text-subtle">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-      {hint && <p className="mt-1 text-xs text-zinc-500">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-subtle">{hint}</p>}
     </div>
   );
 }
 
 export function ExampleDataBanner() {
   return (
-    <div className="rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 px-4 py-2 text-xs text-amber-200">
+    <div className="rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 px-4 py-2 text-xs text-warning">
       Example data — this dashboard shows mock runs, agents and team members from <code>lib/mock-data.ts</code>.
     </div>
   );

@@ -29,7 +29,7 @@ type SP = { runs?: string | string[]; page?: string | string[] };
 
 function Detail({ user, name, sp }: { user: SessionUser; name: string; sp: SP }) {
   const r = workflowDetail(getDb(), actor(user), name);
-  if (r.status !== 200) return <p className="text-sm text-zinc-400">Workflow not found.</p>;
+  if (r.status !== 200) return <p className="text-sm text-muted">Workflow not found.</p>;
   const d = r.body as D;
   // Same server-side scoping as GET /api/workflows/<name>/runs (team; system admins across teams).
   const h = d.template ? null : workflowRunHistory(getDb(), actor(user), name, { filter: parseHistoryFilter(sp.runs), page: parsePage(sp.page), secrets: runDeps(user.tenantId).redact() });
@@ -42,14 +42,14 @@ function Detail({ user, name, sp }: { user: SessionUser; name: string; sp: SP })
         {!d.template && <StatusBadge status={d.approval.status} />}
         <div className="ml-auto flex gap-2">
           <CopyButton text={d.source} />
-          {d.template && <Link href={`/workflows/new?template=${encodeURIComponent(d.name)}`} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white">Use template</Link>}
+          {d.template && <Link href={`/workflows/new?template=${encodeURIComponent(d.name)}`} className="rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent">Use template</Link>}
           {d.storage?.kind === "github" && d.can.edit && <SyncButton name={d.name} />}
-          {d.can.edit && <Link href={`/workflows/${encodeURIComponent(d.name)}/edit`} className="rounded-md border border-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-800">Edit YAML</Link>}
+          {d.can.edit && <Link href={`/workflows/${encodeURIComponent(d.name)}/edit`} className="rounded-md border border-border-strong px-3 py-1.5 text-sm hover:bg-surface-2">Edit YAML</Link>}
         </div>
       </div>
-      {d.description && <p className="text-sm text-zinc-400">{d.description}</p>}
+      {d.description && <p className="text-sm text-muted">{d.description}</p>}
       {d.agentErrors.length > 0 && (
-        <div role="alert" className="rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">
+        <div role="alert" className="rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-danger">
           <p className="font-medium">This workflow can&apos;t run until these agent references are fixed:</p>
           <ul className="mt-1 list-disc pl-5">{d.agentErrors.map((e) => <li key={e}>{e}</li>)}</ul>
         </div>
@@ -58,17 +58,17 @@ function Detail({ user, name, sp }: { user: SessionUser; name: string; sp: SP })
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card title="Governance" subtitle="Set in the YAML under governance">
           <dl className="grid grid-cols-[8rem_1fr] gap-y-1 text-sm">
-            <dt className="text-zinc-500">Owner</dt><dd>{d.owner}</dd>
-            {d.author && d.author !== d.owner && <><dt className="text-zinc-500">Last edited by</dt><dd>{d.author}</dd></>}
-            <dt className="text-zinc-500">Approvers</dt><dd>{d.approvers.join(", ")}</dd>
-            <dt className="text-zinc-500">Reviewers</dt><dd>{d.reviewers.join(", ") || "—"}</dd>
-            <dt className="text-zinc-500">Needs</dt><dd>{d.minApprovals} approval(s); self-approval policy: {d.selfApprovalPolicy}</dd>
-            {d.hasAgentStep && <><dt className="text-zinc-500">Engine</dt><dd>{d.engine === "codex" ? "Codex" : "Claude Code"} (default; overridable per run)</dd></>}
-            {d.hasAgentStep && d.repo && <><dt className="text-zinc-500">Repo</dt><dd className="font-mono text-xs">{d.repo}</dd></>}
-            <dt className="text-zinc-500">Triggers</dt><dd>{d.triggers.join(", ") || "—"}</dd>
-            <dt className="text-zinc-500">Storage</dt><dd>{d.storage?.kind === "github" ? <span className="font-mono text-xs">github: {d.storage.repo}/{d.storage.path}{d.storage.branch ? `@${d.storage.branch}` : ""}</span> : d.storage?.kind === "database" ? "Cobra database" : d.storage?.kind}</dd>
-            {d.createdFrom?.name && <><dt className="text-zinc-500">From template</dt><dd><Link className="text-emerald-300 hover:underline" href={`/workflows/${encodeURIComponent(d.createdFrom.name)}`}>{d.createdFrom.name}</Link> <span className="font-mono text-xs text-zinc-500">@{d.createdFrom.hash?.slice(0, 12)}</span></dd></>}
-            <dt className="text-zinc-500">Version hash</dt><dd className="font-mono text-xs">{d.hash.slice(0, 16)}</dd>
+            <dt className="text-subtle">Owner</dt><dd>{d.owner}</dd>
+            {d.author && d.author !== d.owner && <><dt className="text-subtle">Last edited by</dt><dd>{d.author}</dd></>}
+            <dt className="text-subtle">Approvers</dt><dd>{d.approvers.join(", ")}</dd>
+            <dt className="text-subtle">Reviewers</dt><dd>{d.reviewers.join(", ") || "—"}</dd>
+            <dt className="text-subtle">Needs</dt><dd>{d.minApprovals} approval(s); self-approval policy: {d.selfApprovalPolicy}</dd>
+            {d.hasAgentStep && <><dt className="text-subtle">Engine</dt><dd>{d.engine === "codex" ? "Codex" : "Claude Code"} (default; overridable per run)</dd></>}
+            {d.hasAgentStep && d.repo && <><dt className="text-subtle">Repo</dt><dd className="font-mono text-xs">{d.repo}</dd></>}
+            <dt className="text-subtle">Triggers</dt><dd>{d.triggers.join(", ") || "—"}</dd>
+            <dt className="text-subtle">Storage</dt><dd>{d.storage?.kind === "github" ? <span className="font-mono text-xs">github: {d.storage.repo}/{d.storage.path}{d.storage.branch ? `@${d.storage.branch}` : ""}</span> : d.storage?.kind === "database" ? "Cobra database" : d.storage?.kind}</dd>
+            {d.createdFrom?.name && <><dt className="text-subtle">From template</dt><dd><Link className="text-success hover:underline" href={`/workflows/${encodeURIComponent(d.createdFrom.name)}`}>{d.createdFrom.name}</Link> <span className="font-mono text-xs text-subtle">@{d.createdFrom.hash?.slice(0, 12)}</span></dd></>}
+            <dt className="text-subtle">Version hash</dt><dd className="font-mono text-xs">{d.hash.slice(0, 16)}</dd>
           </dl>
         </Card>
 
@@ -77,12 +77,12 @@ function Detail({ user, name, sp }: { user: SessionUser; name: string; sp: SP })
             <ul className="mb-4 space-y-2 text-sm">
               {d.decisions.map((x, i) => (
                 <li key={i}><StatusBadge status={x.decision === "approve" ? "approved" : "rejected"} /> <span className="ml-2">{x.email}</span>
-                  <span className="ml-2 text-xs text-zinc-500">{new Date(x.createdAt).toLocaleString()}</span>
-                  {x.comment && <p className="mt-1 text-xs text-zinc-400">“{x.comment}”</p>}</li>
+                  <span className="ml-2 text-xs text-subtle">{new Date(x.createdAt).toLocaleString()}</span>
+                  {x.comment && <p className="mt-1 text-xs text-muted">“{x.comment}”</p>}</li>
               ))}
             </ul>
-          ) : <p className="mb-4 text-sm text-zinc-500">{d.template ? "Templates are not run directly; copies need approval." : "No decisions on this version yet."}</p>}
-          {d.can.approve ? <ApprovalPanel name={d.name} hash={d.hash} /> : !d.template && <p className="text-xs text-zinc-500">You are not an approver for this workflow.</p>}
+          ) : <p className="mb-4 text-sm text-subtle">{d.template ? "Templates are not run directly; copies need approval." : "No decisions on this version yet."}</p>}
+          {d.can.approve ? <ApprovalPanel name={d.name} hash={d.hash} /> : !d.template && <p className="text-xs text-subtle">You are not an approver for this workflow.</p>}
         </Card>
       </div>
 
@@ -90,12 +90,12 @@ function Detail({ user, name, sp }: { user: SessionUser; name: string; sp: SP })
         <ol className="space-y-2 text-sm">
           {d.steps.map((s, i) => (
             <li key={s.id} className="flex flex-wrap items-center gap-2">
-              <span className="w-6 text-zinc-500">{i + 1}.</span><span className="font-mono text-xs">{s.id}</span><Badge tone="gray">{s.uses}</Badge>
+              <span className="w-6 text-subtle">{i + 1}.</span><span className="font-mono text-xs">{s.id}</span><Badge tone="gray">{s.uses}</Badge>
               <span>{s.name}</span>
               {s.agent && (() => { const a = d.agents.find((x) => x.name === s.agent); return <Badge tone={a ? "blue" : "red"}>agent {s.agent}{a ? ` @ ${a.hash.slice(0, 12)}` : " (unknown)"}</Badge>; })()}
-              {s.needs.length > 0 && <span className="text-xs text-zinc-500">after {s.needs.join(", ")}</span>}
-              {s.if && <span className="font-mono text-xs text-zinc-500">if {s.if}</span>}
-              {s.secrets.length > 0 && <span className="text-xs text-amber-300">secrets: {s.secrets.join(", ")}</span>}
+              {s.needs.length > 0 && <span className="text-xs text-subtle">after {s.needs.join(", ")}</span>}
+              {s.if && <span className="font-mono text-xs text-subtle">if {s.if}</span>}
+              {s.secrets.length > 0 && <span className="text-xs text-warning">secrets: {s.secrets.join(", ")}</span>}
             </li>
           ))}
         </ol>
@@ -119,15 +119,15 @@ function Detail({ user, name, sp }: { user: SessionUser; name: string; sp: SP })
 
       {d.template && (
         <Card title={`Instances (${d.instances.length})`} subtitle="Workflows created from this template; each has its own owner, approvals and runs">
-          {d.instances.length === 0 ? <p className="text-sm text-zinc-500">None yet.</p> : (
+          {d.instances.length === 0 ? <p className="text-sm text-subtle">None yet.</p> : (
             <ul className="space-y-1 text-sm">{d.instances.map((i) => (
-              <li key={i.name} className="flex items-center gap-3"><Link className="text-emerald-300 hover:underline" href={`/workflows/${encodeURIComponent(i.name)}`}>{i.name}</Link>
-                <span className="font-mono text-xs text-zinc-500">from @{i.templateHash?.slice(0, 12)}{i.fromCurrentVersion ? "" : " (older version)"}</span><span className="text-xs text-zinc-500">{i.storage}</span></li>))}</ul>
+              <li key={i.name} className="flex items-center gap-3"><Link className="text-success hover:underline" href={`/workflows/${encodeURIComponent(i.name)}`}>{i.name}</Link>
+                <span className="font-mono text-xs text-subtle">from @{i.templateHash?.slice(0, 12)}{i.fromCurrentVersion ? "" : " (older version)"}</span><span className="text-xs text-subtle">{i.storage}</span></li>))}</ul>
           )}
         </Card>
       )}
 
-      <Card title="YAML"><pre className="max-h-[40rem] overflow-auto font-mono text-xs">{d.source}</pre></Card>
+      <Card title="YAML"><pre className="max-h-[40rem] overflow-auto rounded-md bg-code p-3 font-mono text-xs text-code-fg">{d.source}</pre></Card>
     </div>
   );
 }
@@ -139,5 +139,5 @@ async function Body({ params, searchParams }: { params: Promise<{ name: string }
 }
 
 export default function WorkflowPage({ params, searchParams }: { params: Promise<{ name: string }>; searchParams: Promise<SP> }) {
-  return <Suspense fallback={<p className="text-sm text-zinc-500">Loading…</p>}><Body params={params} searchParams={searchParams} /></Suspense>;
+  return <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><Body params={params} searchParams={searchParams} /></Suspense>;
 }
