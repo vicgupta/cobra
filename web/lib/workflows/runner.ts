@@ -5,6 +5,7 @@ import type { DB } from "../db";
 import { approvalState, approvedChecker } from "./approvals";
 import { executeWorkflow, LOG_CAP, redact as redactText, InputError, resolveInputs, WorkflowNotApprovedError, type EngineEvent, type ExecuteOptions, type RunResult, type StepState } from "./engine";
 import type { LoadedWorkflow } from "./loader";
+import { capLog, LiveLog, mergeLogs } from "./step-log";
 import type { Engine } from "../engines";
 
 /** True when the workflow has at least one `uses: agent` step; only those runs carry engine/mode/repo/prompt/branch. */
@@ -50,22 +51,34 @@ export function startWorkflowRun(
   const logEvent = db.prepare("INSERT INTO run_step_events (run_id, tenant_id, step_id, status, attempt, output, truncated, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
   const strip = (s: Record<string, StepState>) => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, { ...v, log: undefined }]));
   let pendingLogged = false;
-  // Live output: appended to the step's current "running" row while it runs.
-  const live = new Map<string, { row: number | bigint; text: string }>();
+  // Live output: streamed into the step's current "running" row while it runs (head + rolling tail, so
+  // a long agent prompt header can't crowd out the agent's own output), then merged into the terminal row.
+  const live = new Map<string, { row: number | bigint; log: LiveLog }>();
   const appendLive = db.prepare("UPDATE run_step_events SET output = ?, truncated = ? WHERE id = ?");
   const onEvent = (e: EngineEvent) => {
     const now = Date.now();
     if (e.type === "log") {
       const l = live.get(e.id);
-      if (!l || l.text.length >= LOG_CAP) return;
-      l.text = (l.text + e.chunk).slice(-LOG_CAP);
-      appendLive.run(redactText(l.text, redactList), l.text.length >= LOG_CAP ? 1 : 0, l.row);
+      if (!l) return;
+      l.log.append(e.chunk);
+      appendLive.run(redactText(l.log.text, redactList), l.log.truncated ? 1 : 0, l.row);
       return;
     }
     if (e.type === "step") {
       const terminal = e.state.status !== "running";
-      const r = logEvent.run(id, who.tenantId, e.id, e.state.status, e.state.attempts, terminal ? (e.state.log ?? null) : null, e.state.truncated ? 1 : 0, now);
-      if (terminal) live.delete(e.id); else live.set(e.id, { row: r.lastInsertRowid, text: "" });
+      if (!terminal) {
+        if (live.has(e.id)) return; // already running (e.g. a retry): keep streaming into the same row
+        const r = logEvent.run(id, who.tenantId, e.id, e.state.status, e.state.attempts, null, 0, now);
+        live.set(e.id, { row: r.lastInsertRowid, log: new LiveLog(LOG_CAP) });
+        return;
+      }
+      const l = live.get(e.id);
+      // The final log (header + result/error) alone drops what the agent printed (e.g. the provider's error); keep both.
+      const merged = l && l.log.text ? capLog(mergeLogs(l.log.text, e.state.log ?? null) ?? "", LOG_CAP) : null;
+      const output = merged ? redactText(merged.text, redactList) : (e.state.log ?? null);
+      const truncated = merged ? merged.truncated || l!.log.truncated || !!e.state.truncated : !!e.state.truncated;
+      logEvent.run(id, who.tenantId, e.id, e.state.status, e.state.attempts, output, truncated ? 1 : 0, now);
+      live.delete(e.id);
       return;
     }
     if (!pendingLogged) {

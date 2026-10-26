@@ -2,6 +2,7 @@
 // inputs/outputs, if-conditions, retries, timeouts, and status events for the
 // caller to record (see lib/workflows/runner.ts for the runs-table recorder).
 // The engine refuses to run a definition whose content hash isn't approved.
+import { capLog, LOG_CAP } from "./step-log";
 import { condition, interpolate, type Scope } from "./expr";
 import { topoOrder, type LoadedWorkflow, type ResolvedAgent } from "./loader";
 import { finalPrompt } from "../agents";
@@ -59,7 +60,7 @@ export type ExecuteOptions = {
   agents?: Record<string, ResolvedAgent>;
 };
 
-export const LOG_CAP = 16_000;
+export { LOG_CAP };
 
 /** Removes secret values (and their JSON-escaped forms) from text. */
 export function redact(text: string, secrets: Iterable<string>): string {
@@ -79,7 +80,8 @@ export function stepLog(result: Record<string, unknown> | undefined, error: stri
   }
   if (error) parts.push(`[error]\n${error}`);
   const text = redact(parts.join("\n"), secrets);
-  return text.length > LOG_CAP ? { log: text.slice(0, LOG_CAP) + `\n… [truncated ${text.length - LOG_CAP} chars]`, truncated: true } : { log: text, truncated: false };
+  const c = capLog(text, LOG_CAP);
+  return { log: c.text, truncated: c.truncated };
 }
 
 /** Applies defaults, coerces types and enforces required/options/pattern. */

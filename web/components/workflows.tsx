@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Badge, type Tone } from "./ui";
 import { ENGINES, ENGINE_LABEL, engineLabel } from "@/lib/engines";
+import { collapseSteps } from "@/lib/workflows/step-log";
 
 const input = "w-full rounded-md border border-border-strong bg-bg px-3 py-2 text-sm placeholder:text-faint focus:border-emerald-500 focus:outline-none";
 const button = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
@@ -215,6 +216,12 @@ type Event = { stepId: string; status: string; attempt: number; output: string |
 type Detail = { id: string; workflow: string | null; workflowHash: string | null; status: string | null; error: string | null; startedAt: number; endedAt: number | null; outputs: Record<string, unknown> | null; events: Event[];
   engine?: string | null; promptSource?: string | null; prompt?: string | null; mode?: string | null; repo?: string | null; branch?: string | null };
 
+function downloadLog(name: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+  const a = document.createElement("a"); a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 /** Read-only run log; polls while the run is still going. */
 export function RunLog({ initial }: { initial: Detail }) {
   const [run, setRun] = useState(initial);
@@ -248,16 +255,17 @@ export function RunLog({ initial }: { initial: Detail }) {
       )}
       {run.error && <p role="alert" className="rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-danger">{run.error}</p>}
       <ol className="space-y-2">
-        {run.events.map((e, i) => (
-          <li key={i} className="rounded-md border border-border bg-bg p-3">
-            <div className="flex items-center gap-3 text-xs">
-              <span className="font-mono text-subtle">{t(e.at)}</span>
+        {collapseSteps(run.events).map((e) => (
+          <li key={e.stepId} data-step={e.stepId} className="rounded-md border border-border bg-bg p-3">
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <span className="font-mono text-subtle">{t(e.startedAt)}{e.at !== e.startedAt ? ` → ${t(e.at)}` : ""}</span>
               <span className="font-mono text-fg-soft">{e.stepId}</span>
               <StatusBadge status={e.status} />
               {e.attempt > 1 && <span className="text-subtle">attempt {e.attempt}</span>}
+              {e.output && <button type="button" className="ml-auto text-subtle hover:text-fg hover:underline" onClick={() => downloadLog(`${run.id}-${e.stepId}.log`, e.output!)}>Download log</button>}
             </div>
-            {e.output && <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap font-mono text-xs text-fg-soft">{e.output}</pre>}
-            {e.truncated && <p className="mt-1 text-xs text-warning">Output truncated.</p>}
+            {e.output && <pre className="mt-2 max-h-[36rem] resize-y overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-fg-soft">{e.output}</pre>}
+            {e.truncated && <p className="mt-1 text-xs text-warning">Output was longer than the log limit; the middle was omitted (see the “truncated” marker).</p>}
           </li>
         ))}
       </ol>
