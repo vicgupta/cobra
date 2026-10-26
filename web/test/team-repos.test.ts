@@ -88,11 +88,13 @@ test("Settings > Repos UI: no recent-changes card or token/helper copy; audit da
   assert.match(readFileSync(new URL("../app/api/repos/route.ts", import.meta.url), "utf8"), /audit: listRepoAudit\(db, u\.tenantId\)/);
 });
 
-test("Settings > Team UI: no 'None set' designated-lead text; lead shown when set", async () => {
+test("Settings > Team UI: no Designated lead card; designated-lead badge on member rows kept", async () => {
   const { readFileSync } = await import("node:fs");
   const v = readFileSync(new URL("../components/team.tsx", import.meta.url), "utf8");
   assert.ok(!v.includes("None set"));
-  assert.ok(v.includes("{d && <p") && v.includes("data-designated-lead>{d.email}") && v.includes("DesignatedLeadForm"));
+  for (const x of ['title="Designated lead"', "data-designated-lead", "DesignatedLeadForm", "teamLeads"]) assert.ok(!v.includes(x), x);
+  assert.ok(v.includes('<Badge tone="blue">designated lead</Badge>') && v.includes("designatedId={d?.id ?? null}"));
+  assert.match(readFileSync(new URL("../app/api/team/route.ts", import.meta.url), "utf8"), /pickDesignatedLead/);
 });
 
 test("Settings > Team UI: Join requests only when pending, no Recent team changes; APIs kept", async () => {

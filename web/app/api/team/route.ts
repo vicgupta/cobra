@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { apiGuard } from "@/lib/auth/server";
 import { CollabError, designatedLead, teamLeads } from "@/lib/collab";
-import { pickDesignatedLead, teamMembers } from "@/lib/team";
+import { displayTeamMembers, pickDesignatedLead } from "@/lib/team";
+import { visibleMembers } from "@/lib/members";
 import { actor, getDb } from "@/lib/workflows/server";
 
 /** Team settings: team leads and the designated lead. */
@@ -9,7 +10,7 @@ export async function GET(req: Request) {
   const g = await apiGuard(req);
   if (g.error) return g.error;
   const db = getDb();
-  return NextResponse.json({ teamLeads: teamLeads(db, g.user.tenantId), designatedLead: designatedLead(db, g.user.tenantId), members: teamMembers(db, g.user.tenantId).map(({ email, name, role, id }) => ({ id, email, name, role })) });
+  return NextResponse.json({ teamLeads: visibleMembers(teamLeads(db, g.user.tenantId)), designatedLead: designatedLead(db, g.user.tenantId), members: displayTeamMembers(db, g.user.tenantId).map(({ email, name, role, id }) => ({ id, email, name, role })) });
 }
 
 /** { designatedLeadUserId: number | null } (system admins only). */

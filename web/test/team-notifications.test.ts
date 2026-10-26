@@ -66,7 +66,8 @@ test("recipients: 'Entire team' choice, designated lead, opt-out; disabled and e
   T.setTeamNotifyMode(db, A, "all");
   assert.deepEqual(T.resolvedRecipients(db, A.tenantId).sort(), ["lead2@a.com", "lead@a.com", "mem@a.com", "vic@a.com"]);
   T.setMyOptOut(db, u.memA, true);
-  assert.deepEqual(T.teamNotifyStatus(db, A).recipients.sort(), ["lead2@a.com", "lead@a.com", "vic@a.com"]);
+  assert.deepEqual(T.teamNotifyStatus(db, A).recipients.sort(), ["lead2@a.com", "lead@a.com"]); // display hides system admins
+  assert.deepEqual(T.resolvedRecipients(db, A.tenantId).sort(), ["lead2@a.com", "lead@a.com", "vic@a.com"]); // delivery unchanged
   // designated lead is included in 'leads' mode (even if they were demoted later, the designation counts)
   T.setTeamNotifyMode(db, A, "leads");
   db.prepare("UPDATE tenants SET designated_lead_user_id = ? WHERE id = ?").run(u.lead2A.id, A.tenantId);

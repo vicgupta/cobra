@@ -1,8 +1,8 @@
 import { Badge, Card } from "@/components/ui";
 import { CollabPage } from "@/components/collab-page";
-import { DesignatedLeadForm, MemberControls } from "@/components/collab";
-import { designatedLead, isSystemAdmin, teamLeads } from "@/lib/collab";
-import { teamMembers } from "@/lib/team";
+import { MemberControls } from "@/components/collab";
+import { designatedLead, isSystemAdmin } from "@/lib/collab";
+import { displayTeamMembers } from "@/lib/team";
 import { getDb } from "@/lib/workflows/server";
 import { listInvites, listJoinRequests, signupSettings } from "@/lib/registration";
 import { InviteForm, JoinRequestActions, RevokeInvite, SignupToggle } from "@/components/team-invites";
@@ -17,14 +17,10 @@ export function TeamView() {
   return (
     <CollabPage title="Team settings">
       {(u) => {
-        const db = getDb(), leads = teamLeads(db, u.tenantId), d = designatedLead(db, u.tenantId), members = teamMembers(db, u.tenantId);
+        const db = getDb(), d = designatedLead(db, u.tenantId), members = displayTeamMembers(db, u.tenantId);
         const admin = isSystemAdmin(u), canAct = admin || u.role === "team_lead";
         return (
           <div className="space-y-6">
-            <Card title="Designated lead" subtitle="One of the team's team leads. Only the designated lead and system admins can merge pull requests. Only a system admin can set, change or clear it.">
-              {d && <p className="text-lg font-medium" data-designated-lead>{d.email}</p>}
-              {admin && <div className="mt-3">{leads.length ? <DesignatedLeadForm leads={leads} current={d?.id ?? null} /> : <p className="text-sm text-subtle">No team leads yet: use “Make designated lead” on a member below.</p>}</div>}
-            </Card>
             <Card title="Members" subtitle={admin ? "System admins can promote, demote and designate. Admin roles aren't changed here." : u.role === "team_lead" ? "Team leads can promote members and demote other team leads (not themselves or the designated lead)." : "View only."}>
               <table className="w-full text-sm" data-members>
                 <thead><tr className="text-left text-xs text-subtle"><th className="py-2">Email</th><th>Role</th>{canAct && <th>Actions</th>}</tr></thead>

@@ -4,6 +4,7 @@
 // opt-outs. Team leads and system admins edit; members see it and manage their own opt-out. One daily
 // send per team per NY date (unique index), catch-up until noon ET. Every change goes to team_audit.
 // The system-admin email (lib/notifications.ts) is untouched; this only reuses its clock helpers.
+import { visibleMembers } from "./members";
 import type { DB } from "./db";
 import { CollabError, designatedLead, isSystemAdmin } from "./collab";
 import { APP_URL, CATCH_UP_UNTIL_HOUR, DAILY_HOUR, fmtNy, nyClock, type Send } from "./notifications";
@@ -46,7 +47,7 @@ export function teamNotifyStatus(db: DB, u: U): TeamNotifyView {
   const s = settings(db, u.tenantId), c = recipientCandidates(db, u.tenantId, s.mode);
   const recent = (db.prepare("SELECT kind, send_date sendDate, status, error, at, recipients, triggered_by triggeredBy FROM team_notification_sends WHERE tenant_id = ? ORDER BY at DESC, id DESC LIMIT 10").all(u.tenantId) as SendRow[]).map((r) => ({ ...r }));
   const myOptOut = !!db.prepare("SELECT 1 FROM team_notification_optouts WHERE tenant_id = ? AND user_id = ?").get(u.tenantId, u.id);
-  return { tenantId: u.tenantId, ...s, modeLabel: MODE_LABEL[s.mode], schedule: "Daily at 7:00 AM America/New_York (DST-aware)", candidates: c, recipients: c.filter((r) => !r.optedOut).map((r) => r.email), canEdit: canEditTeamNotify(u), myOptOut, lastSend: recent[0] ?? null, recent };
+  return { tenantId: u.tenantId, ...s, modeLabel: MODE_LABEL[s.mode], schedule: "Daily at 7:00 AM America/New_York (DST-aware)", candidates: visibleMembers(c), recipients: visibleMembers(c).filter((r) => !r.optedOut).map((r) => r.email), canEdit: canEditTeamNotify(u), myOptOut, lastSend: recent[0] ?? null, recent };
 }
 
 export function setTeamNotifyEnabled(db: DB, u: U, enabled: unknown, now = Date.now()): TeamNotifyView {
@@ -102,7 +103,7 @@ export function buildTeamReport(db: DB, tenantId: number, now: number): TeamRepo
   const auditRows = q<{ actor: string; action: string; target: string | null; detail: string; at: number }>("SELECT actor_email actor, action, target_email target, detail, at FROM team_audit WHERE tenant_id = ? AND at >= ? ORDER BY at DESC, id DESC LIMIT 15", t, since);
   const jr = one<{ pending: number; fresh: number }>("SELECT SUM(status = 'pending') pending, SUM(created_at >= ?) fresh FROM join_requests WHERE tenant_id = ?", since, t);
   const inv = one<{ pending: number; sent: number; accepted: number }>("SELECT SUM(used_at IS NULL AND revoked_at IS NULL AND expires_at > ?) pending, SUM(created_at >= ?) sent, SUM(used_at >= ?) accepted FROM team_invites WHERE tenant_id = ?", now, since, since, t);
-  const members = q<{ email: string; role: string }>("SELECT email, role FROM users WHERE tenant_id = ? AND created_at >= ? ORDER BY created_at", t, since);
+  const members = visibleMembers(q<{ email: string; role: string }>("SELECT email, role FROM users WHERE tenant_id = ? AND created_at >= ? ORDER BY created_at", t, since));
   const names = (r: Array<{ name: string }>) => (r.length ? r.map((x) => x.name).join(", ") : "none");
 
   const text = [

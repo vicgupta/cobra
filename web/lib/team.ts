@@ -9,6 +9,7 @@
 import type { DB } from "./db";
 import { CollabError, designatedLead, isSystemAdmin } from "./collab";
 import type { Actor } from "./workflows/store";
+import { visibleMembers } from "./members";
 
 export type Member = { id: number; email: string; name: string; role: "admin" | "team_lead" | "member" };
 export type TeamAction = "promote" | "demote" | "designate" | "clear_designated" | "notify_toggle" | "notify_recipients" | "notify_optout" | "notify_optin" | "notify_test";
@@ -18,6 +19,9 @@ export function teamMembers(db: DB, tenantId: number): Member[] {
   return (db.prepare("SELECT id, email, coalesce(name, '') AS name, role FROM users WHERE tenant_id = ? ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'team_lead' THEN 1 ELSE 2 END, email").all(tenantId) as Member[])
     .map((r) => ({ id: r.id, email: r.email, name: r.name, role: r.role }));
 }
+
+/** Members for display (pages, APIs, pickers, counts): system admins never shown. Permission checks use teamMembers. */
+export const displayTeamMembers = (db: DB, tenantId: number, adminEmail?: string): Member[] => visibleMembers(teamMembers(db, tenantId), adminEmail);
 
 function teamAudit(db: DB, u: Actor, action: TeamAction, target: { id: number; email: string } | null, detail = "") {
   db.prepare("INSERT INTO team_audit (tenant_id, actor_id, actor_email, action, target_id, target_email, detail, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
