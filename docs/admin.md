@@ -5,3 +5,37 @@
 - Everyone else gets 404 on `/admin` and `/api/admin/*`, enforced in `proxy.ts` with a real status and again in `requireAdmin`/`apiGuard` (`lib/admin/gate.ts`).
 - `/admin?tab=` shows overview | tenants | users | sessions | workflows | logs | approvals | rate-limits | settings. It is read-only except Settings (agent keys and the GitHub token, written to the env file via `/api/admin/settings`) and ending a session (`DELETE /api/admin/sessions/<public id>`).
 - The old `/settings` page and `/api/settings` are gone.
+
+## Self-serve registration
+
+People can join Cobra in three ways. Each one is bound to an email address, and every step is recorded in the team's audit log (Settings > Team).
+
+- **Invites (magic links).** Team leads (for their own team) and system admins can invite people from Settings > Team > *Invite people*.
+  - The link is single-use and expires in 7 days. Only a sha256 hash is stored.
+  - It works only for the invited email and is listed on the page, where it can be revoked.
+  - Invitees join as **member**. Only a system admin can invite someone as a **team lead**.
+  - The invitee opens `/register?invite=…`, sees "Join <team>" with their email locked, and sets their name and a password (at least 10 characters). The account is created and they are signed in.
+  - Audit: `invite_create`, `invite_revoke`, `invite_accept`.
+- **Create a new team** (`/register`). The person enters email, name, password and team name.
+  - Nothing is created until they confirm a one-time email link, which expires after 24 hours. The confirm page uses a button, so mail scanners can't consume the link.
+  - When they confirm, a new team is created with a unique slug derived from its name. The creator becomes its **team lead and designated lead**, never a system admin.
+  - The team workspace directory is created on first run.
+  - Audit: `team_create`, `designate`.
+- **Join an existing team** (`/register?mode=join`). The person enters email, name, and the team's exact name or slug. There is no public team list.
+  - After they confirm their email, a *pending* join request is created and the team's leads (plus the designated lead) get an email.
+  - A lead or admin then picks **Send magic link** (a member invite, as above) or **Dismiss** under Settings > Team > *Join requests*.
+  - Requests nobody answers expire after 14 days.
+  - Audit: `join_request`, `join_notify`, `join_send_link`, `join_dismiss`, `join_expire`, and `invite_accept`.
+
+**Safety**
+- Public responses never reveal whether an email has an account or whether a team exists. Join requests always get "If that team exists, its lead will be notified". If an existing account signs up again, they get an "you already have an account" email.
+- All POST routes check Origin.
+- DB-backed rate limits:
+  - 10 sign-up or invite-accept submissions per IP per 15 min (429).
+  - 3 verification emails per address per 15 min (silent).
+  - 20 confirmations per IP per 15 min.
+  - 30 invites or magic links per lead per hour.
+- Caps: at most 5 open verifications per email, 3 pending join requests per email, and 25 per team. Anything over a cap is silently dropped.
+- **Allow new team sign-ups** (Settings > Team > *Sign-ups*, system admins only, audited as `signup_toggle`) is on by default. Turning it off disables *Create a new team* only. Invites and join requests keep working.
+- Existing accounts are untouched, and `scripts/user.mts` still creates users directly.
+- For local testing, `COBRA_MAIL_OUTBOX=/path/file.jsonl` writes emails to a file instead of sending them. Never set it on production. `COBRA_PUBLIC_URL` sets the link base (default `https://nova.kantsy.com`).

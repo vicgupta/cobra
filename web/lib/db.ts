@@ -497,6 +497,75 @@ const MIGRATIONS: Array<(db: DB) => void> = [
       at INTEGER NOT NULL
     );
   `),
+  // 23 (Registration): magic-link invites, email-verified sign-ups, join requests, the admin sign-up toggle.
+  // team_audit is rebuilt (SQLite can't alter a CHECK) with the same rows plus the registration actions.
+  (db) => db.exec(`
+    CREATE TABLE team_audit_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN ('promote','demote','designate','clear_designated',
+        'invite_create','invite_revoke','invite_accept','team_create','signup_toggle',
+        'join_request','join_notify','join_send_link','join_dismiss','join_expire')),
+      target_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      target_email TEXT,
+      detail TEXT NOT NULL DEFAULT '',
+      at INTEGER NOT NULL
+    );
+    INSERT INTO team_audit_new (id, tenant_id, actor_id, actor_email, action, target_id, target_email, detail, at)
+      SELECT id, tenant_id, actor_id, actor_email, action, target_id, target_email, detail, at FROM team_audit;
+    DROP TABLE team_audit;
+    ALTER TABLE team_audit_new RENAME TO team_audit;
+    CREATE INDEX team_audit_tenant ON team_audit(tenant_id, at);
+    CREATE TABLE registration_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      allow_team_signups INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER,
+      updated_by TEXT
+    );
+    INSERT INTO registration_settings (id) VALUES (1);
+    CREATE TABLE join_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL CHECK (status IN ('pending','link_sent','dismissed','accepted','expired')),
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      decided_by TEXT,
+      decided_at INTEGER
+    );
+    CREATE INDEX join_requests_tenant ON join_requests(tenant_id, status);
+    CREATE INDEX join_requests_email ON join_requests(email, status);
+    CREATE TABLE team_invites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('member','team_lead')),
+      token_hash TEXT NOT NULL UNIQUE,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_by_email TEXT NOT NULL,
+      join_request_id INTEGER REFERENCES join_requests(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER,
+      revoked_at INTEGER
+    );
+    CREATE INDEX team_invites_tenant ON team_invites(tenant_id, created_at);
+    CREATE TABLE signup_verifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL CHECK (kind IN ('create_team','join')),
+      email TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      password_hash TEXT,
+      team_name TEXT,
+      token_hash TEXT NOT NULL UNIQUE,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER
+    );
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

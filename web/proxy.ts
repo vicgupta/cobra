@@ -5,7 +5,8 @@ import { getDb } from "./lib/db";
 import { getSessionUser } from "./lib/auth/sessions";
 import { gate } from "./lib/admin/gate";
 
-const PUBLIC = ["/login", "/api/auth/login", "/forgot-password", "/api/auth/forgot-password", "/reset-password", "/api/auth/reset-password"];
+const PUBLIC = ["/login", "/api/auth/login", "/forgot-password", "/api/auth/forgot-password", "/reset-password", "/api/auth/reset-password",
+  "/register", "/register/confirm", "/api/auth/register", "/api/auth/register/confirm"];
 // Public sign-up was removed; answer 404 for everyone instead of a login redirect.
 const REMOVED = ["/signup", "/api/auth/signup"];
 

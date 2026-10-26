@@ -14,6 +14,10 @@ export const LIMITS = {
   forgotIp: { bucket: "forgot-ip", max: 10, windowMs: M15 }, // reset requests per IP (429)
   forgotEmail: { bucket: "forgot-email", max: 3, windowMs: M15 }, // reset requests per email (silent)
   resetIp: { bucket: "reset-ip", max: 20, windowMs: M15 }, // reset submissions per IP
+  registerIp: { bucket: "register-ip", max: 10, windowMs: M15 }, // sign-up / join / invite-accept submissions per IP (429)
+  registerEmail: { bucket: "register-email", max: 3, windowMs: M15 }, // verification emails per address (silent)
+  confirmIp: { bucket: "confirm-ip", max: 20, windowMs: M15 }, // email-verification confirmations per IP (429)
+  inviteUser: { bucket: "invite-user", max: 30, windowMs: 60 * 60 * 1000 }, // invites / magic links sent per lead or admin (429)
 } satisfies Record<string, Limit>;
 
 /** sha256 key for emails (normalized), so raw emails are never stored. */

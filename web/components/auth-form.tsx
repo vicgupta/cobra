@@ -52,7 +52,7 @@ export function AuthForm() {
       <p className="mt-4 text-center text-sm">
         <a href="/forgot-password" className="text-accent hover:underline">Forgot password?</a>
       </p>
-      <p className="mt-2 text-center text-xs text-subtle">Accounts are created by an admin.</p>
+      <p className="mt-2 text-center text-sm text-subtle">New to Cobra? <a href="/register" className="text-accent hover:underline">Create a team</a> or <a href="/register?mode=join" className="text-accent hover:underline">join one</a></p>
     </div>
   );
 }
