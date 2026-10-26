@@ -2,7 +2,7 @@ import { Badge, Card } from "@/components/ui";
 import { CollabPage } from "@/components/collab-page";
 import { DesignatedLeadForm, MemberControls } from "@/components/collab";
 import { designatedLead, isSystemAdmin, teamLeads } from "@/lib/collab";
-import { listTeamAudit, teamMembers } from "@/lib/team";
+import { teamMembers } from "@/lib/team";
 import { getDb } from "@/lib/workflows/server";
 import { listInvites, listJoinRequests, signupSettings } from "@/lib/registration";
 import { InviteForm, JoinRequestActions, RevokeInvite, SignupToggle } from "@/components/team-invites";
@@ -19,11 +19,10 @@ export function TeamView() {
       {(u) => {
         const db = getDb(), leads = teamLeads(db, u.tenantId), d = designatedLead(db, u.tenantId), members = teamMembers(db, u.tenantId);
         const admin = isSystemAdmin(u), canAct = admin || u.role === "team_lead";
-        const log = canAct ? listTeamAudit(db, u.tenantId, 20) : [];
         return (
           <div className="space-y-6">
             <Card title="Designated lead" subtitle="One of the team's team leads. Only the designated lead and system admins can merge pull requests. Only a system admin can set, change or clear it.">
-              <p className="text-lg font-medium" data-designated-lead>{d ? d.email : "None set"}</p>
+              {d && <p className="text-lg font-medium" data-designated-lead>{d.email}</p>}
               {admin && <div className="mt-3">{leads.length ? <DesignatedLeadForm leads={leads} current={d?.id ?? null} /> : <p className="text-sm text-subtle">No team leads yet: use “Make designated lead” on a member below.</p>}</div>}
             </Card>
             <Card title="Members" subtitle={admin ? "System admins can promote, demote and designate. Admin roles aren't changed here." : u.role === "team_lead" ? "Team leads can promote members and demote other team leads (not themselves or the designated lead)." : "View only."}>
@@ -57,8 +56,7 @@ export function TeamView() {
                     </table>
                   )}
                 </Card>
-                <Card title="Join requests" subtitle="People who asked to join this team and confirmed their email. Send them a magic link or dismiss. Unanswered requests expire after 14 days.">
-                  {reqs.length === 0 ? <p className="text-sm text-subtle">No join requests.</p> : (
+                {reqs.some((r) => r.status === "pending") && <Card title="Join requests" subtitle="People who asked to join this team and confirmed their email. Send them a magic link or dismiss. Unanswered requests expire after 14 days.">
                     <table className="w-full text-sm" data-join-requests>
                       <thead><tr className="text-left text-xs text-subtle"><th className="py-2">Requester</th><th>Status</th><th>Requested</th><th>Actions</th></tr></thead>
                       <tbody className="divide-y divide-border">{reqs.map((r) => (
@@ -70,8 +68,7 @@ export function TeamView() {
                         </tr>
                       ))}</tbody>
                     </table>
-                  )}
-                </Card>
+                </Card>}
                 {admin && (() => { const s = signupSettings(db); return (
                   <Card title="Sign-ups" subtitle="System admins only. Applies to the whole Cobra install. Changes are audited.">
                     <SignupToggle allow={s.allowTeamSignups} />
@@ -80,11 +77,6 @@ export function TeamView() {
                 ); })()}
               </>;
             })()}
-            {canAct && log.length > 0 && (
-              <Card title="Recent team changes">
-                <ul className="space-y-1 text-xs text-muted">{log.map((l, i) => <li key={i}>{new Date(l.at).toISOString().slice(0, 16).replace("T", " ")} UTC · {l.actorEmail} · {l.action} {l.targetEmail ?? ""} {l.detail && `(${l.detail})`}</li>)}</ul>
-              </Card>
-            )}
           </div>
         );
       }}

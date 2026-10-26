@@ -87,3 +87,19 @@ test("Settings > Repos UI: no recent-changes card or token/helper copy; audit da
   assert.doesNotMatch(wf, /Anyone on the team can add a repo|token is used/);
   assert.match(readFileSync(new URL("../app/api/repos/route.ts", import.meta.url), "utf8"), /audit: listRepoAudit\(db, u\.tenantId\)/);
 });
+
+test("Settings > Team UI: no 'None set' designated-lead text; lead shown when set", async () => {
+  const { readFileSync } = await import("node:fs");
+  const v = readFileSync(new URL("../components/team.tsx", import.meta.url), "utf8");
+  assert.ok(!v.includes("None set"));
+  assert.ok(v.includes("{d && <p") && v.includes("data-designated-lead>{d.email}") && v.includes("DesignatedLeadForm"));
+});
+
+test("Settings > Team UI: Join requests only when pending, no Recent team changes; APIs kept", async () => {
+  const { readFileSync, existsSync } = await import("node:fs");
+  const v = readFileSync(new URL("../components/team.tsx", import.meta.url), "utf8");
+  for (const s of ["Recent team changes", "listTeamAudit", "No join requests."]) assert.ok(!v.includes(s), s);
+  assert.ok(v.includes('{reqs.some((r) => r.status === "pending") && <Card title="Join requests"'), "join requests only when one is pending");
+  assert.ok(existsSync(new URL("../app/api/team/join-requests/[id]/route.ts", import.meta.url)));
+  assert.match(readFileSync(new URL("../lib/team.ts", import.meta.url), "utf8"), /export function listTeamAudit/);
+});
