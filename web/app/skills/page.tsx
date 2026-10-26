@@ -5,6 +5,10 @@ import { StatusBadge } from "@/components/workflows";
 import { getDb } from "@/lib/workflows/server";
 import { list, STATUSES } from "@/lib/skills/service";
 import type { Actor } from "@/lib/skills/store";
+import { loadTextSkills } from "@/lib/text-skills";
+import { TextSkillRun } from "@/components/text-skills";
+import { listTeamRepos } from "@/lib/repos";
+import { ENGINES } from "@/lib/engines";
 
 export const metadata = { title: "Skills · Cobra" };
 
@@ -19,7 +23,17 @@ async function Body({ u, searchParams }: { u: Actor; searchParams: PageProps<"/s
   const status = typeof sp.status === "string" ? sp.status : "all";
   const rows = ((list(getDb(), u, status).body as { skills: Row[] }).skills);
   const admin = u.role === "admin";
+  const text = loadTextSkills();
   return (
+    <div className="space-y-6">
+    <Card title="Text skills" subtitle="Plain-text skills (no YAML): a goal, a few steps and a trigger phrase. Run one with a free-form prompt.">
+      <div className="space-y-4" data-testid="text-skills">{text.map((t) => (
+        <div key={t.id} className="rounded-md border border-border p-3" data-text-skill={t.id}>
+          <div className="text-sm font-medium">{t.name} <span className="text-xs text-subtle">skills/{t.id}.md · trigger: “{t.trigger}”</span></div>
+          <pre className="mt-2 whitespace-pre-wrap text-xs text-fg-soft">{t.text}</pre>
+          <TextSkillRun skill={t.id} repos={listTeamRepos(getDb(), u.tenantId).map((r) => r.repo)} engines={[...ENGINES]} />
+        </div>))}</div>
+    </Card>
     <Card title="SOP skills" subtitle={admin ? "All teams (system admin)" : "Your team's skills: an SOP plus an ordered, validated plan"}
       action={<div className="flex items-center gap-2"><nav className="flex gap-1 text-sm" data-testid="status-filter">{STATUSES.map((s) => <Link key={s} href={s === "all" ? "/skills" : `/skills?status=${s}`} className={`rounded px-2 py-1 ${s === status ? "bg-surface-2 text-fg" : "text-muted hover:text-fg"}`}>{s[0].toUpperCase() + s.slice(1)}</Link>)}</nav>
         <Link href="/skills/new" className="rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90">New skill</Link></div>}>
@@ -37,5 +51,6 @@ async function Body({ u, searchParams }: { u: Actor; searchParams: PageProps<"/s
             </tr>))}</tbody>
         </table>)}
     </Card>
+    </div>
   );
 }
