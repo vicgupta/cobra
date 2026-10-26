@@ -37,18 +37,23 @@ const COLS = `a.id, a.name, a.engine, a.model, a.description, a.prompt, a.defaul
 const plain = (r: unknown) => ({ ...(r as TeamAgent) });
 
 export function listAgents(db: DB, tenantId: number): TeamAgent[] {
-  return db.prepare(`SELECT ${COLS} FROM team_agents a LEFT JOIN users u ON u.id = a.created_by WHERE a.tenant_id = ? ORDER BY a.name`).all(tenantId).map(plain);
+  return db.prepare(`SELECT ${COLS} FROM team_agents a LEFT JOIN users u ON u.id = a.created_by WHERE a.tenant_id = ? AND a.deleted_at IS NULL ORDER BY a.name`).all(tenantId).map(plain);
 }
 
 export function getAgent(db: DB, tenantId: number, name: string): TeamAgent | null {
-  const r = db.prepare(`SELECT ${COLS} FROM team_agents a LEFT JOIN users u ON u.id = a.created_by WHERE a.tenant_id = ? AND a.name = ?`).get(tenantId, name);
+  const r = db.prepare(`SELECT ${COLS} FROM team_agents a LEFT JOIN users u ON u.id = a.created_by WHERE a.tenant_id = ? AND a.name = ? AND a.deleted_at IS NULL`).get(tenantId, name);
   return r ? plain(r) : null;
 }
 
-/** Creator, team leads and admins (always within the agent's own team). */
-export function canEditAgent(u: AgentUser, a: Pick<TeamAgent, "createdBy">): boolean {
-  return u.role === "admin" || u.role === "team_lead" || (a.createdBy !== null && a.createdBy === u.id);
+/** The team's designated lead (tenants.designated_lead_user_id), who may be a plain member. */
+export const isDesignatedLead = (db: DB, u: AgentUser) =>
+  (db.prepare("SELECT designated_lead_user_id AS d FROM tenants WHERE id = ?").get(u.tenantId) as { d: number | null } | undefined)?.d === u.id;
+/** Edit/delete: the creator, team leads, the team's designated lead and admins (same rule as team repos), within the team.
+ *  Pass `db` to include the designated lead; everyone else in the team can only run the agent. */
+export function canEditAgent(u: AgentUser, a: Pick<TeamAgent, "createdBy">, db?: DB): boolean {
+  return u.role === "admin" || u.role === "team_lead" || (a.createdBy !== null && a.createdBy === u.id) || (!!db && isDesignatedLead(db, u));
 }
+const DENY = "only the agent's creator, team leads, the designated lead and admins can";
 
 type Input = { name?: unknown; engine?: unknown; model?: unknown; description?: unknown; prompt?: unknown; defaultRepo?: unknown };
 function validate(db: DB, tenantId: number, b: Input, partial: TeamAgent | null) {
@@ -85,7 +90,7 @@ export function createAgent(db: DB, u: AgentUser, b: Input | null, now = Date.no
 export function updateAgent(db: DB, u: AgentUser, name: string, b: Input | null, now = Date.now()): TeamAgent {
   const a = getAgent(db, u.tenantId, name);
   if (!a) throw new AgentError(404, `agent '${name}' not found`);
-  if (!canEditAgent(u, a)) throw new AgentError(403, "only the agent's creator, team leads and admins can edit it");
+  if (!canEditAgent(u, a, db)) throw new AgentError(403, `${DENY} edit it`);
   const v = validate(db, u.tenantId, b ?? {}, a);
   if (v.name !== a.name && getAgent(db, u.tenantId, v.name)) throw new AgentError(409, `an agent named '${v.name}' already exists in this team`);
   db.prepare("UPDATE team_agents SET name = ?, engine = ?, model = ?, description = ?, prompt = ?, default_repo = ?, content_hash = ?, updated_at = ? WHERE id = ?")
@@ -93,11 +98,12 @@ export function updateAgent(db: DB, u: AgentUser, name: string, b: Input | null,
   return getAgent(db, u.tenantId, v.name)!;
 }
 
-export function deleteAgent(db: DB, u: AgentUser, name: string): void {
+/** Soft delete: hidden everywhere and the name is freed, but the row (and every run that used it) is kept. */
+export function deleteAgent(db: DB, u: AgentUser, name: string, now = Date.now()): void {
   const a = getAgent(db, u.tenantId, name);
   if (!a) throw new AgentError(404, `agent '${name}' not found`);
-  if (!canEditAgent(u, a)) throw new AgentError(403, "only the agent's creator, team leads and admins can delete it");
-  db.prepare("DELETE FROM team_agents WHERE id = ?").run(a.id);
+  if (!canEditAgent(u, a, db)) throw new AgentError(403, `${DENY} delete it`);
+  db.prepare("UPDATE team_agents SET name = name || '~' || id, deleted_at = ?, deleted_by = ?, updated_at = ? WHERE id = ?").run(now, u.id, now, a.id);
 }
 
 /** The prompt an agent runs with: its own prompt plus optional extra instructions. */

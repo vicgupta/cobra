@@ -155,3 +155,38 @@ test("agents: optional description (max 500) is stored, shown, validated and not
   assert.throws(() => updateAgent(db, m2, "rev", { description: "hijack" }), is(403));
   assert.equal(listAgents(db, member.tenantId).find((x) => x.name === "rev")!.description, null);
 });
+
+test("agent edit/delete: creator, team lead, designated lead and admin; members run only; soft delete keeps history", async () => {
+  const { canEditAgent } = await import("../lib/agents");
+  const db = openDb(":memory:");
+  const mk = (email: string, role: "admin" | "team_lead" | "member", tenant = "default") => {
+    const id = createUser(db, { email, tenant, tenantName: tenant === "default" ? undefined : "Other", role, password: "pw-1234567890" });
+    return { id, role, tenantId: (db.prepare("SELECT tenant_id t FROM users WHERE id = ?").get(id) as { t: number }).t };
+  };
+  const admin = mk("admin@x.com", "admin"), lead = mk("lead@x.com", "team_lead"), owner = mk("owner@x.com", "member"), other = mk("other@x.com", "member"), dl = mk("dl@x.com", "member");
+  const foreign = mk("f@y.com", "admin", "other");
+  const ag = createAgent(db, owner, { name: "mine", engine: "claude-code", prompt: "Do A", description: "d" });
+  assert.equal(ag.createdByEmail, "owner@x.com", "added-by credit");
+  assert.ok(canEditAgent(owner, ag, db) && canEditAgent(lead, ag, db) && canEditAgent(admin, ag, db));
+  assert.ok(!canEditAgent(other, ag, db) && !canEditAgent(dl, ag, db));
+  db.prepare("UPDATE tenants SET designated_lead_user_id = ? WHERE id = ?").run(dl.id, dl.tenantId);
+  assert.ok(canEditAgent(dl, ag, db), "designated lead");
+  // server-side enforcement
+  assert.throws(() => updateAgent(db, other, "mine", { prompt: "hijack" }), (e: AgentError) => e.status === 403);
+  assert.throws(() => deleteAgent(db, other, "mine"), (e: AgentError) => e.status === 403);
+  assert.throws(() => deleteAgent(db, foreign, "mine"), (e: AgentError) => e.status === 404, "other team can't reach it");
+  // creator edits every field; prompt change = new version, description-only keeps it
+  const e1 = updateAgent(db, owner, "mine", { name: "mine-2", engine: "codex", prompt: "Do B", description: "new", defaultRepo: null });
+  assert.equal(e1.name, "mine-2"); assert.equal(e1.engine, "codex"); assert.notEqual(e1.contentHash, ag.contentHash);
+  assert.equal(updateAgent(db, dl, "mine-2", { description: "only desc" }).contentHash, e1.contentHash);
+  // soft delete: row kept, hidden, name reusable; runs untouched
+  db.prepare("INSERT INTO runs (id, tenant_id, created_by, agent, repo, issue, title, started_at, workflow, status) VALUES ('r1', ?, ?, 'codex', '', 0, 't', 1, 'agent:mine-2', 'succeeded')").run(owner.tenantId, owner.id);
+  deleteAgent(db, owner, "mine-2");
+  assert.equal(getAgent(db, owner.tenantId, "mine-2"), null);
+  assert.ok(!listAgents(db, owner.tenantId).some((x) => x.name.startsWith("mine")));
+  const row = db.prepare("SELECT name, deleted_at, deleted_by FROM team_agents WHERE id = ?").get(ag.id) as { name: string; deleted_at: number; deleted_by: number };
+  assert.equal(row.name, `mine-2~${ag.id}`); assert.ok(row.deleted_at); assert.equal(row.deleted_by, owner.id);
+  assert.equal((db.prepare("SELECT workflow FROM runs WHERE id = 'r1'").get() as { workflow: string }).workflow, "agent:mine-2", "run history keeps the agent name");
+  assert.throws(() => updateAgent(db, admin, "mine-2", { prompt: "x" }), (e: AgentError) => e.status === 404, "deleted agents can't be edited");
+  createAgent(db, other, { name: "mine-2", engine: "codex", prompt: "fresh" });
+});

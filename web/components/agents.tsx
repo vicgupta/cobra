@@ -10,13 +10,15 @@ import { isOpenRouterModel, OPENROUTER_PREFIX, supportsOpenRouter } from "@/lib/
 const input = "w-full rounded-md border border-border-strong bg-bg px-3 py-2 text-sm placeholder:text-faint focus:border-emerald-500 focus:outline-none";
 const button = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
 const ghost = "rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-soft hover:bg-surface-2 disabled:opacity-50";
+const danger = "rounded-md border border-border-strong px-3 py-1.5 text-sm text-danger hover:bg-danger-soft disabled:opacity-50";
+const dangerSolid = "rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50";
 // Mirrors AGENT_PROMPT_MAX / AGENT_DESCRIPTION_MAX in lib/agents.ts (server-only module).
 const PROMPT_MAX = 20000, DESC_MAX = 500;
 const PROMPT_EXAMPLE = "You are a careful code reviewer. Read the diff on the current branch, list bugs, risky changes and missing tests, then suggest concrete fixes. Do not push or merge.";
 const label = "block text-sm font-medium text-fg-soft";
 const ENGINE: Record<string, string> = ENGINE_LABEL;
 
-export type AgentView = { name: string; engine: string; model: string | null; description: string | null; prompt: string; defaultRepo: string | null; contentHash: string; createdByEmail: string | null; canEdit: boolean };
+export type AgentView = { name: string; engine: string; model: string | null; description: string | null; prompt: string; defaultRepo: string | null; contentHash: string; createdByEmail: string | null; createdAt?: number; canEdit: boolean };
 
 async function call(url: string, method: string, body?: unknown) {
   const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -126,6 +128,8 @@ function RunAgentForm({ agent, repos, onClose }: { agent: AgentView; repos: stri
 export function AgentManager({ agents, repos, models }: { agents: AgentView[]; repos: string[]; models: Record<string, string[]> }) {
   const [open, setOpen] = useState<{ name: string; kind: "run" | "edit" } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const router = useRouter();
   return (
     <div className="space-y-4">
@@ -140,17 +144,14 @@ export function AgentManager({ agents, repos, models }: { agents: AgentView[]; r
               <span className="font-mono text-xs text-fg-soft" data-model>{a.model ?? "default model"}</span>
               <span className="font-mono text-xs text-subtle" title="version (sha256 of engine + prompt + model)">v {a.contentHash.slice(0, 12)}</span>
               {a.defaultRepo && <span className="font-mono text-xs text-muted">{a.defaultRepo}</span>}
-              <span className="text-xs text-subtle">by {a.createdByEmail ?? "—"}</span>
+              <span className="text-xs text-subtle" data-added-by>Added by {a.createdByEmail ?? "unknown"}{a.createdAt ? ` · ${new Date(a.createdAt).toLocaleDateString()}` : ""}</span>
               <span className="ml-auto flex gap-2">
                 <button className={button} onClick={() => setOpen({ name: a.name, kind: "run" })}>Run</button>
                 {a.canEdit && <button className={ghost} onClick={() => setOpen({ name: a.name, kind: "edit" })}>Edit</button>}
-                {a.canEdit && <button className={ghost} onClick={async () => {
-                  if (!confirm(`Delete agent ${a.name}? Workflows that use it will fail validation.`)) return;
-                  const r = await call(`/api/agents/${encodeURIComponent(a.name)}`, "DELETE");
-                  if (!r.ok) setError(r.data.error ?? "Failed"); else router.refresh();
-                }}>Delete</button>}
+                {a.canEdit && <button className={danger} onClick={() => { setError(null); setConfirmDelete(a.name); }}>Delete</button>}
               </span>
             </div>
+            {!a.canEdit && <p className="mt-1 text-xs text-subtle" data-run-only>You can run this agent. Only its creator ({a.createdByEmail ?? "unknown"}), team leads, the designated lead and admins can edit or delete it.</p>}
             {a.description ? <p className="mt-1 text-sm text-fg-soft" data-description>{a.description}</p> : <p className="mt-1 text-xs italic text-faint">No description</p>}
             <details className="mt-1" data-prompt-view open={a.prompt.length <= 300 || undefined}>
               <summary className="cursor-pointer text-xs text-muted hover:text-fg-soft">Prompt / instructions ({a.prompt.length.toLocaleString("en-US")} chars){a.canEdit ? "" : " · read-only"}</summary>
@@ -161,6 +162,23 @@ export function AgentManager({ agents, repos, models }: { agents: AgentView[]; r
           </li>))}</ul>
       )}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+      {confirmDelete && (
+        <div role="dialog" aria-modal="true" aria-labelledby="del-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !busy && setConfirmDelete(null)}>
+          <div className="w-full max-w-md rounded-lg border border-border bg-bg p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 id="del-title" className="text-base font-semibold">Delete agent <span className="font-mono">{confirmDelete}</span>?</h3>
+            <p className="mt-2 text-sm text-fg-soft">It disappears from the Agents page and can&apos;t be run any more. Workflows that use it will fail validation until you pick another agent. Past runs and their logs are kept.</p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button className={ghost} disabled={busy} onClick={() => setConfirmDelete(null)}>Cancel</button>
+              <button className={dangerSolid} disabled={busy} onClick={async () => {
+                setBusy(true);
+                const r = await call(`/api/agents/${encodeURIComponent(confirmDelete)}`, "DELETE");
+                setBusy(false); setConfirmDelete(null);
+                if (!r.ok) setError(r.data.error ?? "Failed"); else router.refresh();
+              }}>{busy ? "Deleting…" : "Delete agent"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

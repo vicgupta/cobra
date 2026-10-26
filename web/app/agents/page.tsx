@@ -13,7 +13,7 @@ export const metadata = { title: "Agents · Cobra" };
 
 function Agents({ user }: { user: SessionUser }) {
   const u = actor(user), db = getDb();
-  const agents = listAgents(db, u.tenantId).map((a) => ({ ...a, canEdit: canEditAgent(u, a) }));
+  const agents = listAgents(db, u.tenantId).map((a) => ({ ...a, canEdit: canEditAgent(u, a, db) }));
   return (
     <Card title="Team agents" subtitle="A named engine + prompt, shared with your whole team. Run one directly, or use it in a workflow step with `uses: agent` and `with: { agent: <name> }`.">
       <AgentManager agents={agents} repos={listTeamRepos(db, u.tenantId).map((r) => r.repo)} models={allModels(process.env, customModelIds(db, u.tenantId))} />

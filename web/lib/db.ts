@@ -733,6 +733,9 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     ALTER TABLE provider_audit ADD COLUMN tenant_id INTEGER REFERENCES tenants(id) ON DELETE CASCADE;
     UPDATE provider_audit SET tenant_id = 1 WHERE (detail LIKE '%API_KEY%' OR detail LIKE '%TOKEN%' OR detail LIKE 'auth method%' OR engine LIKE 'custom:%') AND engine <> 'openrouter' AND EXISTS (SELECT 1 FROM tenants WHERE id = 1);
   `),
+  // 29 (agent edit/delete): soft delete. A deleted agent keeps its row (renamed to '<name>~<id>' so the slug can
+  // be reused; '~' is never valid in a slug) with deleted_at/deleted_by; runs keep their 'agent:<name>' label.
+  (db) => db.exec("ALTER TABLE team_agents ADD COLUMN deleted_at INTEGER; ALTER TABLE team_agents ADD COLUMN deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL;"),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

@@ -14,7 +14,7 @@ export async function GET(req: Request, ctx: Ctx) {
   if (g.error) return g.error;
   const u = actor(g.user), a = getAgent(getDb(), u.tenantId, (await ctx.params).name);
   if (!a) return NextResponse.json({ error: "agent not found" }, { status: 404 });
-  return NextResponse.json({ ...a, canEdit: canEditAgent(u, a) });
+  return NextResponse.json({ ...a, canEdit: canEditAgent(u, a, getDb()) });
 }
 
 /** Creator, team leads and admins only (403 otherwise). */
