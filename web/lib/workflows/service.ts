@@ -6,7 +6,7 @@ import { approvalState, canApprove, PermissionError, recordDecision, selfApprova
 import { InputError, resolveInputs, WorkflowNotApprovedError, type Handlers } from "./engine";
 import { interpolate } from "./expr";
 import { ENGINES, type Engine } from "./schema";
-import { ENGINE_LIST, isEngine } from "../engines";
+import { ENGINE_LIST, isEngine, UNSUPPORTED_ENGINE } from "../engines";
 import { checkTeamRepo, listTeamRepos } from "../repos";
 import type { LoadedWorkflow } from "./loader";
 import { canViewRun, getRunDetail, hasAgentStep, listWorkflowRuns, startWorkflowRun, type RunMeta } from "./runner";
@@ -228,6 +228,7 @@ export type AgentRunBody = { repo?: unknown; mode?: unknown; instructions?: unkn
 export function runAgent(db: DB, user: Actor, name: string, body: AgentRunBody | null, deps: RunDeps): Res & { run?: ReturnType<typeof startWorkflowRun> } {
   const a = getAgent(db, user.tenantId, name);
   if (!a) return err(404, `agent '${name}' not found`);
+  if (!isEngine(a.engine)) return err(400, `agent '${name}' uses ${a.engine}: ${UNSUPPORTED_ENGINE} (this build runs Claude Code or Codex only)`);
   const b = body ?? {};
   if (b.instructions !== undefined && typeof b.instructions !== "string") return err(400, "instructions must be text");
   const extra = typeof b.instructions === "string" ? b.instructions.trim() : "";
@@ -239,7 +240,7 @@ export function runAgent(db: DB, user: Actor, name: string, body: AgentRunBody |
 export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: string; model?: string | null; prompt: string; hash?: string; repo?: string; mode?: unknown; purpose?: string }, deps: RunDeps): Res & { run?: ReturnType<typeof startWorkflowRun> } {
   const mode = str(o.mode) ?? "simulated";
   if (mode !== "simulated" && mode !== "real") return err(400, "mode must be simulated or real");
-  if (!isEngine(o.engine)) return err(400, `engine must be ${ENGINE_LIST}`);
+  if (!isEngine(o.engine)) return err(400, `${o.engine}: ${UNSUPPORTED_ENGINE}; engine must be ${ENGINE_LIST}`);
   const engine: Engine = o.engine;
   const prompt = o.prompt.trim();
   if (!prompt) return err(400, "prompt is required");

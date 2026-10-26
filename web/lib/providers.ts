@@ -33,8 +33,6 @@ export type EffortTier = (typeof EFFORT_TIERS)[number];
 export const PROVIDERS: Record<AgentEngine, { label: string; cli: string; modelFlag: string; effortFlag: string; effortSource: string; cliTiers: string; tiers: readonly EffortTier[] }> = {
   "claude-code": { label: "Claude Code", cli: "claude -p (2.1.310)", modelFlag: "--model <id>", effortFlag: "--effort <tier>", effortSource: "claude --help (2.1.310)", cliTiers: "low, medium, high, xhigh, max", tiers: EFFORT_TIERS },
   codex: { label: "Codex", cli: "codex exec (0.164.0)", modelFlag: "-m <id>", effortFlag: "-c model_reasoning_effort=\"<tier>\"", effortSource: "codex exec --help (0.164.0) -c/--config + ~/.codex/models_cache.json", cliTiers: "low, medium, high, xhigh, max (ultra on some models)", tiers: EFFORT_TIERS },
-  opencode: { label: "OpenCode", cli: "opencode run (1.19.4)", modelFlag: "-m <provider/model>", effortFlag: "--variant <tier>", effortSource: "opencode run --help + opencode models openai --verbose (1.19.4)", cliTiers: "none, low, medium, high, xhigh (max on some models)", tiers: EFFORT_TIERS },
-  cursor: { label: "Cursor", cli: "cursor-agent -p (2026.10.22-27dcf5f)", modelFlag: "--model <id>", effortFlag: "none", effortSource: "cursor-agent --help (2026.10.22-27dcf5f): no effort flag", cliTiers: "none (no effort flag)", tiers: [] },
 };
 
 export type ProviderDefaults = { model: string | null; effort: EffortTier | null };
@@ -47,7 +45,6 @@ export function effortArgs(engine: AgentEngine, effort: string | null | undefine
   if (!effort) return [];
   if (!(tiersFor(engine) as readonly string[]).includes(effort)) throw new Error(tiersFor(engine).length ? `invalid effort tier '${effort}'` : `${PROVIDERS[engine].label} has no effort tiers`);
   if (engine === "codex") return ["-c", `model_reasoning_effort="${effort}"`];
-  if (engine === "opencode") return ["--variant", effort];
   return ["--effort", effort];
 }
 
@@ -110,11 +107,7 @@ export function listProviderAudit(db: DB, tenantId: number, limit = 20) {
 // is never returned to any client (views get set / not set), and runs pass it to the CLI as an env var
 // and redact it from logs.
 export const PROVIDER_SECRETS: Partial<Record<AgentEngine, { name: string; label: string; help: string }>> = {
-  // OpenCode as its own provider (independent of OpenRouter): the OpenCode Console / Zen key. Verified on nova
-  // (opencode-ai 1.19.4, 2026-10-26): with OPENCODE_API_KEY in env, `opencode models opencode` lists the paid
-  // opencode/<model> ids; without it only the *-free ones (and big-pickle). Docs: opencode.ai/docs/zen.
-  opencode: { name: "OPENCODE_API_KEY", label: "OpenCode API key", help: "From opencode.ai (Console / Zen) > API keys. Passed to opencode run as OPENCODE_API_KEY for opencode/<model> models. Independent of the OpenRouter key." },
-  cursor: { name: "CURSOR_API_KEY", label: "Cursor API key", help: "From cursor.com/dashboard > Integrations > API keys. Passed to cursor-agent as CURSOR_API_KEY." },
+  // MVP build: Claude Code and Codex use Settings > Providers credentials; no extra provider secrets.
 };
 export type ProviderSecretView = { engine: AgentEngine; name: string; label: string; help: string; set: boolean; setAt: number | null; setBy: string | null };
 

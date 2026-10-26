@@ -11,92 +11,30 @@
 //   https://developers.openai.com/codex/models (checked 2026-10-25), which recommends gpt-6.1-sol
 //   and lists gpt-6-astra, gpt-6-sol, gpt-6-luna, and GPT-5.6 Sol/Terra/Luna still available.
 //
-// opencode (opencode-ai 1.19.4 on the server; `opencode run --help`: "-m, --model  model to use in the
-//   format of provider/model"). IDs from `opencode models openai` on nova (2026-10-25), which lists the
-//   OpenAI models reachable with the ChatGPT login Cobra reuses from Codex (see local-runner.ts). Anthropic
-//   models need ANTHROPIC_API_KEY (a Claude Code OAuth token is rejected), so none are listed by default.
-// cursor (Cursor CLI `cursor-agent` 2026.10.22-27dcf5f; `cursor-agent --help`: "--model <model> Model to
-//   use (e.g., gpt-5, sonnet-4-thinking)"). `cursor-agent models` needs CURSOR_API_KEY, which is not set
-//   yet, so these IDs follow cursor.com/docs/models (checked 2026-10-25); `auto` lets Cursor pick. Verify
-//   with `cursor-agent models` once the key is set and adjust with COBRA_CURSOR_MODELS.
+// MVP build: Claude Code and Codex only (OpenCode, Cursor and OpenRouter removed).
 //
-// Override per server with COBRA_CLAUDE_MODELS / COBRA_CODEX_MODELS / COBRA_OPENCODE_MODELS /
-// COBRA_CURSOR_MODELS (comma-separated).
+// Override per server with COBRA_CLAUDE_MODELS / COBRA_CODEX_MODELS (comma-separated).
 import { ENGINES, type Engine as AgentEngine } from "./engines";
-
-// OpenRouter (one shared, global API key; Settings > Providers). A model id "openrouter/<vendor>/<model>"
-// on a supported engine routes that run through OpenRouter. Ids checked against the public
-// https://openrouter.ai/api/v1/models on 2026-10-25. Per engine (docs checked 2026-10-25):
-//   opencode: native OpenRouter provider (opencode.ai/docs/providers), model "openrouter/<vendor>/<model>",
-//     key in OPENROUTER_API_KEY.
-//   codex: custom model_provider in a per-run CODEX_HOME/config.toml, base_url https://openrouter.ai/api/v1,
-//     env_key OPENROUTER_API_KEY (openrouter.ai/docs/guides/guides/codex-cli). wire_api is left at its
-//     default: the Codex config reference says "responses is the only supported value" (no "chat").
-//   claude-code: OpenRouter's Anthropic-compatible API (openrouter.ai/docs/guides/guides/claude-code-integration):
-//     ANTHROPIC_BASE_URL=https://openrouter.ai/api, ANTHROPIC_AUTH_TOKEN=<key>, ANTHROPIC_API_KEY="".
-//   cursor: cursor-agent has no custom base URL / provider option, so OpenRouter is Not supported.
-export const OPENROUTER_PREFIX = "openrouter/";
-export const OPENROUTER_ENGINES = ["claude-code", "codex", "opencode"] as const satisfies readonly AgentEngine[];
-export const OPENROUTER_MODELS: readonly string[] = [
-  "anthropic/claude-sonnet-4.5", "anthropic/claude-sonnet-5.5", "anthropic/claude-opus-5.5", "anthropic/claude-haiku-5.5",
-  "openai/gpt-5", "openai/gpt-5.6-sol", "google/gemini-2.5-pro", "deepseek/deepseek-v4-pro", "qwen/qwen3-coder",
-  "x-ai/grok-4.7", "moonshotai/kimi-k3", "z-ai/glm-5.3",
-];
-const OR_ID = /^openrouter\/[a-z0-9][a-z0-9._-]{0,49}\/[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/;
-export const supportsOpenRouter = (e: AgentEngine) => (OPENROUTER_ENGINES as readonly string[]).includes(e);
-export const isOpenRouterModel = (m: string | null | undefined): m is string => !!m && m.startsWith(OPENROUTER_PREFIX);
-/** "openrouter/anthropic/claude-sonnet-4.5" -> "anthropic/claude-sonnet-4.5" (the id OpenRouter expects). */
-export const openRouterSlug = (m: string) => m.slice(OPENROUTER_PREFIX.length);
-/** Curated OpenRouter picker entries for an engine (Claude Code: Anthropic models only; custom ids still allowed). */
-export function openRouterModelsFor(engine: AgentEngine): string[] {
-  if (!supportsOpenRouter(engine)) return [];
-  return OPENROUTER_MODELS.filter((m) => engine !== "claude-code" || m.startsWith("anthropic/")).map((m) => OPENROUTER_PREFIX + m);
-}
-/** A free-text custom OpenRouter model id is valid for this engine. */
-export const isValidOpenRouterId = (engine: AgentEngine, m: string) => supportsOpenRouter(engine) && OR_ID.test(m);
-
-// OpenCode's own provider (OpenCode Console / Zen): ids from `opencode models opencode` on nova with
-// OPENCODE_API_KEY set (opencode-ai 1.19.4, 2026-10-26); key from Settings > Providers (OpenCode row).
-export const OPENCODE_PREFIX = "opencode/";
-export const OPENCODE_ZEN_MODELS: readonly string[] = [
-  "opencode/gpt-6.1-sol", "opencode/gpt-6-sol", "opencode/gpt-5.6-terra", "opencode/claude-sonnet-5-5", "opencode/claude-opus-5-5",
-  "opencode/gemini-3.1-pro", "opencode/grok-4.7", "opencode/kimi-k3", "opencode/glm-5.3", "opencode/qwen3.8-max", "opencode/deepseek-v4-pro",
-  "opencode/big-pickle", "opencode/glm-5.3-flash-free", "opencode/deepseek-v4.1-flash-free",
-];
-export const isOpenCodeModel = (m: string | null | undefined): m is string => !!m && m.startsWith(OPENCODE_PREFIX);
-/** Free OpenCode models run without a key (`opencode models opencode` lists them with no OPENCODE_API_KEY). */
-export const isFreeOpenCodeModel = (m: string) => isOpenCodeModel(m) && (/-free$/.test(m) || m === "opencode/big-pickle");
-const OC_ID = /^opencode\/[a-z0-9][a-z0-9._-]{0,79}$/;
-/** A free-text custom opencode/<model> id is valid on the OpenCode engine only. */
-export const isValidOpenCodeId = (engine: AgentEngine, m: string) => engine === "opencode" && OC_ID.test(m);
 
 export const MODEL_SOURCES = {
   "claude-code": "claude --help (2.1.310) + code.claude.com/docs/en/model-config, 2026-10-25",
   codex: "codex exec --help (0.164.0) + ~/.codex/models_cache.json + developers.openai.com/codex/models, 2026-10-25",
-  opencode: "opencode run --help + opencode models openai / opencode models opencode (opencode-ai 1.19.4), 2026-10-25/26",
-  cursor: "cursor-agent --help (2026.10.22-27dcf5f) + cursor.com/docs/models, 2026-10-25 (cursor-agent models needs CURSOR_API_KEY)",
 } as const;
 
 export const DEFAULT_MODELS: Record<AgentEngine, readonly string[]> = {
   "claude-code": ["sonnet", "opus", "haiku", "fable", "claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1"],
   codex: ["gpt-6.1-sol", "gpt-6-sol", "gpt-6-astra", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
-  opencode: [...OPENCODE_ZEN_MODELS, "openai/gpt-6.1-sol", "openai/gpt-6-sol", "openai/gpt-6-astra", "openai/gpt-6-luna", "openai/gpt-5.6-sol", "openai/gpt-5.6-terra", "openai/gpt-5.6-luna", "openai/gpt-5.5"],
-  cursor: ["auto", "composer-2.5", "grok-4.7", "claude-sonnet-5-5", "claude-opus-5-5", "gpt-5.6-sol", "gpt-5.6-terra", "gemini-3.1-pro"],
 };
 
-export const MODEL_ENV: Record<AgentEngine, string> = { "claude-code": "COBRA_CLAUDE_MODELS", codex: "COBRA_CODEX_MODELS", opencode: "COBRA_OPENCODE_MODELS", cursor: "COBRA_CURSOR_MODELS" };
-const ENV = MODEL_ENV;
+export const MODEL_ENV: Record<AgentEngine, string> = { "claude-code": "COBRA_CLAUDE_MODELS", codex: "COBRA_CODEX_MODELS" };
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:/\[\]-]{0,99}$/;
 
-/** Allowed model ids for an engine (env override first). */
-/** custom: admin-defined custom-provider model ids (<provider>/<model>), OpenCode only (lib/provider-credentials.ts). */
-export function modelsFor(engine: AgentEngine, env: Record<string, string | undefined> = process.env, custom: readonly string[] = []): string[] {
-  const o = env[ENV[engine]]?.split(",").map((s) => s.trim()).filter((s) => SAFE.test(s));
-  const extra = engine === "opencode" ? custom.filter((m) => SAFE.test(m)) : [];
-  return [...new Set([...(o?.length ? o : [...DEFAULT_MODELS[engine], ...openRouterModelsFor(engine)]), ...extra])];
+/** Allowed model ids for an engine (env override first). The third argument is ignored (kept for call compatibility). */
+export function modelsFor(engine: AgentEngine, env: Record<string, string | undefined> = process.env, _custom: readonly string[] = []): string[] {
+  const o = env[MODEL_ENV[engine]]?.split(",").map((s) => s.trim()).filter((s) => SAFE.test(s));
+  return [...new Set(o?.length ? o : DEFAULT_MODELS[engine])];
 }
-/** Listed, or a custom openrouter/<vendor>/<model> id on an engine that supports OpenRouter. */
-export const modelAllowed = (engine: AgentEngine, m: string, env: Record<string, string | undefined> = process.env, custom: readonly string[] = []) => modelsFor(engine, env, custom).includes(m) || isValidOpenRouterId(engine, m) || isValidOpenCodeId(engine, m);
+export const modelAllowed = (engine: AgentEngine, m: string, env: Record<string, string | undefined> = process.env, custom: readonly string[] = []) => modelsFor(engine, env, custom).includes(m);
 export const allModels = (env: Record<string, string | undefined> = process.env, custom: readonly string[] = []) => Object.fromEntries(ENGINES.map((e) => [e, modelsFor(e, env, custom)])) as Record<AgentEngine, string[]>;
 
 /** null for "default"; throws a message when the model isn't allowed for the engine. */
@@ -104,18 +42,13 @@ export function checkModel(engine: AgentEngine, model: unknown, env: Record<stri
   if (model === undefined || model === null || model === "" || model === "default") return null;
   if (typeof model !== "string") throw new Error("model must be a string or null");
   const list = modelsFor(engine, env, custom);
-  if (isOpenRouterModel(model.trim()) && !supportsOpenRouter(engine)) throw new Error(`${engine} can't use OpenRouter (not supported); pick Claude Code, Codex or OpenCode`);
-  if (isOpenCodeModel(model.trim()) && engine !== "opencode") throw new Error(`opencode/<model> ids are OpenCode's own provider; pick the OpenCode engine`);
   if (!modelAllowed(engine, model.trim(), env, custom)) throw new Error(`model '${model}' is not available for ${engine} (allowed: ${list.join(", ")}, or default)`);
   return model.trim();
 }
 
-/** CLI flags for the model; empty for the engine default. */
+/** CLI flags for the model; empty for the engine default. codex exec -m <id>; claude -p --model <id>. */
 export function modelArgs(driver: AgentEngine, model: string | null | undefined): string[] {
   if (!model) return [];
   if (!SAFE.test(model)) throw new Error(`invalid model id '${model}'`);
-  // OpenRouter on Claude Code / Codex: the CLI gets the OpenRouter slug; OpenCode takes openrouter/<vendor>/<model> natively.
-  if (isOpenRouterModel(model) && driver !== "opencode") model = openRouterSlug(model);
-  // codex exec -m <id>; opencode run -m <provider/model>; claude -p / cursor-agent -p --model <id>.
-  return driver === "codex" || driver === "opencode" ? ["-m", model] : ["--model", model];
+  return driver === "codex" ? ["-m", model] : ["--model", model];
 }

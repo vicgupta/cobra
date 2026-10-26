@@ -31,7 +31,7 @@ export type AuthMode = "auto" | AuthType;
 export type CredentialSlot = { name: string; type: AuthType; label: string; help: string };
 export type ProviderAuthSpec = { id: string; label: string; slots: CredentialSlot[]; modes: AuthMode[]; noSubscription?: string; serverLogin?: string };
 
-export const PROVIDER_AUTH: Record<AgentEngine | "openrouter", ProviderAuthSpec> = {
+export const PROVIDER_AUTH: Record<AgentEngine, ProviderAuthSpec> = {
   "claude-code": {
     id: "claude-code", label: "Claude Code", modes: ["auto", "api_key", "subscription"],
     slots: [
@@ -46,21 +46,6 @@ export const PROVIDER_AUTH: Record<AgentEngine | "openrouter", ProviderAuthSpec>
       { name: "CODEX_API_KEY", type: "api_key", label: "OpenAI API key", help: "From platform.openai.com > API keys. Passed to codex exec as CODEX_API_KEY (overrides any login for that run)." },
       { name: "CODEX_ACCESS_TOKEN", type: "subscription", label: "ChatGPT / Codex access token", help: "Optional: a ChatGPT/Codex access token for automation (see `codex login --with-access-token`). Without it, subscription runs use the server's ChatGPT login." },
     ],
-  },
-  opencode: {
-    id: "opencode", label: "OpenCode", modes: ["api_key"],
-    noSubscription: "OpenCode has no subscription login of its own. openai/* models reuse the Codex ChatGPT login; custom providers below use their own API keys.",
-    slots: [{ name: "OPENCODE_API_KEY", type: "api_key", label: "OpenCode API key", help: "From opencode.ai (Console / Zen) > API keys. Passed to opencode run as OPENCODE_API_KEY for opencode/<model> models." }],
-  },
-  cursor: {
-    id: "cursor", label: "Cursor", modes: ["api_key"],
-    noSubscription: "Not supported: `cursor-agent login` is an interactive browser login Cobra can't use. Create the API key under your Cursor plan instead.",
-    slots: [{ name: "CURSOR_API_KEY", type: "api_key", label: "Cursor API key", help: "From cursor.com/dashboard > Integrations > API keys. Passed to cursor-agent as CURSOR_API_KEY." }],
-  },
-  openrouter: {
-    id: "openrouter", label: "OpenRouter", modes: ["api_key"],
-    noSubscription: "OpenRouter is pay-as-you-go: API key only.",
-    slots: [{ name: "OPENROUTER_API_KEY", type: "api_key", label: "OpenRouter API key", help: "From openrouter.ai/settings/keys. One shared key for every team (env fallback COBRA_OPENROUTER_API_KEY)." }],
   },
 };
 
@@ -78,7 +63,7 @@ export type CredentialView = CredentialSlot & { set: boolean; source: "stored" |
 const row = (db: DB, t: number, engine: string, name: string) =>
   db.prepare("SELECT value_enc, set_at, set_by FROM team_provider_secrets WHERE tenant_id = ? AND engine = ? AND name = ?").get(t, engine, name) as { value_enc: string; set_at: number; set_by: string | null } | undefined;
 const tail = (v: string) => (v.length >= 12 ? v.slice(-4) : null);
-const envName = (engine: string, name: string) => (engine === "openrouter" ? "COBRA_OPENROUTER_API_KEY" : name);
+const envName = (_engine: string, name: string) => name;
 
 /** Stored value (decrypted) for a run; undefined when unset/undecryptable. Never log the result. */
 export function storedCredential(db: DB, t: number, engine: string, name: string, secretKey: string | undefined): string | undefined {
@@ -126,7 +111,6 @@ export function setCredential(db: DB, u: Admin, engine: unknown, name: unknown, 
   requireManager(u, "provider credentials");
   const spec = PROVIDER_AUTH[engine as keyof typeof PROVIDER_AUTH];
   if (!spec || typeof engine !== "string" || !Object.hasOwn(PROVIDER_AUTH, engine)) throw new CollabError(404, `unknown provider '${String(engine)}'`);
-  if (engine === "openrouter") throw new CollabError(400, "OpenRouter's key goes through its own path (lib/openrouter.ts)");
   const slot = spec.slots.find((s) => s.name === name);
   if (!slot) throw new CollabError(400, `${spec.label} has no credential '${String(name)}' (has: ${spec.slots.map((s) => s.name).join(", ")})`);
   const t = u.tenantId, existed = !!row(db, t, engine, slot.name);
@@ -189,16 +173,14 @@ export function runAuth(engine: "claude-code" | "codex", mode: AuthMode, cred: (
   return { env: {}, unset: ["CODEX_API_KEY", "OPENAI_API_KEY"], note: "codex: using the server's ChatGPT login" };
 }
 
-// ---- Custom providers (OpenAI-compatible, run on the OpenCode engine) ----
+// ---- Custom providers: removed from the MVP build. Existing team_custom_providers rows stay in the DB
+// (untouched, so other branches can be redeployed); they are only read here to redact stored keys from logs.
 // OpenCode's native custom-provider support (opencode.ai/docs/providers, "Custom provider"): a provider entry
 // with npm "@ai-sdk/openai-compatible", options.baseURL and a models map in opencode.json. Cobra writes that
 // file into each run's isolated XDG_CONFIG_HOME; the key reaches OpenCode only as an env var ({env:NAME}).
 // Verified on nova (opencode-ai 1.19.4, 2026-10-26): `opencode models <id>` lists <id>/<model> from such a config.
 export const CUSTOM_ENGINE = (id: string) => `custom:${id}`;
 export const CUSTOM_KEY = "API_KEY";
-const RESERVED = new Set(["openai", "anthropic", "opencode", "openrouter", "google", "github-copilot", "amazon-bedrock", "azure", "xai", "groq", "mistral", "deepseek", "ollama", "lmstudio", "vercel", "cursor", "codex", "claude-code", "custom"]);
-const ID_RE = /^[a-z][a-z0-9-]{1,30}$/;
-const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}$/;
 
 export type CustomProvider = { id: string; name: string; baseUrl: string; models: string[]; createdAt: number; createdBy: string | null; updatedAt: number; updatedBy: string | null };
 export type CustomProviderView = CustomProvider & { key: CredentialView };
@@ -210,110 +192,7 @@ export function listCustomProviders(db: DB, t: number): CustomProvider[] {
     .map((r) => ({ ...r, models: parseModels(r.models) }));
 }
 
-export function customProviderViews(db: DB, t: number, secretKey: string | undefined, withDetail: boolean): CustomProviderView[] {
-  return listCustomProviders(db, t).map((p) => {
-    const r = row(db, t, CUSTOM_ENGINE(p.id), CUSTOM_KEY);
-    let last4: string | null = null;
-    if (r && withDetail) { const v = storedCredential(db, t, CUSTOM_ENGINE(p.id), CUSTOM_KEY, secretKey); last4 = v ? tail(v) : null; }
-    return { ...p, key: { name: CUSTOM_KEY, type: "api_key", label: `${p.name} API key`, help: "", set: !!r, source: r ? "stored" : null, last4, setAt: withDetail ? r?.set_at ?? null : null, setBy: withDetail ? r?.set_by ?? null : null } };
-  });
-}
-
-/** The team's custom model ids, as the OpenCode engine sees them: <provider id>/<model> (never another team's). */
-export const customModelIds = (db: DB, t: number): string[] => listCustomProviders(db, t).flatMap((p) => p.models.map((m) => `${p.id}/${m}`));
-
-type CustomInput = { id?: unknown; name?: unknown; baseUrl?: unknown; models?: unknown; apiKey?: unknown };
-function checkFields(b: CustomInput, partial: CustomProvider | null) {
-  const name = b.name === undefined && partial ? partial.name : typeof b.name === "string" ? b.name.trim() : "";
-  if (!name || name.length > 60) throw new CollabError(400, "name is required (max 60 characters)");
-  const baseUrl = b.baseUrl === undefined && partial ? partial.baseUrl : typeof b.baseUrl === "string" ? b.baseUrl.trim().replace(/\/+$/, "") : "";
-  let u: URL;
-  try { u = new URL(baseUrl); } catch { throw new CollabError(400, "base URL must be a full URL, e.g. https://api.example.com/v1"); }
-  if (u.protocol !== "https:" && !(u.protocol === "http:" && ["localhost", "127.0.0.1"].includes(u.hostname))) throw new CollabError(400, "base URL must use https (http only for localhost)");
-  if (u.username || u.password) throw new CollabError(400, "don't put credentials in the base URL; use the API key field");
-  const raw = b.models === undefined && partial ? partial.models : Array.isArray(b.models) ? b.models : typeof b.models === "string" ? b.models.split(/[\s,]+/) : [];
-  const models = [...new Set(raw.map((m) => String(m).trim()).filter(Boolean))];
-  if (!models.length || models.length > 50) throw new CollabError(400, "list 1-50 model ids");
-  const bad = models.find((m) => !MODEL_RE.test(m));
-  if (bad) throw new CollabError(400, `invalid model id '${bad}' (letters, digits, . _ : / -)`);
-  return { name, baseUrl, models };
-}
-
-export function addCustomProvider(db: DB, u: Admin, b: CustomInput, secretKey: string | undefined, now = Date.now()): CustomProvider {
-  requireManager(u, "custom providers");
-  const id = typeof b.id === "string" ? b.id.trim() : "";
-  if (!ID_RE.test(id)) throw new CollabError(400, "id must be 2-31 lowercase letters, digits or '-', starting with a letter");
-  if (RESERVED.has(id)) throw new CollabError(400, `'${id}' is a built-in OpenCode provider id; pick another`);
-  const t = u.tenantId;
-  if (db.prepare("SELECT 1 FROM team_custom_providers WHERE tenant_id = ? AND id = ?").get(t, id)) throw new CollabError(409, `a custom provider '${id}' already exists`);
-  const f = checkFields(b, null);
-  const key = b.apiKey === undefined || b.apiKey === null || b.apiKey === "" ? null : checkSecretValue(b.apiKey, "API key");
-  db.exec("BEGIN");
-  try {
-    db.prepare("INSERT INTO team_custom_providers (tenant_id, id, name, base_url, models, created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").run(t, id, f.name, f.baseUrl, JSON.stringify(f.models), now, u.email, now, u.email);
-    if (key) writeSecret(db, t, CUSTOM_ENGINE(id), CUSTOM_KEY, key, secretKey, u.email, now);
-    audit(db, u, CUSTOM_ENGINE(id), `custom provider added (${f.baseUrl}; ${f.models.length} models${key ? "; API key set" : ""})`, now);
-    db.exec("COMMIT");
-  } catch (e) { db.exec("ROLLBACK"); throw e; }
-  return listCustomProviders(db, u.tenantId).find((p) => p.id === id)!;
-}
-
-export function updateCustomProvider(db: DB, u: Admin, id: string, b: CustomInput, secretKey: string | undefined, now = Date.now()): CustomProvider {
-  requireManager(u, "custom providers");
-  const t = u.tenantId, cur = listCustomProviders(db, t).find((p) => p.id === id);
-  if (!cur) throw new CollabError(404, `no custom provider '${id}'`);
-  const f = checkFields(b, cur);
-  const changes: string[] = [];
-  if (f.name !== cur.name) changes.push("name");
-  if (f.baseUrl !== cur.baseUrl) changes.push(`base URL -> ${f.baseUrl}`);
-  if (JSON.stringify(f.models) !== JSON.stringify(cur.models)) changes.push(`models -> ${f.models.length}`);
-  db.exec("BEGIN");
-  try {
-    db.prepare("UPDATE team_custom_providers SET name = ?, base_url = ?, models = ?, updated_at = ?, updated_by = ? WHERE tenant_id = ? AND id = ?").run(f.name, f.baseUrl, JSON.stringify(f.models), now, u.email, t, id);
-    if (b.apiKey === null) {
-      if (row(db, t, CUSTOM_ENGINE(id), CUSTOM_KEY)) { db.prepare("DELETE FROM team_provider_secrets WHERE tenant_id = ? AND engine = ? AND name = ?").run(t, CUSTOM_ENGINE(id), CUSTOM_KEY); changes.push("API key deleted"); }
-    } else if (b.apiKey !== undefined && b.apiKey !== "") {
-      const had = !!row(db, t, CUSTOM_ENGINE(id), CUSTOM_KEY);
-      writeSecret(db, t, CUSTOM_ENGINE(id), CUSTOM_KEY, checkSecretValue(b.apiKey, "API key"), secretKey, u.email, now);
-      changes.push(`API key ${had ? "replaced" : "set"}`);
-    }
-    audit(db, u, CUSTOM_ENGINE(id), `custom provider edited (${changes.join("; ") || "no changes"})`, now);
-    db.exec("COMMIT");
-  } catch (e) { db.exec("ROLLBACK"); throw e; }
-  return listCustomProviders(db, u.tenantId).find((p) => p.id === id)!;
-}
-
-export function deleteCustomProvider(db: DB, u: Admin, id: string, now = Date.now()): void {
-  requireManager(u, "custom providers");
-  const t = u.tenantId, cur = listCustomProviders(db, t).find((p) => p.id === id);
-  if (!cur) throw new CollabError(404, `no custom provider '${id}'`);
-  db.exec("BEGIN");
-  try {
-    db.prepare("DELETE FROM team_custom_providers WHERE tenant_id = ? AND id = ?").run(t, id);
-    db.prepare("DELETE FROM team_provider_secrets WHERE tenant_id = ? AND engine = ?").run(t, CUSTOM_ENGINE(id));
-    audit(db, u, CUSTOM_ENGINE(id), "custom provider deleted (and its API key)", now);
-    db.exec("COMMIT");
-  } catch (e) { db.exec("ROLLBACK"); throw e; }
-}
-
 export const customEnvName = (id: string) => `COBRA_CP_${id.toUpperCase().replace(/-/g, "_")}_KEY`;
-
-/** opencode.json for a run plus the env vars carrying the keys. Keys never appear in the file. */
-export function opencodeCustomConfig(db: DB, t: number, secretKey: string | undefined): { config: Record<string, unknown> | null; env: Record<string, string>; secrets: string[] } {
-  const ps = listCustomProviders(db, t);
-  if (!ps.length) return { config: null, env: {}, secrets: [] };
-  const env: Record<string, string> = {}, provider: Record<string, unknown> = {};
-  for (const p of ps) {
-    const key = storedCredential(db, t, CUSTOM_ENGINE(p.id), CUSTOM_KEY, secretKey);
-    if (key) env[customEnvName(p.id)] = key;
-    provider[p.id] = {
-      npm: "@ai-sdk/openai-compatible", name: p.name,
-      options: { baseURL: p.baseUrl, ...(key ? { apiKey: `{env:${customEnvName(p.id)}}` } : {}) },
-      models: Object.fromEntries(p.models.map((m) => [m, { name: m }])),
-    };
-  }
-  return { config: { $schema: "https://opencode.ai/config.json", provider }, env, secrets: Object.values(env) };
-}
 
 /** The team's stored custom-provider keys (for run-log redaction). */
 export const customProviderSecrets = (db: DB, t: number, secretKey: string | undefined) =>

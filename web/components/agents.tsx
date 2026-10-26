@@ -4,8 +4,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge } from "./ui";
-import { ENGINES, ENGINE_LABEL, isEngine } from "@/lib/engines";
-import { isOpenRouterModel, OPENROUTER_PREFIX, supportsOpenRouter } from "@/lib/agent-models";
+import { ENGINES, ENGINE_LABEL, isEngine, UNSUPPORTED_ENGINE } from "@/lib/engines";
 
 const input = "w-full rounded-md border border-border-strong bg-bg px-3 py-2 text-sm placeholder:text-faint focus:border-emerald-500 focus:outline-none";
 const button = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
@@ -25,23 +24,14 @@ async function call(url: string, method: string, body?: unknown) {
   return { ok: r.ok, data: (await r.json().catch(() => ({ error: `HTTP ${r.status}` }))) as { error?: string; id?: string } };
 }
 
-/** Engine models, then OpenRouter (provider) models and a free-text custom openrouter/<vendor>/<model> id.
- *  Engines that can't use OpenRouter (Cursor) show it as Not supported instead of hiding it. */
+/** The engine's models (MVP build: Claude Code and Codex only). */
 export function ModelPicker({ engine, models, value, onChange }: { engine: string; models: string[]; value: string; onChange: (v: string) => void }) {
-  const native = models.filter((m) => !isOpenRouterModel(m)), routed = models.filter(isOpenRouterModel);
-  const ok = isEngine(engine) && supportsOpenRouter(engine);
-  const known = value === "" || models.includes(value);
-  const [custom, setCustom] = useState(!known);
   return (
-    <div className="flex flex-col gap-1">
-      <select aria-label="Model" name="model" className={input} value={custom ? "__custom" : value} onChange={(e) => { if (e.target.value === "__custom") { setCustom(true); onChange(OPENROUTER_PREFIX); } else { setCustom(false); onChange(e.target.value); } }}>
-        <option value="">Default</option>
-        <optgroup label={`${isEngine(engine) ? ENGINE_LABEL[engine] : engine} models`}>{native.map((m) => <option key={m} value={m}>{m}</option>)}</optgroup>
-        {ok ? <optgroup label="OpenRouter">{routed.map((m) => <option key={m} value={m}>{m}</option>)}<option value="__custom">Custom OpenRouter model id…</option></optgroup>
-          : <optgroup label="OpenRouter (Not supported by this engine)"><option disabled value="__na">OpenRouter: Not supported</option></optgroup>}
-      </select>
-      {custom && ok && <input aria-label="Custom OpenRouter model" className={input} placeholder="openrouter/<vendor>/<model>" value={value} onChange={(e) => onChange(e.target.value.trim())} />}
-    </div>
+    <select aria-label="Model" name="model" className={input} value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">Default</option>
+      {value && !models.includes(value) && <option value={value}>{value} (not available)</option>}
+      <optgroup label={`${isEngine(engine) ? ENGINE_LABEL[engine] : engine} models`}>{models.map((m) => <option key={m} value={m}>{m}</option>)}</optgroup>
+    </select>
   );
 }
 
@@ -140,13 +130,13 @@ export function AgentManager({ agents, repos, models }: { agents: AgentView[]; r
           <li key={a.name} className="py-3" data-agent={a.name}>
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <span className="font-mono font-medium">{a.name}</span>
-              <Badge tone="blue">{ENGINE[a.engine] ?? a.engine}</Badge>
+              {isEngine(a.engine) ? <Badge tone="blue">{ENGINE[a.engine]}</Badge> : <span data-unsupported-engine><Badge tone="gray">{a.engine}: {UNSUPPORTED_ENGINE}</Badge></span>}
               <span className="font-mono text-xs text-fg-soft" data-model>{a.model ?? "default model"}</span>
               <span className="font-mono text-xs text-subtle" title="version (sha256 of engine + prompt + model)">v {a.contentHash.slice(0, 12)}</span>
               {a.defaultRepo && <span className="font-mono text-xs text-muted">{a.defaultRepo}</span>}
               <span className="text-xs text-subtle" data-added-by>Added by {a.createdByEmail ?? "unknown"}{a.createdAt ? ` · ${new Date(a.createdAt).toLocaleDateString()}` : ""}</span>
               <span className="ml-auto flex gap-2">
-                <button className={button} onClick={() => setOpen({ name: a.name, kind: "run" })}>Run</button>
+                {isEngine(a.engine) ? <button className={button} onClick={() => setOpen({ name: a.name, kind: "run" })}>Run</button> : <button className={button} disabled title={UNSUPPORTED_ENGINE}>Run</button>}
                 {a.canEdit && <button className={ghost} onClick={() => setOpen({ name: a.name, kind: "edit" })}>Edit</button>}
                 {a.canEdit && <button className={danger} onClick={() => { setError(null); setConfirmDelete(a.name); }}>Delete</button>}
               </span>

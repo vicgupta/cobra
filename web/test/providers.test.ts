@@ -21,9 +21,8 @@ const is = (status: number) => (e: unknown) => e instanceof CollabError && e.sta
 test("providers: listed from code, tiers per engine (Cursor: none), no simulated provider", () => {
   const { db } = setup();
   const all = listProviders(db, {});
-  assert.deepEqual(all.map((x) => x.engine), ["claude-code", "codex", "opencode", "cursor"]);
-  assert.deepEqual([...all[3].tiers], []);
-  const p = all.slice(0, 3);
+  assert.deepEqual(all.map((x) => x.engine), ["claude-code", "codex"]);
+  const p = all;
   assert.ok(p[0].models.includes("claude-sonnet-5-5"));
   assert.ok(p[1].models.includes("gpt-6.1-sol"));
   for (const x of p) { assert.deepEqual([...x.tiers], ["low", "medium", "high"]); assert.deepEqual(x.defaults, { model: null, effort: null }); }
