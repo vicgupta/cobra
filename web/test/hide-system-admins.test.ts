@@ -31,3 +31,31 @@ test("system admins hidden from displayed member lists in two tenants; data and 
   for (const f of ["../components/team.tsx", "../app/api/team/route.ts"]) assert.match(readFileSync(new URL(f, import.meta.url), "utf8"), /displayTeamMembers/, f);
   assert.match(readFileSync(new URL("../lib/team-notifications.ts", import.meta.url), "utf8"), /candidates: visibleMembers\(c\)/);
 });
+
+test("admin metrics hide system admins (lists, counts, run emails); send-history recipients scrubbed for display", async () => {
+  const m = await import("../lib/admin/metrics");
+  const { createSession } = await import("../lib/auth/sessions");
+  const { scrubRecipients, visibleRecipients } = await import("../lib/members");
+  const db = openDb(":memory:");
+  const mk = (email: string, role: "admin" | "team_lead" | "member", tenant: string) => createUser(db, { email, tenant, tenantName: tenant, role, password: "pw-1234567890" });
+  const root = mk("root@a.com", "admin", "team-a"), lead = mk("lead@a.com", "team_lead", "team-a");
+  const boss = mk("boss@b.com", "team_lead", "team-b"); mk("m@b.com", "member", "team-b");
+  const now = Date.now(); createSession(db, root, now); createSession(db, boss, now); createSession(db, lead, now);
+  const adm = "boss@b.com";
+  const o = m.overview(db, now, adm);
+  assert.equal(o.users, 2); assert.equal(o.activeSessions, 1); assert.equal(o.activeUsers24h, 1);
+  assert.deepEqual(o.usersByRole.map((r) => [r.role, r.c]), [["member", 1], ["team_lead", 1]]);
+  assert.deepEqual(m.tenants(db, adm).map((t) => [t.slug, t.users, "admins" in t]), [["team-a", 1, false], ["team-b", 1, false]]);
+  assert.deepEqual(m.users(db, now, adm).map((u) => u.email), ["lead@a.com", "m@b.com"]);
+  assert.deepEqual(m.sessions(db, now, adm).map((s) => s.email), ["lead@a.com"]);
+  assert.equal((db.prepare("SELECT count(*) c FROM users").get() as { c: number }).c, 4, "data unchanged");
+  // recipients text
+  const hid = (e: string) => ["root@a.com", "boss@b.com"].includes(e.toLowerCase());
+  assert.equal(scrubRecipients("root@a.com, lead@a.com", hid), "lead@a.com");
+  assert.equal(scrubRecipients("ROOT@a.com", hid), "[redacted]");
+  assert.equal(scrubRecipients("", hid), "");
+  assert.equal(scrubRecipients("[redacted]", hid), "[redacted]");
+  assert.equal(visibleRecipients(db, "root@a.com, boss@b.com, m@b.com", adm), "m@b.com");
+  const p = readFileSync(new URL("../app/admin/page.tsx", import.meta.url), "utf8");
+  assert.ok(!p.includes('"Admins"') && !p.includes("t.admins"));
+});

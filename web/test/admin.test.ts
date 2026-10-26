@@ -54,7 +54,7 @@ test("gate: admin gets regular app + /admin, non-admin 404 on /admin, blank env,
 
 test("admin metrics: cross-tenant counts, sessions without token hashes, end any session", () => {
   const db = openDb(":memory:");
-  const a = createUser(db, { email: "a@x.io", tenant: "default", tenantName: "Default", role: "admin", password: "pw-1234567890" });
+  const a = createUser(db, { email: "a@x.io", tenant: "default", tenantName: "Default", role: "team_lead", password: "pw-1234567890" });
   const b = createUser(db, { email: "b@y.io", tenant: "other", tenantName: "Other", role: "member", password: "pw-1234567890" });
   const now = Date.now();
   const tokA = createSession(db, a, now);

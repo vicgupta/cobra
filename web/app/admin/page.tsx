@@ -96,13 +96,13 @@ function Overview({ now }: { now: number }) {
 }
 
 function Tenants() {
-  return <Card title="Tenants"><Table head={["Name", "Slug", "Created", "Users", "Admins", "Workflows", "Runs", "Last run"]}
-    rows={m.tenants(getDb()).map((t) => [t.name, <code key="s">{t.slug}</code>, dt(t.created_at), t.users, t.admins, t.workflows, t.runs, dt(t.last_run)])} /></Card>;
+  return <Card title="Tenants"><Table head={["Name", "Slug", "Created", "Users", "Workflows", "Runs", "Last run"]}
+    rows={m.tenants(getDb()).map((t) => [t.name, <code key="s">{t.slug}</code>, dt(t.created_at), t.users, t.workflows, t.runs, dt(t.last_run)])} /></Card>;
 }
 
 function Users({ now }: { now: number }) {
   return <Card title="Users" subtitle="All tenants"><Table head={["Email", "Name", "Tenant", "Role", "Created", "Active sessions", "Last seen", "Runs"]}
-    rows={m.users(getDb(), now).map((u) => [u.email, u.name || "—", u.tenant, <Badge key="r" tone={u.role === "admin" ? "violet" : u.role === "team_lead" ? "blue" : "gray"}>{u.role}</Badge>, dt(u.created_at), u.sessions, dt(u.last_seen), u.runs])} /></Card>;
+    rows={m.users(getDb(), now).map((u) => [u.email, u.name || "—", u.tenant, <Badge key="r" tone={u.role === "team_lead" ? "blue" : "gray"}>{u.role}</Badge>, dt(u.created_at), u.sessions, dt(u.last_seen), u.runs])} /></Card>;
 }
 
 function Sessions({ now }: { now: number }) {
@@ -135,7 +135,7 @@ function Logs() {
           <details key={r.id} className="rounded-lg border border-border px-3 py-2">
             <summary className="flex cursor-pointer flex-wrap items-center gap-3 text-sm">
               <code className="text-xs">{r.id}</code><Badge tone={statusTone(r.status)}>{r.status ?? "legacy"}</Badge>
-              <span>{r.workflow ?? "—"}</span><span className="text-subtle">{r.tenant} · {r.email ?? "deleted user"} · {dt(r.started_at)}{r.ended_at ? ` · ${((r.ended_at - r.started_at) / 1000).toFixed(1)} s` : ""}</span>
+              <span>{r.workflow ?? "—"}</span><span className="text-subtle">{r.tenant} · {r.email ?? "—"} · {dt(r.started_at)}{r.ended_at ? ` · ${((r.ended_at - r.started_at) / 1000).toFixed(1)} s` : ""}</span>
             </summary>
             {r.error && <p className="mt-2 text-xs text-danger">{r.error}</p>}
             <Table head={["At", "Step", "Status", "Attempt", "Output"]} empty="No step events (legacy run)"

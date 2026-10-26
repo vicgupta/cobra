@@ -100,20 +100,6 @@ export function MergeButton({ repo, number, base }: { repo: string; number: numb
   );
 }
 
-export function DesignatedLeadForm({ leads, current }: { leads: Array<{ id: number; email: string; name: string }>; current: number | null }) {
-  const router = useRouter();
-  const c = useAction();
-  const [v, setV] = useState(current === null ? "" : String(current));
-  return (
-    <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); void c.run(() => call("/api/team", "PUT", { designatedLeadUserId: v ? Number(v) : null }), () => { router.refresh(); return "Saved"; }); }}>
-      <select aria-label="Designated lead" className={`${input} max-w-sm`} value={v} onChange={(e) => setV(e.target.value)}>
-        <option value="">No designated lead</option>{leads.map((l) => <option key={l.id} value={l.id}>{l.name ? `${l.name} (${l.email})` : l.email}</option>)}
-      </select>
-      <button className={button} disabled={c.busy}>Save</button>{c.status}
-    </form>
-  );
-}
-
 /** Job 25: per-member controls on Settings > Team. The server enforces the same rules (lib/team.ts). */
 export function MemberControls({ member, viewer, designatedId }: { member: { id: number; email: string; role: string }; viewer: { id: number; role: string }; designatedId: number | null }) {
   const router = useRouter();
@@ -128,7 +114,6 @@ export function MemberControls({ member, viewer, designatedId }: { member: { id:
       {canPromote && <button className={button} disabled={c.busy} onClick={() => patch({ role: "team_lead" }, "Promoted")}>Make team lead</button>}
       {canDemote && <button className="rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-soft hover:bg-surface-2 disabled:opacity-50" disabled={c.busy}
         onClick={() => { if (member.id !== designatedId || confirm(`${member.email} is the designated lead; demoting unsets that. Continue?`)) patch({ role: "member" }, "Demoted"); }}>Make member</button>}
-      {admin && member.id !== designatedId && <button className={button} disabled={c.busy} onClick={() => patch({ makeDesignatedLead: true }, "Designated")}>Make designated lead</button>}
       {c.status}
     </span>
   );

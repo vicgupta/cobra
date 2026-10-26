@@ -21,12 +21,12 @@ export function TeamView() {
         const admin = isSystemAdmin(u), canAct = admin || u.role === "team_lead";
         return (
           <div className="space-y-6">
-            <Card title="Members" subtitle={admin ? "System admins can promote, demote and designate. Admin roles aren't changed here." : u.role === "team_lead" ? "Team leads can promote members and demote other team leads (not themselves or the designated lead)." : "View only."}>
+            <Card title="Members" subtitle={admin ? "System admins can promote and demote. Admin roles aren't changed here." : u.role === "team_lead" ? "Team leads can promote members and demote other team leads (not themselves or the designated lead)." : "View only."}>
               <table className="w-full text-sm" data-members>
                 <thead><tr className="text-left text-xs text-subtle"><th className="py-2">Email</th><th>Role</th>{canAct && <th>Actions</th>}</tr></thead>
                 <tbody className="divide-y divide-border">{members.map((m) => (
                   <tr key={m.id} data-member={m.email}>
-                    <td className="py-2 font-mono">{m.email}{d?.id === m.id && <span className="ml-2"><Badge tone="blue">designated lead</Badge></span>}</td>
+                    <td className="py-2 font-mono">{m.email}</td>
                     <td data-role>{ROLE[m.role] ?? m.role}</td>
                     {canAct && <td><MemberControls member={m} viewer={{ id: u.id, role: u.role }} designatedId={d?.id ?? null} /></td>}
                   </tr>

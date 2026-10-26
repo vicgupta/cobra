@@ -16,3 +16,23 @@ export const isHiddenSystemAdmin = (m: { role?: string; email: string }, adminEm
 export function visibleMembers<T extends { role?: string; email: string }>(rows: T[], adminEmail = currentAdminEmail()): T[] {
   return rows.filter((m) => !isHiddenSystemAdmin(m, adminEmail));
 }
+
+/** Ids of users hidden from display (role admin or the COBRA_ADMIN_EMAIL user), as JSON for `NOT IN (SELECT value FROM json_each(?))`. */
+export function hiddenUserIdsJson(db: { prepare(sql: string): { all(...a: unknown[]): unknown[] } }, adminEmail = currentAdminEmail()): string {
+  const rows = db.prepare("SELECT id, email, role FROM users").all() as Array<{ id: number; email: string; role: string }>;
+  return JSON.stringify(rows.filter((r) => isHiddenSystemAdmin(r, adminEmail)).map((r) => Number(r.id)));
+}
+
+/** Removes system-admin addresses from a stored "a, b" recipients string; "[redacted]" when nothing is left but it was non-empty. */
+export function scrubRecipients(text: string, hidden: (email: string) => boolean): string {
+  const parts = text.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) return text;
+  const kept = parts.filter((e) => e !== "[redacted]" ? !hidden(e) : true);
+  return kept.length ? kept.join(", ") : "[redacted]";
+}
+
+/** Display-time: recipients text without system-admin addresses. */
+export function visibleRecipients(db: Parameters<typeof hiddenUserIdsJson>[0], text: string, adminEmail = currentAdminEmail()): string {
+  const admins = new Set((db.prepare("SELECT lower(email) e FROM users WHERE role = 'admin'").all() as Array<{ e: string }>).map((r) => r.e));
+  return scrubRecipients(text, (e) => admins.has(e.toLowerCase()) || matchesAdmin(e, adminEmail));
+}

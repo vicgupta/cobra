@@ -88,12 +88,15 @@ test("Settings > Repos UI: no recent-changes card or token/helper copy; audit da
   assert.match(readFileSync(new URL("../app/api/repos/route.ts", import.meta.url), "utf8"), /audit: listRepoAudit\(db, u\.tenantId\)/);
 });
 
-test("Settings > Team UI: no Designated lead card; designated-lead badge on member rows kept", async () => {
+test("Settings > Team UI: no Designated lead card, badge or Make designated lead button; APIs kept", async () => {
   const { readFileSync } = await import("node:fs");
   const v = readFileSync(new URL("../components/team.tsx", import.meta.url), "utf8");
   assert.ok(!v.includes("None set"));
   for (const x of ['title="Designated lead"', "data-designated-lead", "DesignatedLeadForm", "teamLeads"]) assert.ok(!v.includes(x), x);
-  assert.ok(v.includes('<Badge tone="blue">designated lead</Badge>') && v.includes("designatedId={d?.id ?? null}"));
+  assert.ok(!v.includes("designated lead</Badge>") && v.includes("designatedId={d?.id ?? null}"));
+  const c = readFileSync(new URL("../components/collab.tsx", import.meta.url), "utf8");
+  assert.ok(!c.includes("Make designated lead") && !c.includes("DesignatedLeadForm"));
+  assert.match(readFileSync(new URL("../app/api/team/members/[id]/route.ts", import.meta.url), "utf8"), /makeDesignatedLead/);
   assert.match(readFileSync(new URL("../app/api/team/route.ts", import.meta.url), "utf8"), /pickDesignatedLead/);
 });
 

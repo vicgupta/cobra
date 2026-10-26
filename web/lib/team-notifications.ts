@@ -4,7 +4,7 @@
 // opt-outs. Team leads and system admins edit; members see it and manage their own opt-out. One daily
 // send per team per NY date (unique index), catch-up until noon ET. Every change goes to team_audit.
 // The system-admin email (lib/notifications.ts) is untouched; this only reuses its clock helpers.
-import { visibleMembers } from "./members";
+import { visibleMembers, visibleRecipients } from "./members";
 import type { DB } from "./db";
 import { CollabError, designatedLead, isSystemAdmin } from "./collab";
 import { APP_URL, CATCH_UP_UNTIL_HOUR, DAILY_HOUR, fmtNy, nyClock, type Send } from "./notifications";
@@ -45,7 +45,7 @@ export type TeamNotifyView = { tenantId: number; enabled: boolean; mode: Mode; m
 
 export function teamNotifyStatus(db: DB, u: U): TeamNotifyView {
   const s = settings(db, u.tenantId), c = recipientCandidates(db, u.tenantId, s.mode);
-  const recent = (db.prepare("SELECT kind, send_date sendDate, status, error, at, recipients, triggered_by triggeredBy FROM team_notification_sends WHERE tenant_id = ? ORDER BY at DESC, id DESC LIMIT 10").all(u.tenantId) as SendRow[]).map((r) => ({ ...r }));
+  const recent = (db.prepare("SELECT kind, send_date sendDate, status, error, at, recipients, triggered_by triggeredBy FROM team_notification_sends WHERE tenant_id = ? ORDER BY at DESC, id DESC LIMIT 10").all(u.tenantId) as SendRow[]).map((r) => ({ ...r, recipients: visibleRecipients(db, r.recipients) }));
   const myOptOut = !!db.prepare("SELECT 1 FROM team_notification_optouts WHERE tenant_id = ? AND user_id = ?").get(u.tenantId, u.id);
   return { tenantId: u.tenantId, ...s, modeLabel: MODE_LABEL[s.mode], schedule: "Daily at 7:00 AM America/New_York (DST-aware)", candidates: visibleMembers(c), recipients: visibleMembers(c).filter((r) => !r.optedOut).map((r) => r.email), canEdit: canEditTeamNotify(u), myOptOut, lastSend: recent[0] ?? null, recent };
 }

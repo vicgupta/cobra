@@ -2,6 +2,7 @@
 // (users.role = 'admin'). notification_settings.daily_enabled toggles it (the MVP has no UI for it; the stored value applies). Every send is a notification_sends row;
 // the unique (send_date) index for kind 'daily' means a day is claimed once, so restarts or several
 // processes can't double-send. Pure Node (no Next imports): mail and clock are injected so tests use a mock.
+import { visibleRecipients } from "./members";
 import { statfsSync, statSync } from "node:fs";
 import os from "node:os";
 import type { DB } from "./db";
@@ -34,7 +35,7 @@ export type NotificationView = { dailyEnabled: boolean; recipients: string[]; up
 
 export function notificationStatus(db: DB): NotificationView {
   const s = db.prepare("SELECT daily_enabled, updated_at, updated_by FROM notification_settings WHERE id = 1").get() as { daily_enabled: number; updated_at: number | null; updated_by: string | null };
-  const recent = (db.prepare("SELECT kind, send_date sendDate, status, error, at, recipients, triggered_by triggeredBy FROM notification_sends ORDER BY at DESC, id DESC LIMIT 10").all() as NotificationView["recent"]).map((r) => ({ ...r }));
+  const recent = (db.prepare("SELECT kind, send_date sendDate, status, error, at, recipients, triggered_by triggeredBy FROM notification_sends ORDER BY at DESC, id DESC LIMIT 10").all() as NotificationView["recent"]).map((r) => ({ ...r, recipients: visibleRecipients(db, r.recipients) }));
   return { dailyEnabled: !!s.daily_enabled, recipients: adminEmails(db), updatedAt: s.updated_at, updatedBy: s.updated_by, schedule: "Daily at 7:00 AM America/New_York (DST-aware)", lastSend: recent[0] ?? null, recent };
 }
 
