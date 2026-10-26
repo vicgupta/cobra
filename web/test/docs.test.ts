@@ -6,7 +6,7 @@ import { workflowExamples, templateExamples, HANDLER_DOCS, fieldReference } from
 
 test("every docs example parses with the real loader", () => {
   const all = [...workflowExamples(), ...templateExamples()];
-  assert.ok(all.length >= 6);
+  assert.ok(all.length >= 5);
   for (const e of all) {
     const origin = e.origin.startsWith("workflows/templates") ? "template" : e.origin.startsWith("workflows/") ? "repo" : "tenant";
     const w = parseWorkflow(e.source, e.origin, origin); // throws on any schema or reference error

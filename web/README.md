@@ -1,7 +1,6 @@
 # Cobra web
 
-Next.js dashboard for Cobra. Dashboard data is example/mock data (`lib/mock-data.ts`).
-Settings and test runs are stored in `data/` (gitignored, local dev only). Test runs are simulated.
+Next.js dashboard for Cobra. Data lives in SQLite (`COBRA_DB`, default `data/cobra.db`). The dashboard lists real workflow and skill runs; the old Settings > Test run was retired (legacy test-run rows stay viewable at `/runs/<id>`).
 
 ```bash
 npm install

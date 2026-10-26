@@ -1,8 +1,8 @@
 // Workflow CLI.
 //   npm run workflow:list
 //   npm run workflow:validate [-- --file path.yaml]
-//   npm run workflow:approve -- --name test-run --email lead@x.com [--comment "..."]
-//   npm run workflow:reject  -- --name test-run --email lead@x.com [--comment "..."]
+//   npm run workflow:approve -- --name agent-run --email lead@x.com [--comment "..."]
+//   npm run workflow:reject  -- --name agent-run --email lead@x.com [--comment "..."]
 //   npm run workflow:schema      (regenerates workflows/workflow.schema.json)
 // Approve/reject act as the given user (CLI access to the server = trust); the
 // same permission rules as the web UI apply.

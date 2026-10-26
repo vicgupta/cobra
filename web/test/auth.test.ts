@@ -56,7 +56,7 @@ test("default-tenant guard: only default admins use shared config", () => {
   const other = createUser(db, { email: "o@x.io", tenant: "acme", tenantName: "Acme", role: "admin", password: PW });
   const u = (id: number) => getSessionUser(db, createSession(db, id).token)!;
   assert.ok(canUseSharedConfig(u(vic)));
-  assert.ok(!canUseSharedConfig(u(mem)), "members can't start runs/test runs (POST /api/runs, /runs/new) or see agent status");
+  assert.ok(!canUseSharedConfig(u(mem)), "members can't start runs/test runs (shared config) or see agent status");
   assert.ok(!canUseSharedConfig(u(other)));
   assert.ok(!canUseSharedConfig(null));
 });

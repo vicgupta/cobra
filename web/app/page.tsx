@@ -13,6 +13,11 @@ import { AGENT_LABEL, type AgentId } from "@/lib/types";
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const AGENTS: AgentId[] = ["claude-code", "codex"];
 
+/** Rows from the retired Settings > Test run (workflow test-run, or pre-workflow rows). Kept, never deleted. */
+function isLegacyTestRun(r: { workflow?: string | null }): boolean {
+  return !r.workflow || r.workflow === "test-run";
+}
+
 function ago(ms: number): string {
   const m = Math.round(ms / 60000);
   if (m < 1) return "just now";
@@ -31,9 +36,10 @@ export default function Dashboard() {
 
 async function DashboardBody({ user }: { user: SessionUser }) {
   const shared = canUseSharedConfig(user);
-  // Every member of the tenant sees its runs; any member can start test runs; agent status stays admin-only.
+  // Every member of the tenant sees its runs (workflow and skill runs; legacy test-run rows are labeled); agent status stays admin-only.
   const { now, runs } = listRunsWithTime(user.tenantId);
-  const week = runs.filter((r) => now - r.startedAt < WEEK);
+  const real = runs.filter((r) => !isLegacyTestRun(r));
+  const week = real.filter((r) => now - r.startedAt < WEEK);
   const modes = shared ? await agentModes() : null;
   const team = getDb().prepare("SELECT name, email, role FROM users WHERE tenant_id = ? ORDER BY created_at").all(user.tenantId) as
     Array<{ name: string; email: string; role: string }>;
@@ -45,30 +51,30 @@ async function DashboardBody({ user }: { user: SessionUser }) {
           <h1 className="text-2xl font-semibold tracking-tight">Factory output</h1>
           <p className="text-sm text-muted">Approved issues → agent PRs → human review. Nothing auto-merges.</p>
         </div>
-        <Link href="/settings/test-run" className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400">New test run</Link>
+        <Link href="/workflows" className="rounded-md bg-emerald-500 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-400">Run a workflow</Link>
       </div>
 
       {(
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Stat label="Runs this week" value={week.length} hint="simulated test runs" />
+            <Stat label="Runs this week" value={week.length} hint="workflow and skill runs" />
             <Stat label="PRs opened" value="—" hint="no real runs yet" />
             <Stat label="Awaiting review" value="—" hint="no real runs yet" />
           </div>
 
-          <Card title="Recent runs" subtitle="Simulated test runs so far; real agent runs will appear here">
+          <Card title="Recent runs" subtitle="Latest workflow and skill runs">
             {runs.length === 0 ? (
-              <p className="py-6 text-center text-sm text-subtle">No runs yet.{shared && <> <Link href="/settings/test-run" className="text-accent hover:underline">Start a test run</Link>.</>}</p>
+              <p className="py-6 text-center text-sm text-subtle">No runs yet. <Link href="/workflows" className="text-accent hover:underline">Run a workflow</Link>.</p>
             ) : (
               <ul className="divide-y divide-border">
                 {runs.slice(0, 15).map((r) => (
                   <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3 text-sm">
                     <Link href={`/runs/${r.id}`} className="font-medium hover:underline">{r.issue > 0 && <span className="text-subtle">#{r.issue} </span>}{r.title}</Link>
                     {r.repo && <span className="font-mono text-xs text-muted">{r.repo}</span>}
-                    {r.workflow && r.workflow !== "test-run" ? (
+                    {!isLegacyTestRun(r) ? (
                       <><Badge tone="violet">{r.workflow}</Badge><Badge tone="gray" dot>{r.status ?? "unknown"}</Badge></>
                     ) : (
-                      <><AgentBadge agent={r.agent} /><Badge tone="gray" dot>{STEP_LABEL[stepAt(r, now)]}</Badge><Badge tone="amber">Simulated</Badge></>
+                      <><AgentBadge agent={r.agent} /><Badge tone="gray" dot>{STEP_LABEL[stepAt(r, now)]}</Badge><Badge tone="amber">Legacy test run</Badge></>
                     )}
                     <span className="ml-auto text-xs text-subtle">{ago(now - r.startedAt)}</span>
                   </li>
@@ -84,7 +90,7 @@ async function DashboardBody({ user }: { user: SessionUser }) {
           <Card title="Agents" subtitle="Sign-in mode from the server environment file">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {AGENTS.map((a) => {
-                const mine = runs.filter((r) => r.agent === a);
+                const mine = real.filter((r) => r.agent === a);
                 return (
                   <div key={a} className="rounded-lg border border-border p-4">
                     <div className="flex items-center justify-between">
@@ -92,7 +98,7 @@ async function DashboardBody({ user }: { user: SessionUser }) {
                       <AuthBadge mode={modes[a]} />
                     </div>
                     <dl className="mt-3 grid grid-cols-2 gap-y-2 text-sm">
-                      <dt className="text-subtle">Test runs (week)</dt><dd className="text-right tabular-nums">{week.filter((r) => r.agent === a).length}</dd>
+                      <dt className="text-subtle">Runs this week</dt><dd className="text-right tabular-nums">{week.filter((r) => r.agent === a).length}</dd>
                       <dt className="text-subtle">Last run</dt><dd className="text-right">{mine[0] ? ago(now - mine[0].startedAt) : "—"}</dd>
                     </dl>
                   </div>

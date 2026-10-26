@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=./workflow.schema.json
+# yaml-language-server: $schema=../../../../workflows/workflow.schema.json
 # The simulated test run behind the "Test run" page (POST /api/runs).
 # Nothing executes an agent or touches GitHub. Step durations reproduce the
 # page's timeline (queued 0s, signing in 1.5s, running 3.5s, PR opened 8s;

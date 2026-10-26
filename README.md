@@ -65,4 +65,4 @@ A Next.js dashboard lives in `web/` (its own `package.json`; not part of the roo
 cd web && npm install && npm run dev
 ```
 
-Open http://localhost:3000. Pages: `/` (runs-first dashboard, example data), `/settings` (agent credentials, local dev storage in gitignored `web/data/`), `/runs/new` (simulated test run — no agent is executed).
+Open http://localhost:3000. Pages: `/` (runs-first dashboard, example data), `/settings` (agent credentials, local dev storage in gitignored `web/data/`), `/workflows` (run workflows; the old `/runs/new` test run was retired and redirects to `/`).

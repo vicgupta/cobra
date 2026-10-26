@@ -83,7 +83,7 @@ export function endOtherSessions(db: DB, userId: number, currentSessionId: strin
 }
 
 /**
- * Settings and test runs still use the single shared /etc/cobra/cobra.env, so
+ * Shared settings (agent sign-in status, server env) still use the single shared /etc/cobra/cobra.env, so
  * only admins of the `default` tenant may use them.
  */
 export function canUseSharedConfig(user: Pick<SessionUser, "role" | "tenantSlug"> | null): boolean {

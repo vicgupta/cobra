@@ -63,7 +63,7 @@ export const runFields = RUN_FIELDS;
 /** One entry per registered `uses:` handler (and per github action). Written from handlers.ts. */
 export type HandlerDoc = { uses: string; action?: string; summary: string; with: Array<[string, string]>; outputs: string; notes?: string };
 export const HANDLER_DOCS: HandlerDoc[] = [
-  { uses: "simulate", summary: "Waits, then returns its own `with` as the result. Used by test-run.", with: [["duration_ms", "milliseconds to wait (default 0)"], ["(any)", "every other key is echoed back"]], outputs: "result.<key> = each `with` key" },
+  { uses: "simulate", summary: "Waits, then returns its own `with` as the result. Used by simulated fixtures.", with: [["duration_ms", "milliseconds to wait (default 0)"], ["(any)", "every other key is echoed back"]], outputs: "result.<key> = each `with` key" },
   { uses: "noop", summary: "Returns its own `with` as the result immediately.", with: [["(any)", "echoed back"]], outputs: "result.<key> = each `with` key" },
   { uses: "shell", summary: "Runs `run` with bash on the Cobra server. Disabled unless the server sets COBRA_WORKFLOW_ALLOW_SHELL=1 (not sandboxed).", with: [["cwd", "working directory (optional)"]], outputs: "result.stdout, result.exit_code (0); a non-zero exit fails the step", notes: "`run` is required for shell and not allowed on any other step. Listed secrets are the only env vars besides PATH and HOME." },
   { uses: "agent", summary: "Runs a coding agent (claude-code, codex, opencode or cursor). In simulated mode nothing executes.", with: [["driver", "claude-code | codex | opencode | cursor (or an expression such as ${{ run.engine }}); default claude-code"], ["agent", "a team agent's name instead of driver: the agent fixes engine, model and prompt, and its hash is folded into approval. Not combinable with driver"], ["model", "set from the team agent (Agents page: Model, or Default = the engine's default). Passed as --model <id> to claude -p, -m <id> to codex exec, -m <provider/model> to opencode run, --model <id> to cursor-agent -p. Allowed ids per engine are in lib/agent-models.ts (env COBRA_CLAUDE_MODELS / COBRA_CODEX_MODELS / COBRA_OPENCODE_MODELS / COBRA_CURSOR_MODELS override). With Default, the provider default model from Settings > Providers is used if a system admin set one"], ["effort", "not a with key: the Settings > Providers default effort tier (low | medium | high) is passed on real runs as --effort <tier> (claude) -c model_reasoning_effort=\"<tier>\" (codex) or --variant <tier> (opencode); Cursor has no tiers (Not supported); unset = no flag"], ["mode", "simulated | real (usually ${{ run.mode }})"], ["repo", "owner/name team repo to clone, branch cobra/<run-id> and push (usually ${{ run.repo }})"], ["prompt", "the task (usually ${{ run.prompt }})"]],
@@ -112,7 +112,7 @@ outputs:
 export function workflowExamples(dir = workflowsDir()): Example[] {
   return [
     { title: "hello-world", origin: "team workflow in the database (verbatim copy)", source: HELLO_WORLD },
-    ...["test-run.yaml", "agent-run.yaml", "issue-to-merge-flow.yaml"].map((f) => ({ title: f.replace(/\.yaml$/, ""), origin: `workflows/${f}`, source: read(dir, f) })),
+    ...["agent-run.yaml", "issue-to-merge-flow.yaml"].map((f) => ({ title: f.replace(/\.yaml$/, ""), origin: `workflows/${f}`, source: read(dir, f) })),
   ];
 }
 export function templateExamples(dir = templatesDir()): Example[] {

@@ -13,8 +13,9 @@ const nextConfig: NextConfig = {
       { source: "/repos", destination: "/repos/overview", permanent: false },
       { source: "/issues/:path*", destination: "/repos/issues/:path*", permanent: false },
       { source: "/pulls/:path*", destination: "/repos/pull-requests/:path*", permanent: false },
-      // Job 24: Test run moved under Settings (run detail pages /runs/<id> stay put).
-      { source: "/runs/new", destination: "/settings/test-run", permanent: false },
+      // Job 4 (Oct 2026): Test run retired. Old links go to the dashboard; /runs/<id> detail pages stay.
+      { source: "/runs/new", destination: "/", permanent: false },
+      { source: "/settings/test-run", destination: "/", permanent: false },
     ];
   },
   turbopack: {

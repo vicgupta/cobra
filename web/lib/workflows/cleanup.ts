@@ -7,7 +7,7 @@ export type CleanupItem = { id: string; workflow: string; headerEvents: number; 
 /**
  * One-off data fix: runs of workflows with no `uses: agent` step get engine, mode, prompt_source,
  * repo and branch cleared and their step_id='run' header events deleted. The legacy repo/agent/prompt
- * columns are only cleared when the workflow has no input of that name (test-run keeps its inputs).
+ * columns are only cleared when the workflow has no input of that name (e.g. the legacy test-run kept its inputs; runs whose workflow no longer exists are skipped).
  */
 export function cleanupNonAgentRuns(db: DB, opts: { dryRun?: boolean; dir?: string } = {}): CleanupItem[] {
   const rows = db.prepare("SELECT id, tenant_id AS tenantId, workflow FROM runs WHERE workflow IS NOT NULL ORDER BY started_at").all() as Array<{ id: string; tenantId: number; workflow: string }>;

@@ -18,6 +18,8 @@ import { decide, listWorkflowsFor, parseStatusFilter, statusCounts, type StatusF
 import { githubFiles, GitHubStorageError } from "../lib/workflows/github-files";
 
 const DIR = workflowsDir();
+// Legacy built-in test-run (retired from workflows/); kept as a simulated fixture.
+const FIX = path.join(import.meta.dirname, "fixtures", "workflows");
 const yaml = (steps: string, extra = "") => `name: t
 version: 1
 governance:
@@ -50,7 +52,7 @@ test("loader: cycles, unknown needs, unknown refs, non-ancestor refs", () => {
 test("built-ins and system templates all parse; JSON schema file is current", () => {
   const repo = loadWorkflows(DIR), tpl = loadTemplates();
   assert.deepEqual([...repo.errors, ...tpl.errors], []);
-  assert.deepEqual(repo.workflows.map((w) => w.workflow.name).sort(), ["agent-run", "issue-to-merge-flow", "issue-to-pr", "test-run"]);
+  assert.deepEqual(repo.workflows.map((w) => w.workflow.name).sort(), ["agent-run", "issue-to-merge-flow", "issue-to-pr"]);
   assert.deepEqual(tpl.workflows.map((w) => w.workflow.name).sort(), ["cloud-software-factory", "issue-to-merge"]);
   assert.equal(tpl.workflows.find((w) => w.workflow.name === "issue-to-merge")!.workflow.steps.length, 3);
   assert.equal(tpl.workflows.find((w) => w.workflow.name === "cloud-software-factory")!.workflow.steps.length, 7);
@@ -59,8 +61,8 @@ test("built-ins and system templates all parse; JSON schema file is current", ()
   assert.deepEqual(onDisk, JSON.parse(JSON.stringify(workflowJsonSchema())));
 });
 
-test("test-run.yaml reproduces the old STEP_AT timeline", () => {
-  const wf = loadWorkflows(DIR).workflows.find((w) => w.workflow.name === "test-run")!.workflow;
+test("legacy test-run fixture reproduces the old STEP_AT timeline", () => {
+  const wf = loadWorkflows(FIX).workflows.find((w) => w.workflow.name === "test-run")!.workflow;
   let t = 0; const at: number[] = [];
   for (const s of wf.steps) { at.push(t); t += Number(s.with?.duration_ms ?? 0); }
   assert.deepEqual(at, [STEP_AT.queued, STEP_AT["signing-in"], STEP_AT.running, STEP_AT["pr-opened"]]);
@@ -200,7 +202,7 @@ test("tenant workflows: save validates, names can't shadow built-ins, edit rules
   seedTemplates(db);
   const src = yaml("  - id: a\n    uses: noop\n").replace("name: t", "name: mine");
   await assert.rejects(saveTenantWorkflow(db, member, "name: x\nsteps: ["), (e: SaveError) => e.status === 400 && e.errors.length > 0);
-  await assert.rejects(saveTenantWorkflow(db, member, src.replace("name: mine", "name: test-run")), (e: SaveError) => e.status === 409);
+  await assert.rejects(saveTenantWorkflow(db, member, src.replace("name: mine", "name: agent-run")), (e: SaveError) => e.status === 409);
   await assert.rejects(saveTenantWorkflow(db, member, src.replace("name: mine", "name: issue-to-merge")), (e: SaveError) => e.status === 409);
   await assert.rejects(saveTenantWorkflow(db, member, src.replace("version: 1", "version: 1\nsystem: true")), (e: SaveError) => e.status === 400);
   await saveTenantWorkflow(db, member, src);
@@ -284,9 +286,9 @@ test("service: approve/reject/run/view enforce permissions; run log is recorded 
   assert.ok((listWorkflowsFor(db, member).body as Array<{ name: string }>).some((w) => w.name === "cloud-software-factory"));
 });
 
-test("built-in test-run runs through the engine once approved (as the Test run page does)", async () => {
+test("legacy test-run fixture runs through the engine (simulated) once approved", async () => {
   const { db, admin } = setup();
-  const wf = loadWorkflows(DIR).workflows.find((w) => w.workflow.name === "test-run")! as LoadedWorkflow;
+  const wf = loadWorkflows(FIX).workflows.find((w) => w.workflow.name === "test-run")! as LoadedWorkflow;
   const fast: Handlers = { simulate: async (c) => ({ ...c.with }), noop: async (c) => ({ ...c.with }) };
   assert.throws(() => startWorkflowRun(db, { tenantId: admin.tenantId, userId: admin.id }, wf, { repo: "vicgupta/cobra-sandbox", issue: 1 }, { handlers: fast }), WorkflowNotApprovedError);
   recordDecision(db, admin, wf, "approve");

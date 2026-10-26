@@ -20,7 +20,7 @@ export type SimulatedRun = {
   prompt: string;
   startedAt: number;
   simulated: true;
-  /** Workflow that produced the run (test runs: test-run) and its engine status. */
+  /** Workflow that produced the run (legacy test runs: test-run) and its engine status. */
   workflow?: string | null;
   status?: string | null;
 };

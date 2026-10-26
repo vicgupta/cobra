@@ -82,7 +82,7 @@ export function systemTemplates(db: DB) {
     FROM workflow_templates wt WHERE wt.current = 1 ORDER BY wt.name`).all());
 }
 
-/** Per-workflow run counts across tenants (includes repo workflows such as test-run). */
+/** Per-workflow run counts across tenants (includes legacy test-run rows). */
 export function runsByWorkflow(db: DB) {
   return plain<{ workflow: string; runs: number; succeeded: number; failed: number }>(db.prepare(`
     SELECT coalesce(workflow, '(legacy)') workflow, count(*) runs,

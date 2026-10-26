@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
+import path from "node:path";
 import { migrate, openDb, type DB } from "../lib/db";
 import { createUser } from "../lib/auth/users";
 import { loadWorkflows, workflowsDir } from "../lib/workflows/loader";
@@ -10,6 +11,8 @@ import type { Actor } from "../lib/workflows/store";
 import { failureReason, normalizeStatus, parseHistoryFilter, parsePage, workflowRunHistory, type HistoryPage } from "../lib/workflows/run-history";
 
 const DIR = workflowsDir();
+// Legacy built-in test-run (retired from workflows/); kept as a simulated fixture.
+const FIX = path.join(import.meta.dirname, "fixtures", "workflows");
 function setup() {
   const db = openDb(":memory:");
   const mk = (email: string, role: "admin" | "team_lead" | "member", tenant = "default") => {
@@ -36,7 +39,7 @@ test("run history: newest first, every field, duration, failure reason, no cobra
   const b = addRun(db, { tenantId: member.tenantId, by: lead, workflow: "test-run", at: 3000, status: "failed", ended: 3500, error: "step(s) failed: agent\npush to cobra/run_abc failed using tok-SECRET-1234", mode: "real", engine: "codex", branch: "cobra/run_abc" });
   const c = addRun(db, { tenantId: member.tenantId, by: null, workflow: "test-run", at: 2000, status: "running" });
   addRun(db, { tenantId: member.tenantId, by: member, workflow: "other-wf", at: 5000 });
-  const h = page(workflowRunHistory(db, member, "test-run", { secrets: ["tok-SECRET-1234"], dir: DIR }));
+  const h = page(workflowRunHistory(db, member, "test-run", { secrets: ["tok-SECRET-1234"], dir: FIX }));
   assert.deepEqual(h.runs.map((r) => r.id), [b, c, a]);
   assert.equal(h.scope, "team");
   const [rb, rc, ra] = h.runs;
@@ -57,11 +60,11 @@ test("run history: members and leads see only their team's runs; another team's 
   const theirs = addRun(db, { tenantId: bMember.tenantId, by: bMember, workflow: "test-run", at: 2 });
   addRun(db, { tenantId: bMember.tenantId, by: bMember, workflow: "only-b", at: 3 });
   for (const u of [member, lead]) {
-    const h = page(workflowRunHistory(db, u, "test-run", { dir: DIR }));
+    const h = page(workflowRunHistory(db, u, "test-run", { dir: FIX }));
     assert.deepEqual(h.runs.map((r) => r.id), [mine]);
     assert.equal(workflowRunHistory(db, u, "only-b", { dir: DIR }).status, 404);
   }
-  for (const u of [bMember, bLead]) assert.deepEqual(page(workflowRunHistory(db, u, "test-run", { dir: DIR })).runs.map((r) => r.id), [theirs]);
+  for (const u of [bMember, bLead]) assert.deepEqual(page(workflowRunHistory(db, u, "test-run", { dir: FIX })).runs.map((r) => r.id), [theirs]);
   assert.equal(workflowRunHistory(db, member, "no-such-workflow", { dir: DIR }).status, 404);
 });
 
@@ -70,7 +73,7 @@ test("run history: system admin sees every team's runs with a team column", () =
   const mine = addRun(db, { tenantId: member.tenantId, by: member, workflow: "test-run", at: 1 });
   const theirs = addRun(db, { tenantId: bMember.tenantId, by: bMember, workflow: "test-run", at: 2 });
   const onlyB = addRun(db, { tenantId: bMember.tenantId, by: bMember, workflow: "only-b", at: 3 });
-  const h = page(workflowRunHistory(db, admin, "test-run", { dir: DIR }));
+  const h = page(workflowRunHistory(db, admin, "test-run", { dir: FIX }));
   assert.equal(h.scope, "all-teams");
   assert.deepEqual(h.runs.map((r) => [r.id, r.team]), [[theirs, "Team other"], [mine, "Vic"]]);
   // Run detail stays tenant-scoped, so other teams' runs are listed but not linked.
@@ -82,17 +85,17 @@ test("run history: status filter and paging", () => {
   const { db, member } = setup();
   for (let i = 0; i < 30; i++) addRun(db, { tenantId: member.tenantId, by: member, workflow: "test-run", at: 100 + i, status: i % 3 === 0 ? "failed" : i % 3 === 1 ? "succeeded" : "running" });
   addRun(db, { tenantId: member.tenantId, by: member, workflow: "test-run", at: 99, status: "cancelled" });
-  const all = page(workflowRunHistory(db, member, "test-run", { dir: DIR }));
+  const all = page(workflowRunHistory(db, member, "test-run", { dir: FIX }));
   assert.deepEqual(all.counts, { all: 31, passed: 10, failed: 11, running: 10 });
   assert.equal(all.runs.length, 25); assert.equal(all.pages, 2); assert.equal(all.runs[0].startedAt, 129);
-  const p2 = page(workflowRunHistory(db, member, "test-run", { page: 2, dir: DIR }));
+  const p2 = page(workflowRunHistory(db, member, "test-run", { page: 2, dir: FIX }));
   assert.equal(p2.runs.length, 6); assert.equal(p2.runs.at(-1)?.status, "cancelled");
   assert.ok(!p2.runs.some((r) => all.runs.some((x) => x.id === r.id)), "pages don't overlap");
-  assert.equal(page(workflowRunHistory(db, member, "test-run", { page: 99, dir: DIR })).page, 2);
-  const failed = page(workflowRunHistory(db, member, "test-run", { filter: "failed", dir: DIR }));
+  assert.equal(page(workflowRunHistory(db, member, "test-run", { page: 99, dir: FIX })).page, 2);
+  const failed = page(workflowRunHistory(db, member, "test-run", { filter: "failed", dir: FIX }));
   assert.ok(failed.runs.every((r) => r.status === "failed" || r.status === "cancelled")); assert.equal(failed.total, 11);
-  assert.ok(page(workflowRunHistory(db, member, "test-run", { filter: "passed", dir: DIR })).runs.every((r) => r.status === "succeeded"));
-  assert.ok(page(workflowRunHistory(db, member, "test-run", { filter: "running", dir: DIR })).runs.every((r) => r.status === "running"));
+  assert.ok(page(workflowRunHistory(db, member, "test-run", { filter: "passed", dir: FIX })).runs.every((r) => r.status === "succeeded"));
+  assert.ok(page(workflowRunHistory(db, member, "test-run", { filter: "running", dir: FIX })).runs.every((r) => r.status === "running"));
   assert.equal(parseHistoryFilter("FAILED"), "failed"); assert.equal(parseHistoryFilter("bogus"), "all"); assert.equal(parseHistoryFilter(["passed"]), "passed");
   assert.equal(parsePage("0"), 1); assert.equal(parsePage("x"), 1); assert.equal(parsePage("3"), 3);
 });
@@ -107,7 +110,7 @@ test("migration 16 backfills triggered_by from created_by, 'unknown' when not kn
   const tb = (id: string) => (db.prepare("SELECT triggered_by t FROM runs WHERE id = ?").get(id) as { t: string }).t;
   assert.equal(tb("r_user"), "m@x.com"); assert.equal(tb("r_null"), "unknown");
   // A real start through the runner stores the starter's email.
-  const wf = loadWorkflows(DIR).workflows.find((w) => w.workflow.name === "test-run")!;
+  const wf = loadWorkflows(FIX).workflows.find((w) => w.workflow.name === "test-run")!;
   const admin = createUser(db, { email: "vicgupta@gmail.com", tenant: "default", role: "admin", password: "pw-1234567890" });
   recordDecision(db, { id: admin, email: "vicgupta@gmail.com", role: "admin", tenantId: 1 }, wf, "approve");
   const fast = { simulate: async () => ({}), noop: async () => ({}) } as never;
