@@ -14,6 +14,10 @@ import { githubApi } from "../github-api";
 import type { RunDeps } from "./service";
 import { getProviderDefaults, getProviderSecret, providerSecretValues } from "../providers";
 import { recordUsage } from "../usage";
+import { getOpenRouterKey, OPENROUTER } from "../openrouter";
+
+/** The one global OpenRouter key (any team): stored in Settings > Providers, else COBRA_OPENROUTER_API_KEY. */
+export const openRouterKey = () => getOpenRouterKey(getDb(), secret("COBRA_SECRET_KEY"), secret(OPENROUTER.envFallback));
 
 export const actor = (u: SessionUser): Actor => ({ id: u.id, email: u.email, role: u.role, tenantId: u.tenantId, name: u.name });
 
@@ -32,10 +36,10 @@ export const runDeps = (tenantId: number, user?: Actor): RunDeps => {
   // One resolver for every GitHub touch (Job 20): the repo's PAT, else GITHUB_TOKEN.
   const token = githubTokenFor(tenantId);
   return {
-    handlers: builtinHandlers({ checkRepo, tokenFor: token, collab: user ? collabHooks(db, user) : undefined, agentRunner: localRunner({ resolveSecret: secret, checkRepo, githubToken: token, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch, providerDefaults: (d) => getProviderDefaults(db, d), onUsage: (key, u) => recordUsage(db, key, u), providerSecret: (e) => getProviderSecret(db, e, secret("COBRA_SECRET_KEY")) }) }),
+    handlers: builtinHandlers({ checkRepo, tokenFor: token, collab: user ? collabHooks(db, user) : undefined, agentRunner: localRunner({ resolveSecret: secret, checkRepo, githubToken: token, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch, providerDefaults: (d) => getProviderDefaults(db, d), onUsage: (key, u) => recordUsage(db, key, u), providerSecret: (e) => getProviderSecret(db, e, secret("COBRA_SECRET_KEY")), openRouterKey }) }),
     resolveSecret: secret,
     // Every env-file value, every team PAT (plus its git header form) and provider secrets (CURSOR_API_KEY) are redacted from run logs and errors.
-    redact: () => [...Object.values(envFile()), ...teamPatSecrets(db, tenantId, secret("COBRA_SECRET_KEY")), ...providerSecretValues(db, secret("COBRA_SECRET_KEY"))],
+    redact: () => [...Object.values(envFile()), ...teamPatSecrets(db, tenantId, secret("COBRA_SECRET_KEY")), ...providerSecretValues(db, secret("COBRA_SECRET_KEY")), ...[openRouterKey()].filter((v): v is string => !!v)],
   };
 };
 

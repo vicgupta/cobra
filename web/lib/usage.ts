@@ -16,7 +16,7 @@ const add = (a: number | null, b: number | null) => (a == null && b == null ? nu
  * JSON lines are consumed (usage collected, human-readable text forwarded to the log); any other
  * line passes through unchanged. finish() returns the usage seen (null when none) and the final text.
  */
-export function usageCollector(provider: string, model: string | null, log: (s: string) => void) {
+export function usageCollector(provider: string, model: string | null, log: (s: string) => void, o: { openRouter?: boolean } = {}) {
   let buf = "", text = "";
   let u: Usage | null = null;
   const base = (): Usage => u ?? (u = { provider, model, input_tokens: null, output_tokens: null, cached_tokens: null, cost_usd: null, cost_source: null });
@@ -32,9 +32,9 @@ export function usageCollector(provider: string, model: string | null, log: (s: 
       x.output_tokens = num(us.output_tokens);
       x.cached_tokens = num(us.cache_read_input_tokens);
       const cost = num(j.total_cost_usd);
-      if (cost != null) { x.cost_usd = cost; x.cost_source = "reported"; }
+      if (cost != null && !o.openRouter) { x.cost_usd = cost; x.cost_source = "reported"; }
       const models = j.modelUsage && typeof j.modelUsage === "object" ? Object.keys(j.modelUsage) : [];
-      if (models.length) x.model = models.join(", ");
+      if (models.length && !o.openRouter) x.model = models.join(", ");
       if (typeof j.result === "string") { text = j.result; log(j.result + "\n"); }
       return;
     }

@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, existsSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import type { AgentRunner, RepoCheck } from "./handlers";
-import { modelArgs } from "../agent-models";
+import { isOpenRouterModel, modelArgs, openRouterSlug, supportsOpenRouter } from "../agent-models";
 import { effortArgs, type ProviderDefaults } from "../providers";
 import type { Engine } from "../engines";
 import { usageCollector, type Usage } from "../usage";
@@ -37,6 +37,8 @@ export type LocalRunnerOptions = {
   defaultTimeoutMs?: number;
   /** Settings > Providers defaults, read at run time: model when the agent has none, and the effort tier. */
   providerDefaults?: (driver: Engine) => ProviderDefaults;
+  /** The one global OpenRouter API key (Settings > Providers, else COBRA_OPENROUTER_API_KEY), read per run. */
+  openRouterKey?: () => string | undefined;
   /** Usage parsed from the engine's JSON output at the end of the agent step (display only). */
   onUsage?: (runKey: string, usage: Usage) => void;
 };
@@ -71,6 +73,25 @@ export function opencodeAuthFromCodex(raw: string | undefined): { auth: Record<s
     try { expires = (JSON.parse(Buffer.from(access.split(".")[1] ?? "", "base64url").toString()) as { exp?: number }).exp! * 1000 || 0; } catch { /* opaque token */ }
     return { auth: { openai: { type: "oauth", access, refresh: "", expires, ...(j.tokens?.account_id ? { accountId: j.tokens.account_id } : {}) } }, expires };
   } catch { return null; }
+}
+
+export const OPENROUTER_API_BASE = "https://openrouter.ai/api/v1";
+export const OPENROUTER_ANTHROPIC_BASE = "https://openrouter.ai/api";
+
+/** Per-run OpenRouter wiring for one engine (exported for tests). env: variables to set on THIS run's
+ *  env only; unset: variables to drop from it; codexHome: a per-run CODEX_HOME whose config.toml defines
+ *  the openrouter model_provider (the shared ~/.codex config and auth are never read or written).
+ *  Cursor can't use OpenRouter: throws. */
+export function openRouterRunConfig(driver: Engine, key: string, runDir: string): { env: Env; unset: string[]; codexHome?: { dir: string; configToml: string } } {
+  if (!supportsOpenRouter(driver)) throw new Error(`${driver} can't use OpenRouter (not supported); use Claude Code, Codex or OpenCode`);
+  if (driver === "opencode") return { env: { OPENROUTER_API_KEY: key }, unset: [] };
+  if (driver === "claude-code") return { env: { ANTHROPIC_BASE_URL: OPENROUTER_ANTHROPIC_BASE, ANTHROPIC_AUTH_TOKEN: key, ANTHROPIC_API_KEY: "" }, unset: ["CLAUDE_CODE_OAUTH_TOKEN"] };
+  const dir = path.join(runDir, ".git", "cobra-codex-home");
+  const configToml = [
+    'model_provider = "openrouter"', "",
+    "[model_providers.openrouter]", 'name = "openrouter"', `base_url = "${OPENROUTER_API_BASE}"`, 'env_key = "OPENROUTER_API_KEY"', "",
+  ].join("\n");
+  return { env: { OPENROUTER_API_KEY: key, CODEX_HOME: dir }, unset: ["CODEX_API_KEY", "OPENAI_API_KEY"], codexHome: { dir, configToml } };
 }
 
 export function localRunner(opts: LocalRunnerOptions): AgentRunner {
@@ -121,6 +142,13 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     const effort = driver === "cursor" ? null : pd.effort;
     let cmd: string, args: string[];
     let cleanup = () => {};
+    const viaOpenRouter = isOpenRouterModel(model);
+    let orKey: string | undefined;
+    if (viaOpenRouter) {
+      if (!supportsOpenRouter(driver)) throw new Error(`${driver} can't use OpenRouter (not supported); use Claude Code, Codex or OpenCode`);
+      orKey = opts.openRouterKey?.();
+      if (!orKey) throw new Error("OpenRouter has no API key: a system admin sets it in Settings > Providers (OpenRouter), or COBRA_OPENROUTER_API_KEY in the server env");
+    }
     if (driver === "opencode") {
       cmd = opts.opencodeBin ?? "opencode";
       // Isolated OpenCode config/data under .git (never committed), removed after the run.
@@ -139,8 +167,9 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       if (ak) env.ANTHROPIC_API_KEY = ak;
       const ok = opts.resolveSecret("CODEX_API_KEY");
       if (ok) env.OPENAI_API_KEY = ok;
-      if (!a && !ak && !ok) note("opencode: no credentials found (Codex ChatGPT login, ANTHROPIC_API_KEY or CODEX_API_KEY)");
+      if (!a && !ak && !ok && !orKey) note("opencode: no credentials found (Codex ChatGPT login, ANTHROPIC_API_KEY or CODEX_API_KEY)");
       cleanup = () => { try { rmSync(oc, { recursive: true, force: true }); } catch { /* best effort */ } };
+      if (orKey) Object.assign(env, openRouterRunConfig("opencode", orKey, dir).env);
       args = ["run", ...modelArgs("opencode", model), ...effortArgs("opencode", effort), "--auto", prompt + ghNote];
     } else if (driver === "cursor") {
       cmd = opts.cursorBin ?? "cursor-agent";
@@ -156,18 +185,37 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       // confined to its own throwaway clone. COBRA_CODEX_SANDBOX=workspace-write (etc.) opts back in.
       const sandbox = (opts.codexSandbox ?? process.env.COBRA_CODEX_SANDBOX ?? "").trim();
       const mode = sandbox ? ["--sandbox", sandbox] : ["--dangerously-bypass-approvals-and-sandbox"];
+      if (orKey) {
+        const c = openRouterRunConfig("codex", orKey, dir);
+        mkdirSync(c.codexHome!.dir, { recursive: true, mode: 0o700 });
+        writeFileSync(path.join(c.codexHome!.dir, "config.toml"), c.codexHome!.configToml, { mode: 0o600 });
+        for (const k of c.unset) delete env[k];
+        Object.assign(env, c.env);
+        cleanup = () => { try { rmSync(c.codexHome!.dir, { recursive: true, force: true }); } catch { /* best effort */ } };
+        note(`codex: via OpenRouter (${openRouterSlug(model!)}), per-run CODEX_HOME`);
+      }
       args = ["exec", "--skip-git-repo-check", ...modelArgs("codex", model), ...effortArgs("codex", effort), ...mode, "--json", "--output-last-message", lastFile, prompt + ghNote];
     } else {
-      const oauth = opts.resolveSecret("CLAUDE_CODE_OAUTH_TOKEN");
-      if (oauth) env.CLAUDE_CODE_OAUTH_TOKEN = oauth;
-      const key = opts.resolveSecret("ANTHROPIC_API_KEY");
-      if (!oauth && key) env.ANTHROPIC_API_KEY = key;
+      if (orKey) {
+        // OpenRouter's Anthropic-compatible API, this run only: no OAuth token, ANTHROPIC_API_KEY explicitly empty.
+        const c = openRouterRunConfig("claude-code", orKey, dir);
+        for (const k of c.unset) delete env[k];
+        Object.assign(env, c.env);
+        note(`claude-code: via OpenRouter (${openRouterSlug(model!)})`);
+      } else {
+        const oauth = opts.resolveSecret("CLAUDE_CODE_OAUTH_TOKEN");
+        if (oauth) env.CLAUDE_CODE_OAUTH_TOKEN = oauth;
+        const key = opts.resolveSecret("ANTHROPIC_API_KEY");
+        if (!oauth && key) env.ANTHROPIC_API_KEY = key;
+      }
       cmd = opts.claudeBin ?? "claude";
       args = ["-p", prompt + ghNote, ...modelArgs("claude-code", model), ...effortArgs("claude-code", effort), "--dangerously-skip-permissions", "--output-format", "json"];
     }
     note(`running ${driver} headless (model: ${model ?? "default"}${!own && model ? " (provider default)" : ""}, effort: ${effort ?? "default"})`);
     const limit = timeoutMs ?? opts.defaultTimeoutMs ?? 10 * 60_000;
-    const uc = usageCollector(driver, model, log);
+    // OpenRouter runs are recorded as provider 'openrouter' with the OpenRouter model slug. Claude Code's
+    // total_cost_usd is its own local price table, not what OpenRouter billed, so it is not stored for them.
+    const uc = viaOpenRouter ? usageCollector("openrouter", openRouterSlug(model!), log, { openRouter: true }) : usageCollector(driver, model, log);
     let r: { code: number; out: string };
     try { r = await run(cmd, args, { cwd: dir, env, signal, log: (s) => uc.write(s), timeoutMs: limit }); } finally { cleanup(); }
     const parsed = uc.finish();

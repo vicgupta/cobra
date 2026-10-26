@@ -22,7 +22,7 @@
 // agent's content hash, so changing them never changes agent hashes or invalidates approvals.
 import type { DB } from "./db";
 import { AGENT_ENGINES, type AgentEngine } from "./agents";
-import { checkModel, modelsFor, MODEL_SOURCES } from "./agent-models";
+import { checkModel, modelAllowed, modelsFor, MODEL_SOURCES } from "./agent-models";
 import { CollabError, isSystemAdmin } from "./collab";
 import { decryptSecret, encryptSecret } from "./secret-box";
 
@@ -57,7 +57,7 @@ const row = (db: DB, e: AgentEngine) => db.prepare("SELECT engine, model, effort
 export function getProviderDefaults(db: DB, engine: AgentEngine, env: Record<string, string | undefined> = process.env): ProviderDefaults {
   const r = row(db, engine);
   if (!r) return { model: null, effort: null };
-  const model = r.model && modelsFor(engine, env).includes(r.model) ? r.model : null;
+  const model = r.model && modelAllowed(engine, r.model, env) ? r.model : null;
   const effort = r.effort && (tiersFor(engine) as readonly string[]).includes(r.effort) ? (r.effort as EffortTier) : null;
   return { model, effort };
 }

@@ -169,3 +169,21 @@ Engines live in `web/lib/engines.ts` (`claude-code`, `codex`, `opencode`, `curso
 | Cursor | `cursor-agent -p` 2026.10.22-27dcf5f | auto, composer-2.5, grok-4.7, claude-sonnet-5-5, claude-opus-5-5, gpt-5.6-sol, gpt-5.6-terra, gemini-3.1-pro (`COBRA_CURSOR_MODELS`; from Cursor docs, check with `cursor-agent models` once a key is set) | Not supported (setting a tier is a 400) | `-p <prompt> --output-format text --model <id> --force --trust` |
 
 Credentials. OpenCode reuses the Codex ChatGPT login: per run Cobra writes an isolated OpenCode `auth.json` (XDG dirs under `<workspace>/.git/cobra-opencode`, deleted after the run) from `~/.codex/auth.json` (else the `CODEX_AUTH_JSON` secret) with the access token only, never Codex's refresh token. `ANTHROPIC_API_KEY` / `CODEX_API_KEY` (as `OPENAI_API_KEY`) are passed when set; the Claude OAuth token does not work with OpenCode. Cursor needs `CURSOR_API_KEY`, set by a system admin in the masked field on the Cursor row of Settings > Providers (`PUT /api/providers/cursor/secret`), stored AES-256-GCM encrypted with `COBRA_SECRET_KEY` in `provider_secrets`, never returned (only set / not set), passed as env and redacted from run logs; set/cleared is audited. Without it Cursor runs fail with a clear message. Workspace, token (repo PAT else `GITHUB_TOKEN` as `GH_TOKEN`/`GITHUB_TOKEN`), timeout, redaction and simulated mode are the same as for the other engines.
+
+## OpenRouter provider
+
+One global OpenRouter key (`provider_secrets` row `openrouter/OPENROUTER_API_KEY`, AES-256-GCM with
+`COBRA_SECRET_KEY`). Only system admins set or clear it in Settings > Providers, and both actions are
+audited (who and when, never the value). The key is never returned: the UI only shows whether it is set.
+`COBRA_OPENROUTER_API_KEY` in the env is the fallback. Every team's runs use the same key, and it is redacted from logs.
+
+Pick a model `openrouter/<vendor>/<model>` (a curated id or a custom one) on an agent or in provider defaults:
+- OpenCode: native `openrouter/...` model, `OPENROUTER_API_KEY` per run.
+- Codex: a per-run `CODEX_HOME` (in the run's .git, removed after) with `model_provider = "openrouter"`,
+  `base_url = https://openrouter.ai/api/v1`, `env_key = OPENROUTER_API_KEY`. The wire API is the default
+  `responses`, because Codex no longer supports `chat`. The shared ~/.codex is never touched.
+- Claude Code: `ANTHROPIC_BASE_URL=https://openrouter.ai/api`, `ANTHROPIC_AUTH_TOKEN=<key>`, `ANTHROPIC_API_KEY=""`,
+  set for that run only (no OAuth token). Only anthropic/* models.
+- Cursor: not supported (shown as such, and rejected).
+Usage rows use provider `openrouter`. Token counts are recorded when the engine reports them. Cost is null
+(Claude Code's local estimate isn't used).

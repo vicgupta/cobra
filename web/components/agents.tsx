@@ -4,7 +4,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge } from "./ui";
-import { ENGINES, ENGINE_LABEL } from "@/lib/engines";
+import { ENGINES, ENGINE_LABEL, isEngine } from "@/lib/engines";
+import { isOpenRouterModel, OPENROUTER_PREFIX, supportsOpenRouter } from "@/lib/agent-models";
 
 const input = "w-full rounded-md border border-border-strong bg-bg px-3 py-2 text-sm placeholder:text-faint focus:border-emerald-500 focus:outline-none";
 const button = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
@@ -20,6 +21,26 @@ export type AgentView = { name: string; engine: string; model: string | null; de
 async function call(url: string, method: string, body?: unknown) {
   const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   return { ok: r.ok, data: (await r.json().catch(() => ({ error: `HTTP ${r.status}` }))) as { error?: string; id?: string } };
+}
+
+/** Engine models, then OpenRouter (provider) models and a free-text custom openrouter/<vendor>/<model> id.
+ *  Engines that can't use OpenRouter (Cursor) show it as Not supported instead of hiding it. */
+export function ModelPicker({ engine, models, value, onChange }: { engine: string; models: string[]; value: string; onChange: (v: string) => void }) {
+  const native = models.filter((m) => !isOpenRouterModel(m)), routed = models.filter(isOpenRouterModel);
+  const ok = isEngine(engine) && supportsOpenRouter(engine);
+  const known = value === "" || models.includes(value);
+  const [custom, setCustom] = useState(!known);
+  return (
+    <div className="flex flex-col gap-1">
+      <select aria-label="Model" name="model" className={input} value={custom ? "__custom" : value} onChange={(e) => { if (e.target.value === "__custom") { setCustom(true); onChange(OPENROUTER_PREFIX); } else { setCustom(false); onChange(e.target.value); } }}>
+        <option value="">Default</option>
+        <optgroup label={`${isEngine(engine) ? ENGINE_LABEL[engine] : engine} models`}>{native.map((m) => <option key={m} value={m}>{m}</option>)}</optgroup>
+        {ok ? <optgroup label="OpenRouter">{routed.map((m) => <option key={m} value={m}>{m}</option>)}<option value="__custom">Custom OpenRouter model id…</option></optgroup>
+          : <optgroup label="OpenRouter (Not supported by this engine)"><option disabled value="__na">OpenRouter: Not supported</option></optgroup>}
+      </select>
+      {custom && ok && <input aria-label="Custom OpenRouter model" className={input} placeholder="openrouter/<vendor>/<model>" value={value} onChange={(e) => onChange(e.target.value.trim())} />}
+    </div>
+  );
 }
 
 function AgentForm({ initial, repos, models, onDone }: { initial?: AgentView; repos: string[]; models: Record<string, string[]>; onDone: () => void }) {
@@ -46,9 +67,7 @@ function AgentForm({ initial, repos, models, onDone }: { initial?: AgentView; re
         <select aria-label="Engine" name="engine" className={input} value={engine} onChange={(e) => { setEngine(e.target.value); setModel(""); }}>
           {ENGINES.map((e) => <option key={e} value={e}>{ENGINE_LABEL[e]}</option>)}
         </select>
-        <select aria-label="Model" name="model" className={input} value={model} onChange={(e) => setModel(e.target.value)}>
-          <option value="">Default</option>{(models[engine] ?? []).map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
+        <ModelPicker key={engine} engine={engine} models={models[engine] ?? []} value={model} onChange={setModel} />
         <select aria-label="Default repo" name="defaultRepo" className={input} value={repo} onChange={(e) => setRepo(e.target.value)}>
           <option value="">No default repo</option>{repos.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
