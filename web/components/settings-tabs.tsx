@@ -4,7 +4,7 @@ import { SubTabs } from "./tabs";
 import { currentUser } from "@/lib/auth/server";
 import { isSystemAdmin } from "@/lib/collab";
 
-const TABS = [["/settings/templates", "Templates"], ["/settings/team", "Team"], ["/settings/repos", "Repos"], ["/settings/docs", "Docs"], ["/settings/providers", "Providers"], ["/settings/usage", "Usage"], ["/settings/skill-rules", "Skill rules"], ["/settings/team-notifications", "Team notifications"]] as const;
+const TABS = [["/settings/templates", "Templates"], ["/settings/team", "Team"], ["/settings/repos", "Repos"], ["/settings/docs", "Docs"], ["/settings/providers", "Providers"], ["/settings/usage", "Usage"], ["/settings/skill-rules", "Skill rules"], ["/settings/team-notifications", "Team notifications"], ["/settings/sessions", "Sessions"]] as const;
 const ADMIN_TABS = [...TABS, ["/settings/notifications", "Notifications"], ["/settings/updates", "Updates"]] as const;
 
 async function AdminAwareTabs() {

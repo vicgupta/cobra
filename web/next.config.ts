@@ -16,6 +16,9 @@ const nextConfig: NextConfig = {
       // Job 4 (Oct 2026): Test run retired. Old links go to the dashboard; /runs/<id> detail pages stay.
       { source: "/runs/new", destination: "/", permanent: false },
       { source: "/settings/test-run", destination: "/", permanent: false },
+      // Job 7 (Oct 2026): Sessions moved from the header menu into Settings.
+      { source: "/account/sessions", destination: "/settings/sessions", permanent: false },
+      { source: "/sessions", destination: "/settings/sessions", permanent: false },
     ];
   },
   turbopack: {

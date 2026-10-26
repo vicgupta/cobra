@@ -13,7 +13,6 @@ export async function UserMenu() {
         <span className="block text-fg-soft">{u.email}</span>
         <span className="block text-xs text-subtle">{u.tenantName}{admin ? " · System admin" : ""}</span>
       </span>
-      <a href="/account/sessions" className="rounded-md border border-border-strong px-2.5 py-1 text-xs text-fg-soft hover:bg-surface">Sessions</a>
       <LogoutButton />
     </div>
   );
