@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Badge, type Tone } from "./ui";
+import { ENGINES, ENGINE_LABEL, engineLabel } from "@/lib/engines";
 
 const input = "w-full rounded-md border border-border-strong bg-bg px-3 py-2 text-sm placeholder:text-faint focus:border-emerald-500 focus:outline-none";
 const button = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
@@ -166,7 +167,7 @@ export function RunForm({ name, inputs, enabled, reason, flow: flowProp, hasAgen
         </select></label>
       <label className="block text-sm"><span className="text-fg-soft">Engine</span> <span className="ml-2 text-xs text-subtle">workflow default: {flow.engine}</span>
         <select aria-label="Engine" className={`${input} mt-1`} value={engine} onChange={(e) => setEngine(e.target.value)}>
-          <option value="claude-code">Claude Code</option><option value="codex">Codex</option>
+          {ENGINES.map((e) => <option key={e} value={e}>{ENGINE_LABEL[e]}</option>)}
         </select></label>
       <fieldset className="text-sm"><legend className="text-fg-soft">Prompt</legend>
         <div className="mt-1 flex gap-4">
@@ -238,7 +239,7 @@ export function RunLog({ initial }: { initial: Detail }) {
       </div>
       {run.engine && (
         <dl className="grid grid-cols-[7rem_1fr] gap-y-1 rounded-md border border-border bg-bg p-3 text-sm">
-          <dt className="text-subtle">Engine</dt><dd>{run.engine === "codex" ? "Codex" : "Claude Code"}</dd>
+          <dt className="text-subtle">Engine</dt><dd>{engineLabel(run.engine)}</dd>
           <dt className="text-subtle">Mode</dt><dd>{run.mode ?? "—"}</dd>
           <dt className="text-subtle">Repo</dt><dd className="font-mono text-xs">{run.repo || "—"}{run.branch ? ` → ${run.branch}` : ""}</dd>
           <dt className="text-subtle">Prompt</dt><dd><span className="text-xs text-subtle">{run.promptSource === "workflow" ? "workflow prompt" : run.promptSource === "custom" ? "free-form" : run.promptSource === "agent" ? "team agent prompt" : "none"}</span>

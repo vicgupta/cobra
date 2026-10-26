@@ -6,6 +6,7 @@ import { approvalState, canApprove, PermissionError, recordDecision, selfApprova
 import { InputError, resolveInputs, WorkflowNotApprovedError, type Handlers } from "./engine";
 import { interpolate } from "./expr";
 import { ENGINES, type Engine } from "./schema";
+import { ENGINE_LIST, isEngine } from "../engines";
 import { checkTeamRepo, listTeamRepos } from "../repos";
 import type { LoadedWorkflow } from "./loader";
 import { canViewRun, getRunDetail, hasAgentStep, listWorkflowRuns, startWorkflowRun, type RunMeta } from "./runner";
@@ -238,8 +239,8 @@ export function runAgent(db: DB, user: Actor, name: string, body: AgentRunBody |
 export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: string; model?: string | null; prompt: string; hash?: string; repo?: string; mode?: unknown; purpose?: string }, deps: RunDeps): Res & { run?: ReturnType<typeof startWorkflowRun> } {
   const mode = str(o.mode) ?? "simulated";
   if (mode !== "simulated" && mode !== "real") return err(400, "mode must be simulated or real");
-  if (o.engine !== "claude-code" && o.engine !== "codex") return err(400, "engine must be claude-code or codex");
-  const engine = o.engine as "claude-code" | "codex";
+  if (!isEngine(o.engine)) return err(400, `engine must be ${ENGINE_LIST}`);
+  const engine: Engine = o.engine;
   const prompt = o.prompt.trim();
   if (!prompt) return err(400, "prompt is required");
   if (prompt.length > 20000) return err(400, "prompt is too long");

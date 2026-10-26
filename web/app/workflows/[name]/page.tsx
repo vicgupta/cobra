@@ -9,6 +9,7 @@ import { RunHistory } from "@/components/run-history";
 import { parseHistoryFilter, parsePage, workflowRunHistory, type HistoryPage } from "@/lib/workflows/run-history";
 import { runDeps } from "@/lib/workflows/server";
 import type { SessionUser } from "@/lib/auth/sessions";
+import { engineLabel } from "@/lib/engines";
 
 export const metadata = { title: "Workflow · Cobra" };
 
@@ -63,7 +64,7 @@ function Detail({ user, name, sp }: { user: SessionUser; name: string; sp: SP })
             <dt className="text-subtle">Approvers</dt><dd>{d.approvers.join(", ")}</dd>
             <dt className="text-subtle">Reviewers</dt><dd>{d.reviewers.join(", ") || "—"}</dd>
             <dt className="text-subtle">Needs</dt><dd>{d.minApprovals} approval(s); self-approval policy: {d.selfApprovalPolicy}</dd>
-            {d.hasAgentStep && <><dt className="text-subtle">Engine</dt><dd>{d.engine === "codex" ? "Codex" : "Claude Code"} (default; overridable per run)</dd></>}
+            {d.hasAgentStep && <><dt className="text-subtle">Engine</dt><dd>{engineLabel(d.engine)} (default; overridable per run)</dd></>}
             {d.hasAgentStep && d.repo && <><dt className="text-subtle">Repo</dt><dd className="font-mono text-xs">{d.repo}</dd></>}
             <dt className="text-subtle">Triggers</dt><dd>{d.triggers.join(", ") || "—"}</dd>
             <dt className="text-subtle">Storage</dt><dd>{d.storage?.kind === "github" ? <span className="font-mono text-xs">github: {d.storage.repo}/{d.storage.path}{d.storage.branch ? `@${d.storage.branch}` : ""}</span> : d.storage?.kind === "database" ? "Cobra database" : d.storage?.kind}</dd>

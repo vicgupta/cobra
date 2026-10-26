@@ -8,6 +8,7 @@ import { getAgent } from "./agents";
 import { GitHubApiError, type GitHub } from "./github-api";
 import { runDirect, type RunDeps } from "./workflows/service";
 import type { Actor } from "./workflows/store";
+import { ENGINE_LIST, isEngine } from "./engines";
 
 export class CollabError extends Error { constructor(public status: number, msg: string) { super(msg); } }
 export type AuditAction = "issue_create" | "agent_issue" | "pr_create" | "comment" | "merge";
@@ -94,7 +95,7 @@ function pickAgent(db: DB, u: Actor, b: Record<string, unknown>, basePrompt: str
     return { agent: a.name, engine: a.engine, prompt: `${a.prompt}\n\nAdditional instructions:\n${basePrompt}`, hash: a.contentHash };
   }
   const engine = b.engine ?? "claude-code";
-  if (engine !== "claude-code" && engine !== "codex") throw new CollabError(400, "engine must be claude-code or codex");
+  if (!isEngine(engine)) throw new CollabError(400, `engine must be ${ENGINE_LIST}`);
   return { engine, prompt: basePrompt };
 }
 

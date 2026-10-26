@@ -15,7 +15,7 @@ Status: implemented on branch `v1-workflow-redesign` (approved by Vic on 2026-10
 - On /workflows, **New** offers "From a team template": pick a template (team or system) and a repo from the dropdown, which creates a workflow instance. The instance records `template_name`, `template_hash` and the attached `repo` (column `tenant_workflows.repo`).
 
 ## 3. Engine choice
-- Optional top-level `engine: claude-code | codex` on a workflow or template. It's backward compatible: if it's missing, the default is `claude-code`.
+- Optional top-level `engine: claude-code | codex | opencode | cursor` on a workflow or template. It's backward compatible: if it's missing, the default is `claude-code`.
 - Each run may override the engine. The run stores `runs.engine`, the run page shows it, and steps can read it as `${{ run.engine }}`. A workflow with an `agent` input (for example test-run) gets that input set to the engine.
 
 ## 4. Prompts
@@ -39,7 +39,7 @@ Pick repo → attach a team template (instance) → choose or override engine �
 
 ## 6. Team agents (Job 14)
 
-- **What:** a team agent is a named engine (`claude-code` or `codex`) plus a prompt, with an optional default repo from the team's repos. They live in `team_agents` (migration 9); see `web/lib/agents.ts`.
+- **What:** a team agent is a named engine (`claude-code`, `codex`, `opencode` or `cursor`) plus a prompt, with an optional default repo from the team's repos. They live in `team_agents` (migration 9); see `web/lib/agents.ts`.
   - **Version:** `content_hash = sha256(engine + "\n" + prompt)` is the agent's prompt version.
   - **Who can do what:** any team member can list, view, create and run agents, with no limit on how many. Only the creator, team leads and admins can edit or delete one; anyone else gets 403.
   - **Visibility:** other teams never see an agent (404).
@@ -158,3 +158,14 @@ Each workflow page (`/workflows/<name>`) has a read-only **Run history** card (r
 - The header has a Light / Dark / System picker (`components/theme-toggle.tsx`). Default is System (`prefers-color-scheme`).
 - The choice is kept per browser in the `cobra_theme` cookie (an inline script in `app/layout.tsx` sets `<html class="dark|light" data-theme>` before first paint, so there is no flash) and per signed-in user in `users.theme` (migration 17, NULL = never chosen) via `PATCH /api/me {theme}`. On login and on page load the user's saved theme wins over the cookie.
 - **New UI must use the semantic tokens from `app/globals.css`, not raw `zinc-*`/`white` classes:** `bg-bg`, `bg-surface`, `bg-surface-2`, `border-border`, `border-border-strong` (inputs), `text-fg`, `text-fg-soft`, `text-muted`, `text-subtle`, `text-faint`, `text-accent`, `bg-accent-solid` + `text-on-accent` (buttons), `text-success` / `text-warning` / `text-danger` / `text-info`, `bg-danger-soft` / `bg-warning-soft`, `bg-code` + `text-code-fg` (YAML, logs, prompts). Status pills: `<Badge tone>` from `components/ui.tsx`. Tinted fills like `bg-emerald-500/10` are fine in both themes. `dark:` variants work (class-based) if ever needed. Keep text at WCAG AA (4.5:1) in both themes.
+
+### OpenCode and Cursor engines (migration 18)
+
+Engines live in `web/lib/engines.ts` (`claude-code`, `codex`, `opencode`, `cursor`) and are used everywhere: workflow `engine`, per-run override, agent create/edit, `with.driver`, Test run, Settings > Providers, run log header. Agent hashes are computed exactly as before.
+
+| Engine | CLI (verified on nova) | Models (`lib/agent-models.ts`, env override) | Effort | Flags |
+|---|---|---|---|---|
+| OpenCode | `opencode run` 1.19.4 (`npm i -g opencode-ai`, ~/.local/bin) | openai/gpt-6.1-sol, openai/gpt-6-sol, openai/gpt-6-astra, openai/gpt-6-luna, openai/gpt-5.6-sol, openai/gpt-5.6-terra, openai/gpt-5.6-luna, openai/gpt-5.5 (`COBRA_OPENCODE_MODELS`) | low / medium / high | `run -m <provider/model> --variant <tier> --auto <prompt>` |
+| Cursor | `cursor-agent -p` 2026.10.22-27dcf5f | auto, composer-2.5, grok-4.7, claude-sonnet-5-5, claude-opus-5-5, gpt-5.6-sol, gpt-5.6-terra, gemini-3.1-pro (`COBRA_CURSOR_MODELS`; from Cursor docs, check with `cursor-agent models` once a key is set) | Not supported (setting a tier is a 400) | `-p <prompt> --output-format text --model <id> --force --trust` |
+
+Credentials. OpenCode reuses the Codex ChatGPT login: per run Cobra writes an isolated OpenCode `auth.json` (XDG dirs under `<workspace>/.git/cobra-opencode`, deleted after the run) from `~/.codex/auth.json` (else the `CODEX_AUTH_JSON` secret) with the access token only, never Codex's refresh token. `ANTHROPIC_API_KEY` / `CODEX_API_KEY` (as `OPENAI_API_KEY`) are passed when set; the Claude OAuth token does not work with OpenCode. Cursor needs `CURSOR_API_KEY`, set by a system admin in the masked field on the Cursor row of Settings > Providers (`PUT /api/providers/cursor/secret`), stored AES-256-GCM encrypted with `COBRA_SECRET_KEY` in `provider_secrets`, never returned (only set / not set), passed as env and redacted from run logs; set/cleared is audited. Without it Cursor runs fail with a clear message. Workspace, token (repo PAT else `GITHUB_TOKEN` as `GH_TOKEN`/`GITHUB_TOKEN`), timeout, redaction and simulated mode are the same as for the other engines.

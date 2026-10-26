@@ -5,13 +5,14 @@ import { useCallback, useEffect, useState } from "react";
 import { AgentBadge } from "./badges";
 import { Badge, Card } from "./ui";
 import { RUN_STEPS, STEP_AT, STEP_LABEL, stepAt, type RunStep, type SimulatedRun } from "@/lib/runs";
-import type { AgentId } from "@/lib/types";
+import type { Engine } from "@/lib/engines";
+import { ENGINES, ENGINE_LABEL } from "@/lib/engines";
 
 type Run = SimulatedRun & { step: RunStep };
 const input = "w-full rounded-md border border-border-strong bg-bg px-3 py-2 text-sm placeholder:text-faint focus:border-emerald-500 focus:outline-none";
 
 export function TestRun() {
-  const [form, setForm] = useState({ agent: "claude-code" as AgentId, repo: "vicgupta/cobra", issue: "1", title: "", prompt: "" });
+  const [form, setForm] = useState({ agent: "claude-code" as Engine, repo: "vicgupta/cobra", issue: "1", title: "", prompt: "" });
   const [active, setActive] = useState<Run | null>(null);
   const [recent, setRecent] = useState<Run[]>([]);
   const [now, setNow] = useState(0);
@@ -64,9 +65,8 @@ export function TestRun() {
         <form onSubmit={start} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="space-y-1.5 text-sm">
             <span>Agent</span>
-            <select className={input} value={form.agent} onChange={(e) => setForm({ ...form, agent: e.target.value as AgentId })}>
-              <option value="claude-code">Claude Code</option>
-              <option value="codex">Codex</option>
+            <select className={input} value={form.agent} onChange={(e) => setForm({ ...form, agent: e.target.value as Engine })}>
+              {ENGINES.map((e) => <option key={e} value={e}>{ENGINE_LABEL[e]}</option>)}
             </select>
           </label>
           <label className="space-y-1.5 text-sm">

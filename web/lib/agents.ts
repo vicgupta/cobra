@@ -9,8 +9,10 @@ import type { DB } from "./db";
 import { checkTeamRepo } from "./repos";
 import { checkModel } from "./agent-models";
 
-export const AGENT_ENGINES = ["claude-code", "codex"] as const;
-export type AgentEngine = (typeof AGENT_ENGINES)[number];
+import { ENGINES, type Engine } from "./engines";
+
+export const AGENT_ENGINES = ENGINES;
+export type AgentEngine = Engine;
 export const AGENT_NAME_RE = /^[a-z][a-z0-9-]{0,62}$/;
 
 export type TeamAgent = {

@@ -8,5 +8,6 @@
 
 ## Notes
 
+- **OpenCode + Cursor engines (migration 18).** Rebuilds `team_agents` and `provider_defaults` to widen the engine CHECK (data copied as is), adds `provider_secrets` and `provider_audit.detail`. Back up the DB first. CLIs as the cobra user into ~/.local/bin (already on the service PATH): `npm i -g --prefix ~/.local opencode-ai` and `curl https://cursor.com/install -fsS | bash`. OpenCode reuses the Codex login; Cursor needs a system admin to set CURSOR_API_KEY on the Cursor row of Settings > Providers.
 - **Providers (Settings > Providers, migration 14).** Adds `provider_defaults` and `provider_audit`. Empty tables mean no behavior change: runs pass no extra flags until a system admin sets a default model or effort tier. Effort flags: `claude --effort <tier>`, `codex exec -c model_reasoning_effort="<tier>"`; if a CLI upgrade drops these, clear the effort defaults on the page. Agent hashes and workflow approvals are unaffected.
 - **Run history (migration 16).** Adds `runs.triggered_by` (backfilled from `created_by` emails, else `unknown`) and an index on `runs(workflow, started_at)`. Read-only feature; back up the DB first as above.

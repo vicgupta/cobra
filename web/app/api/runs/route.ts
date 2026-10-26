@@ -4,6 +4,7 @@ import { listRuns } from "@/lib/runs-db";
 import { apiGuard } from "@/lib/auth/server";
 import { actor, getDb, runDeps } from "@/lib/workflows/server";
 import { startRun } from "@/lib/workflows/service";
+import { isEngine } from "@/lib/engines";
 
 // Test runs are the built-in workflows/test-run.yaml, executed by the workflow
 // engine (simulated steps only: nothing executes Claude Code or Codex).
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
   const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!b) return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   const inputs = { agent: b.agent, repo: b.repo, issue: b.issue, title: b.title, prompt: b.prompt };
-  const r = startRun(getDb(), actor(g.user), TEST_RUN_WORKFLOW, { inputs, mode: "simulated", engine: b.agent === "codex" ? "codex" : "claude-code", ...(typeof b.prompt === "string" && b.prompt.trim() ? { promptMode: "custom", prompt: b.prompt } : { promptMode: "none" }) }, runDeps(g.user.tenantId, actor(g.user)), { idPrefix: "sim_" });
+  const r = startRun(getDb(), actor(g.user), TEST_RUN_WORKFLOW, { inputs, mode: "simulated", engine: isEngine(b.agent) ? b.agent : "claude-code", ...(typeof b.prompt === "string" && b.prompt.trim() ? { promptMode: "custom", prompt: b.prompt } : { promptMode: "none" }) }, runDeps(g.user.tenantId, actor(g.user)), { idPrefix: "sim_" });
   if (!r.run) return NextResponse.json(r.body, { status: r.status });
   const i = r.run.inputs;
   return NextResponse.json({

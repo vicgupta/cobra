@@ -1,6 +1,7 @@
 // Built-in step handlers. Pure Node (no Next imports) so the CLI and tests can use them.
 import { spawn } from "node:child_process";
 import type { Handlers, StepHandler } from "./engine";
+import { isEngine, type Engine } from "../engines";
 
 const sleep = (ms: number, signal: AbortSignal) => new Promise<void>((res, rej) => {
   const t = setTimeout(res, ms);
@@ -40,10 +41,10 @@ export const shell: StepHandler = ({ run, secrets, signal, with: w }) => new Pro
  * Runs a coding agent (src/agents drivers) in a worker workspace. The web app has
  * no workspace provider yet, so this needs an injected runner; without one it fails clearly.
  */
-export type AgentRunner = (args: { runId: string; driver: "claude-code" | "codex"; with: Record<string, unknown>; secrets: Record<string, string>; signal: AbortSignal; timeoutMs?: number; log: (chunk: string) => void }) => Promise<Record<string, unknown>>;
+export type AgentRunner = (args: { runId: string; driver: Engine; with: Record<string, unknown>; secrets: Record<string, string>; signal: AbortSignal; timeoutMs?: number; log: (chunk: string) => void }) => Promise<Record<string, unknown>>;
 export const agent = (runner?: AgentRunner): StepHandler => async ({ runId, stepKey, with: w, secrets, signal, timeoutMs, log }) => {
-  const driver = (w.driver || "claude-code") as "claude-code" | "codex";
-  if (driver !== "claude-code" && driver !== "codex") throw new Error(`unknown agent driver ${String(driver)}`);
+  const driver = (w.driver || "claude-code") as Engine;
+  if (!isEngine(driver)) throw new Error(`unknown agent driver ${String(driver)}`);
   // Simulated mode: record what would run, execute nothing.
   if (w.mode === "simulated") return { simulated: true, driver, summary: `Simulated ${driver} run${w.repo ? ` on ${String(w.repo)}` : ""}; prompt: ${String(w.prompt ?? "")}` };
   if (!runner) throw new Error("no agent workspace provider is configured on this server; agent steps can't run yet");
@@ -115,8 +116,8 @@ export const github = (fetchImpl: typeof fetch = fetch, checkRepo: RepoCheck = e
       return { number: d.number, url: d.html_url };
     }
     case "pr_from_issue": {
-      const driver = (w.driver || "claude-code") as "claude-code" | "codex";
-      if (driver !== "claude-code" && driver !== "codex") throw new Error(`unknown agent driver ${String(driver)}`);
+      const driver = (w.driver || "claude-code") as Engine;
+      if (!isEngine(driver)) throw new Error(`unknown agent driver ${String(driver)}`);
       if (simulated) { say(`simulated: would run ${driver} on issue #${String(w.issue)} and open a PR`); return { number: 0, url: "", branch: "", head_sha: "", simulated: true, driver }; }
       const n = posInt(w.issue, "issue");
       if (!gopts.agentRunner) throw new Error("no agent workspace provider is configured on this server; agent steps can't run yet");

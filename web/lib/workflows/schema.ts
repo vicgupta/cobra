@@ -3,6 +3,7 @@
 // The zod schema is the source of truth; workflows/workflow.schema.json is
 // generated from it (npm run workflow:schema) and checked by a test.
 import { z } from "zod";
+import { ENGINES, ENGINE_LIST } from "../engines";
 
 export const ROLES = ["admin", "team_lead", "member"] as const;
 export type Role = (typeof ROLES)[number];
@@ -75,14 +76,12 @@ export const StepSchema = z.strictObject({
     if (s.with.driver !== undefined) ctx.addIssue({ code: "custom", message: "with.driver can't be combined with with.agent (the agent fixes the engine)", path: ["with", "driver"] });
   }
   const d = s.with.driver;
-  if (s.uses === "agent" && d !== undefined && !(typeof d === "string" && (["claude-code", "codex"].includes(d) || d.includes("${{")))) {
-    ctx.addIssue({ code: "custom", message: "with.driver must be claude-code or codex", path: ["with", "driver"] });
+  if (s.uses === "agent" && d !== undefined && !(typeof d === "string" && ((ENGINES as readonly string[]).includes(d) || d.includes("${{")))) {
+    ctx.addIssue({ code: "custom", message: `with.driver must be ${ENGINE_LIST}`, path: ["with", "driver"] });
   }
 });
 
-export const ENGINES = ["claude-code", "codex"] as const;
-export type Engine = (typeof ENGINES)[number];
-export const ENGINE_LABEL: Record<Engine, string> = { "claude-code": "Claude Code", codex: "Codex" };
+export { ENGINES, ENGINE_LABEL, type Engine } from "../engines";
 
 export const WorkflowSchema = z.strictObject({
   name: id("name"),

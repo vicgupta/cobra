@@ -4,6 +4,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge } from "./ui";
+import { ENGINES, ENGINE_LABEL } from "@/lib/engines";
 
 const input = "w-full rounded-md border border-border-strong bg-bg px-3 py-2 text-sm placeholder:text-faint focus:border-emerald-500 focus:outline-none";
 const button = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
@@ -12,7 +13,7 @@ const ghost = "rounded-md border border-border-strong px-3 py-1.5 text-sm text-f
 const PROMPT_MAX = 20000, DESC_MAX = 500;
 const PROMPT_EXAMPLE = "You are a careful code reviewer. Read the diff on the current branch, list bugs, risky changes and missing tests, then suggest concrete fixes. Do not push or merge.";
 const label = "block text-sm font-medium text-fg-soft";
-const ENGINE: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex" };
+const ENGINE: Record<string, string> = ENGINE_LABEL;
 
 export type AgentView = { name: string; engine: string; model: string | null; description: string | null; prompt: string; defaultRepo: string | null; contentHash: string; createdByEmail: string | null; canEdit: boolean };
 
@@ -43,7 +44,7 @@ function AgentForm({ initial, repos, models, onDone }: { initial?: AgentView; re
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
         <input aria-label="Agent name" name="name" className={input} placeholder="name (e.g. reviewer)" value={name} onChange={(e) => setName(e.target.value)} />
         <select aria-label="Engine" name="engine" className={input} value={engine} onChange={(e) => { setEngine(e.target.value); setModel(""); }}>
-          <option value="claude-code">Claude Code</option><option value="codex">Codex</option>
+          {ENGINES.map((e) => <option key={e} value={e}>{ENGINE_LABEL[e]}</option>)}
         </select>
         <select aria-label="Model" name="model" className={input} value={model} onChange={(e) => setModel(e.target.value)}>
           <option value="">Default</option>{(models[engine] ?? []).map((m) => <option key={m} value={m}>{m}</option>)}

@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import { ENGINES, ENGINE_LABEL } from "@/lib/engines";
 
 const input = "w-full rounded-md border border-border-strong bg-bg px-3 py-2 text-sm placeholder:text-faint focus:border-emerald-500 focus:outline-none";
 const button = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
@@ -32,7 +33,7 @@ export type AgentChoice = { name: string; engine: string };
 function AgentPicker({ agents, value, onChange }: { agents: AgentChoice[]; value: string; onChange: (v: string) => void }) {
   return (
     <select aria-label="Agent" className={input} value={value} onChange={(e) => onChange(e.target.value)}>
-      <option value="engine:claude-code">Claude Code</option><option value="engine:codex">Codex</option>
+      {ENGINES.map((e) => <option key={e} value={`engine:${e}`}>{ENGINE_LABEL[e]}</option>)}
       {agents.length > 0 && <optgroup label="Team agents">{agents.map((a) => <option key={a.name} value={`agent:${a.name}`}>{a.name} ({a.engine})</option>)}</optgroup>}
     </select>
   );

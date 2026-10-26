@@ -12,7 +12,7 @@ import { checkTeamRepo, teamPatSecrets, teamRepo, tokenFor } from "../repos";
 import { githubFiles } from "./github-files";
 import { githubApi } from "../github-api";
 import type { RunDeps } from "./service";
-import { getProviderDefaults } from "../providers";
+import { getProviderDefaults, getProviderSecret, providerSecretValues } from "../providers";
 
 export const actor = (u: SessionUser): Actor => ({ id: u.id, email: u.email, role: u.role, tenantId: u.tenantId, name: u.name });
 
@@ -22,6 +22,7 @@ function envFile(): Record<string, string> {
 
 /** Secrets are read fresh from the server env file at run time (process.env as fallback); never stored in YAML. */
 const secret = (name: string) => envFile()[name] || process.env[name] || undefined;
+export const secretValue = secret;
 /** Handlers scoped to a team: GitHub steps and agent clones only reach that team's registered repos. */
 /** user: who starts the run; the github issue/PR/merge actions audit as them and enforce the merge rule (Job 21). */
 export const runDeps = (tenantId: number, user?: Actor): RunDeps => {
@@ -30,10 +31,10 @@ export const runDeps = (tenantId: number, user?: Actor): RunDeps => {
   // One resolver for every GitHub touch (Job 20): the repo's PAT, else GITHUB_TOKEN.
   const token = githubTokenFor(tenantId);
   return {
-    handlers: builtinHandlers({ checkRepo, tokenFor: token, collab: user ? collabHooks(db, user) : undefined, agentRunner: localRunner({ resolveSecret: secret, checkRepo, githubToken: token, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch, providerDefaults: (d) => getProviderDefaults(db, d) }) }),
+    handlers: builtinHandlers({ checkRepo, tokenFor: token, collab: user ? collabHooks(db, user) : undefined, agentRunner: localRunner({ resolveSecret: secret, checkRepo, githubToken: token, defaultBranch: (r) => teamRepo(db, tenantId, r)?.defaultBranch, providerDefaults: (d) => getProviderDefaults(db, d), providerSecret: (e) => getProviderSecret(db, e, secret("COBRA_SECRET_KEY")) }) }),
     resolveSecret: secret,
-    // Every env-file value and every team PAT (plus its git header form) is redacted from run logs and errors.
-    redact: () => [...Object.values(envFile()), ...teamPatSecrets(db, tenantId, secret("COBRA_SECRET_KEY"))],
+    // Every env-file value, every team PAT (plus its git header form) and provider secrets (CURSOR_API_KEY) are redacted from run logs and errors.
+    redact: () => [...Object.values(envFile()), ...teamPatSecrets(db, tenantId, secret("COBRA_SECRET_KEY")), ...providerSecretValues(db, secret("COBRA_SECRET_KEY"))],
   };
 };
 

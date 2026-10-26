@@ -6,6 +6,7 @@ import path from "node:path";
 import { parse as parseYaml, YAMLParseError } from "yaml";
 import { refsIn, operandPaths } from "./expr";
 import { formatIssues, WorkflowSchema, type Workflow } from "./schema";
+import type { Engine } from "../engines";
 
 /** repo: workflows/*.yaml (built-ins); template: workflows/templates/*.yaml (system templates); tenant: a tenant's own copy stored in the DB. */
 export type Origin = "repo" | "template" | "tenant";
@@ -22,7 +23,7 @@ export type LoadedWorkflow = {
   /** Unknown agent references (run-time validation errors shown on the workflow page). */
   agentErrors?: string[];
 };
-export type ResolvedAgent = { engine: "claude-code" | "codex"; model?: string | null; prompt: string; hash: string };
+export type ResolvedAgent = { engine: Engine; model?: string | null; prompt: string; hash: string };
 export type LoadError = { file: string; errors: string[] };
 export class WorkflowError extends Error {
   constructor(public file: string, public errors: string[]) {

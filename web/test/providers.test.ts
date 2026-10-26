@@ -18,10 +18,12 @@ function setup() {
 }
 const is = (status: number) => (e: unknown) => e instanceof CollabError && e.status === status;
 
-test("providers: listed from code, both with low/medium/high, no simulated provider", () => {
+test("providers: listed from code, tiers per engine (Cursor: none), no simulated provider", () => {
   const { db } = setup();
-  const p = listProviders(db, {});
-  assert.deepEqual(p.map((x) => x.engine), ["claude-code", "codex"]);
+  const all = listProviders(db, {});
+  assert.deepEqual(all.map((x) => x.engine), ["claude-code", "codex", "opencode", "cursor"]);
+  assert.deepEqual([...all[3].tiers], []);
+  const p = all.slice(0, 3);
   assert.ok(p[0].models.includes("claude-sonnet-5-5"));
   assert.ok(p[1].models.includes("gpt-6.1-sol"));
   for (const x of p) { assert.deepEqual([...x.tiers], ["low", "medium", "high"]); assert.deepEqual(x.defaults, { model: null, effort: null }); }
@@ -51,7 +53,7 @@ test("providers: validation of models and tiers per provider, and audit", () => 
   assert.deepEqual(setProviderDefaults(db, admin, "codex", { model: "default", effort: null }, 14, {}), { model: null, effort: null });
   const log = listProviderAudit(db);
   assert.equal(log.length, 4);
-  assert.deepEqual({ ...log[0] }, { actorEmail: "admin@a.com", engine: "codex", oldModel: "gpt-6-luna", newModel: null, oldEffort: "medium", newEffort: null, at: 14 });
+  assert.deepEqual({ ...log[0] }, { actorEmail: "admin@a.com", engine: "codex", oldModel: "gpt-6-luna", newModel: null, oldEffort: "medium", newEffort: null, detail: null, at: 14 });
   // a stored model dropped from the env list reads as default
   assert.equal(getProviderDefaults(db, "claude-code", { COBRA_CLAUDE_MODELS: "opus" }).model, null);
 });

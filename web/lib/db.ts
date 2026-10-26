@@ -296,6 +296,48 @@ const MIGRATIONS: Array<(db: DB) => void> = [
   `),
   // 17 (Theme): per-user Light / Dark / System preference; NULL = never chosen (browser cookie applies)
   (db) => db.exec("ALTER TABLE users ADD COLUMN theme TEXT CHECK (theme IN ('light', 'dark', 'system'));"),
+  // 18 (OpenCode + Cursor engines): widen the engine CHECKs (table rebuilds, same columns and order) and add
+  // encrypted per-provider secrets (CURSOR_API_KEY; AES-256-GCM with COBRA_SECRET_KEY, never shown) + an audit note column.
+  (db) => db.exec(`
+    CREATE TABLE team_agents_new (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      engine TEXT NOT NULL CHECK (engine IN ('claude-code', 'codex', 'opencode', 'cursor')),
+      prompt TEXT NOT NULL,
+      default_repo TEXT,
+      content_hash TEXT NOT NULL,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      model TEXT,
+      description TEXT,
+      UNIQUE (tenant_id, name)
+    );
+    INSERT INTO team_agents_new (id, tenant_id, name, engine, prompt, default_repo, content_hash, created_by, created_at, updated_at, model, description)
+      SELECT id, tenant_id, name, engine, prompt, default_repo, content_hash, created_by, created_at, updated_at, model, description FROM team_agents;
+    DROP TABLE team_agents;
+    ALTER TABLE team_agents_new RENAME TO team_agents;
+    CREATE TABLE provider_defaults_new (
+      engine TEXT PRIMARY KEY CHECK (engine IN ('claude-code','codex','opencode','cursor')),
+      model TEXT,
+      effort TEXT CHECK (effort IS NULL OR effort IN ('low','medium','high')),
+      updated_at INTEGER NOT NULL,
+      updated_by TEXT
+    );
+    INSERT INTO provider_defaults_new SELECT engine, model, effort, updated_at, updated_by FROM provider_defaults;
+    DROP TABLE provider_defaults;
+    ALTER TABLE provider_defaults_new RENAME TO provider_defaults;
+    CREATE TABLE provider_secrets (
+      engine TEXT NOT NULL,
+      name TEXT NOT NULL,
+      value_enc TEXT NOT NULL,
+      set_at INTEGER NOT NULL,
+      set_by TEXT,
+      PRIMARY KEY (engine, name)
+    );
+    ALTER TABLE provider_audit ADD COLUMN detail TEXT;
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

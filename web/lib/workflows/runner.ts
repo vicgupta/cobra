@@ -5,6 +5,7 @@ import type { DB } from "../db";
 import { approvalState, approvedChecker } from "./approvals";
 import { executeWorkflow, LOG_CAP, redact as redactText, InputError, resolveInputs, WorkflowNotApprovedError, type EngineEvent, type ExecuteOptions, type RunResult, type StepState } from "./engine";
 import type { LoadedWorkflow } from "./loader";
+import type { Engine } from "../engines";
 
 /** True when the workflow has at least one `uses: agent` step; only those runs carry engine/mode/repo/prompt/branch. */
 /** Agent steps, plus github pr_from_issue (it runs an agent): these get the engine/repo/mode run fields. */
@@ -12,7 +13,7 @@ export function hasAgentStep(workflow: { steps: ReadonlyArray<{ uses: string; wi
   return workflow.steps.some((s) => s.uses === "agent" || (s.uses === "github" && s.with?.action === "pr_from_issue"));
 }
 
-export type RunMeta = { engine: "claude-code" | "codex"; prompt: string; promptSource: "workflow" | "custom" | "none" | "agent"; mode: "simulated" | "real"; repo?: string; branch?: string };
+export type RunMeta = { engine: Engine; prompt: string; promptSource: "workflow" | "custom" | "none" | "agent"; mode: "simulated" | "real"; repo?: string; branch?: string };
 export type StartedRun = { id: string; startedAt: number; inputs: Record<string, string | number | boolean>; done: Promise<RunResult> };
 
 export function startWorkflowRun(

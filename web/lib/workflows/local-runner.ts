@@ -5,11 +5,12 @@
 // (never the default branch, never --force); otherwise it uses an empty scratch repo.
 // Pure Node (no Next imports) so tests can drive it with fake binaries.
 import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, existsSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import type { AgentRunner, RepoCheck } from "./handlers";
 import { modelArgs } from "../agent-models";
 import { effortArgs, type ProviderDefaults } from "../providers";
+import type { Engine } from "../engines";
 
 type Env = Record<string, string | undefined>;
 
@@ -23,6 +24,10 @@ export type LocalRunnerOptions = {
   githubToken?: (repo: string) => string | undefined;
   claudeBin?: string;
   codexBin?: string;
+  opencodeBin?: string;
+  cursorBin?: string;
+  /** Decrypted Settings > Providers secret for an engine (Cursor: CURSOR_API_KEY). */
+  providerSecret?: (engine: Engine) => string | undefined;
   /** Value for codex --sandbox; empty means --dangerously-bypass-approvals-and-sandbox (default; see COBRA_CODEX_SANDBOX). */
   codexSandbox?: string;
   gitBin?: string;
@@ -30,7 +35,7 @@ export type LocalRunnerOptions = {
   remoteBase?: string;
   defaultTimeoutMs?: number;
   /** Settings > Providers defaults, read at run time: model when the agent has none, and the effort tier. */
-  providerDefaults?: (driver: "claude-code" | "codex") => ProviderDefaults;
+  providerDefaults?: (driver: Engine) => ProviderDefaults;
 };
 
 export const workspacesDir = () => process.env.COBRA_WORKSPACES_DIR || "/home/cobra/workspaces";
@@ -48,6 +53,21 @@ function run(cmd: string, args: string[], o: { cwd: string; env: Env; signal: Ab
     child.on("error", (e) => { clearTimeout(t); reject(e); });
     child.on("close", (code) => { clearTimeout(t); o.signal.removeEventListener("abort", kill); resolve({ code: code ?? -1, out }); });
   });
+}
+
+/** OpenCode reuses Codex's ChatGPT login: build OpenCode's openai OAuth entry from the Codex auth.json
+ *  (the live ~/.codex/auth.json, else the CODEX_AUTH_JSON secret). The refresh token is deliberately
+ *  left out so OpenCode can never rotate (and so invalidate) Codex's refresh token. Exported for tests. */
+export function opencodeAuthFromCodex(raw: string | undefined): { auth: Record<string, unknown>; expires: number } | null {
+  if (!raw) return null;
+  try {
+    const j = JSON.parse(raw) as { tokens?: { access_token?: string; account_id?: string } };
+    const access = j.tokens?.access_token;
+    if (!access) return null;
+    let expires = 0;
+    try { expires = (JSON.parse(Buffer.from(access.split(".")[1] ?? "", "base64url").toString()) as { exp?: number }).exp! * 1000 || 0; } catch { /* opaque token */ }
+    return { auth: { openai: { type: "oauth", access, refresh: "", expires, ...(j.tokens?.account_id ? { accountId: j.tokens.account_id } : {}) } }, expires };
+  } catch { return null; }
 }
 
 export function localRunner(opts: LocalRunnerOptions): AgentRunner {
@@ -95,9 +115,38 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     const pd = opts.providerDefaults?.(driver) ?? { model: null, effort: null };
     const own = typeof w.model === "string" && w.model.trim() ? w.model.trim() : null;
     const model = own ?? pd.model;
-    const effort = pd.effort;
+    const effort = driver === "cursor" ? null : pd.effort;
     let cmd: string, args: string[];
-    if (driver === "codex") {
+    let cleanup = () => {};
+    if (driver === "opencode") {
+      cmd = opts.opencodeBin ?? "opencode";
+      // Isolated OpenCode config/data under .git (never committed), removed after the run.
+      const oc = path.join(dir, ".git", "cobra-opencode");
+      for (const k of ["data", "config", "state", "cache"]) mkdirSync(path.join(oc, k), { recursive: true, mode: 0o700 });
+      Object.assign(env, { XDG_DATA_HOME: path.join(oc, "data"), XDG_CONFIG_HOME: path.join(oc, "config"), XDG_STATE_HOME: path.join(oc, "state"), XDG_CACHE_HOME: path.join(oc, "cache") });
+      const home = process.env.HOME ?? "";
+      const live = home && existsSync(path.join(home, ".codex", "auth.json")) ? readFileSync(path.join(home, ".codex", "auth.json"), "utf8") : undefined;
+      const a = opencodeAuthFromCodex(live) ?? opencodeAuthFromCodex(opts.resolveSecret("CODEX_AUTH_JSON"));
+      if (a) {
+        mkdirSync(path.join(oc, "data", "opencode"), { recursive: true, mode: 0o700 });
+        writeFileSync(path.join(oc, "data", "opencode", "auth.json"), JSON.stringify(a.auth), { mode: 0o600 });
+        note(`opencode: using the Codex ChatGPT login for openai/* models${a.expires && a.expires < Date.now() ? " (its access token has expired; run a Codex job or re-login to refresh it)" : ""}`);
+      }
+      const ak = opts.resolveSecret("ANTHROPIC_API_KEY");
+      if (ak) env.ANTHROPIC_API_KEY = ak;
+      const ok = opts.resolveSecret("CODEX_API_KEY");
+      if (ok) env.OPENAI_API_KEY = ok;
+      if (!a && !ak && !ok) note("opencode: no credentials found (Codex ChatGPT login, ANTHROPIC_API_KEY or CODEX_API_KEY)");
+      cleanup = () => { try { rmSync(oc, { recursive: true, force: true }); } catch { /* best effort */ } };
+      args = ["run", ...modelArgs("opencode", model), ...effortArgs("opencode", effort), "--auto", prompt + ghNote];
+    } else if (driver === "cursor") {
+      cmd = opts.cursorBin ?? "cursor-agent";
+      const key = opts.providerSecret?.("cursor") ?? opts.resolveSecret("CURSOR_API_KEY");
+      if (!key) throw new Error("Cursor has no API key: an admin sets CURSOR_API_KEY in Settings > Providers (Cursor row)");
+      env.CURSOR_API_KEY = key;
+      if (effort) note("cursor: effort tiers are not supported; ignoring the effort default");
+      args = ["-p", prompt + ghNote, "--output-format", "text", ...modelArgs("cursor", model), "--force", "--trust"];
+    } else if (driver === "codex") {
       cmd = opts.codexBin ?? "codex";
       // Codex's own sandbox (bubblewrap/landlock) cannot write on hosts without user namespaces, so by
       // default it runs unsandboxed like Claude's --dangerously-skip-permissions: the run is already
@@ -115,7 +164,8 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     }
     note(`running ${driver} headless (model: ${model ?? "default"}${!own && model ? " (provider default)" : ""}, effort: ${effort ?? "default"})`);
     const limit = timeoutMs ?? opts.defaultTimeoutMs ?? 10 * 60_000;
-    const r = await run(cmd, args, { cwd: dir, env, signal, log, timeoutMs: limit });
+    let r: { code: number; out: string };
+    try { r = await run(cmd, args, { cwd: dir, env, signal, log, timeoutMs: limit }); } finally { cleanup(); }
     if (r.code !== 0) throw new Error(`${driver} exited with code ${r.code}`);
 
     await g(["add", "-A"]);
