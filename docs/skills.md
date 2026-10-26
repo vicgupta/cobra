@@ -21,9 +21,9 @@ A skill is a standard operating procedure: markdown text (the SOP) plus an order
 ```
 
 - Actions: `agent` (`with.agent` names a saved agent or `with.prompt`), `shell`, `github`, `approval`, `simulate`, `call_skill` (`skill`, `with` = child inputs).
-- Steps run in order. `when` skips a step; `on_failure` is `stop` (default), `continue` or `{goto: <later step>}`; `retries`, `timeout_s`; `secrets` lists names only.
+- Steps run in order. `when` skips a step; `on_failure` is `stop` (default), `continue` or `{goto: <later step>}`; `retries`, `timeout_seconds`; `secrets` lists names only.
 - `section` references a heading anchor in the SOP (`## Implement` → `implement`). The section text is appended to the agent prompt; the whole SOP is written to `.cobra/SOP.md` in the checkout (mode 600, added to `.git/info/exclude`).
-- Body-only skill: an empty plan derives one agent step (`run`) with input `goal`.
+- Body-only skill: an empty plan derives one agent step (`run`) with input `prompt`.
 - Limits: SOP 4 MB, plan JSON 4 MB, 2000 steps, `call_skill` depth 4. Validation errors are returned as a list. Prompts over 20 000 characters only fail the advisory `prompt_length` rule.
 - JSON Schema: `planJsonSchema()` in `web/lib/skills/plan.ts`; `POST /api/skills/validate` gives live validation plus a grade preview.
 

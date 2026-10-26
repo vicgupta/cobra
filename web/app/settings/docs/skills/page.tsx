@@ -11,9 +11,9 @@ export default function SkillDocsPage() {
     <h2 className="mt-8 text-lg font-semibold">The plan</h2>
     <ul className={li}>
       <li><code>inputs</code>: name → {"{"}type string|number|boolean, required, default, description{"}"}.</li>
-      <li><code>steps</code> run top to bottom. Each has a unique <code>id</code>, an <code>action</code> (agent, shell, github, approval, call_skill), <code>with</code>, optional <code>when</code> (skip unless true), <code>handoffs</code> ({"{"}from: &quot;inputs.x&quot; or &quot;steps.id.outputs.y&quot;, to: &quot;var&quot;{"}"} fills <code>{"{{var}}"}</code>), <code>outputs</code>, <code>retries</code>, <code>timeout_s</code>, <code>secrets</code> (names only) and <code>on_failure</code>: stop, continue or {"{"}goto: later step{"}"}.</li>
+      <li><code>steps</code> run top to bottom. Each has a unique <code>id</code>, an <code>action</code> (agent, shell, github, approval, call_skill), <code>with</code>, optional <code>when</code> (skip unless true), <code>handoffs</code> ({"{"}from: &quot;inputs.x&quot; or &quot;steps.id.outputs.y&quot;, to: &quot;var&quot;{"}"} fills <code>{"{{var}}"}</code>), <code>outputs</code>, <code>retries</code>, <code>timeout_seconds</code>, <code>secrets</code> (names only) and <code>on_failure</code>: stop, continue or {"{"}goto: later step{"}"}.</li>
       <li><code>section</code>: a heading anchor in the SOP. That section is added to the agent&apos;s prompt; the full SOP is written to <code>.cobra/SOP.md</code> in the checkout (git-excluded) so long SOPs aren&apos;t pasted into prompts.</li>
-      <li>Body-only skills: leave the plan empty and a one-step agent plan is derived (input <code>goal</code>, the SOP is the instructions).</li>
+      <li>Body-only skills: leave the plan empty and a one-step agent plan is derived (input <code>prompt</code>, the SOP is the instructions).</li>
       <li>Limits: SOP {LIMITS.bodyBytes / 1024 / 1024} MB, plan {LIMITS.planBytes / 1024 / 1024} MB, {LIMITS.steps} steps, call_skill depth {LIMITS.depth}. Long prompts only trigger the advisory prompt-length rule.</li>
     </ul>
     <h2 className="mt-8 text-lg font-semibold">Master skill</h2>

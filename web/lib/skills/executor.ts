@@ -160,6 +160,12 @@ async function runStep(db: DB, who: Who, skill: Skill, step: PlanStep, vars: Rec
     if (sim) return { simulated: true, would_run: String(w.run ?? "") };
   }
   if (step.action === "approval" && sim) return { simulated: true, approved: true };
+  if (step.action === "github") {
+    // Like agent steps, GitHub steps default to the run's repo and mode; simulated runs are always simulated.
+    if (w.mode === undefined || w.mode === "") w.mode = run.mode;
+    if (sim) w.mode = "simulated";
+    if (w.repo === undefined || w.repo === "") w.repo = run.repo;
+  }
   if (step.action === "agent") {
     if (w.mode === undefined || w.mode === "") w.mode = run.mode;
     if (sim) w.mode = "simulated";

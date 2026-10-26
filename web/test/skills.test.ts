@@ -244,3 +244,11 @@ test("huge skill: 1000+ line body, 200+ steps, section extraction, handoffs and 
   // no length rejection between tiny and huge
   for (const n of [1, 30000, 300000]) assert.equal(svc.create(db, member, { name: `len-${n}`, body: "x".repeat(n) }).status, 201);
 });
+
+test("github steps default to the run's repo and mode (simulated runs stay simulated)", async () => {
+  const { db, member } = setup();
+  const s = createSkill(db, member, { name: "gh", description: "d", plan: { steps: [{ id: "issue", action: "github", with: { action: "issue_create", title: "t", body: "b" }, on_failure: "stop", outputs: { n: "result.number" } }] } });
+  const r = await startSkillRun(db, who(member), s, {}, deps, { repo: "acme/app" }).done;
+  assert.equal(r.status, "succeeded", r.error);
+  assert.ok(r.outputs !== undefined);
+});
