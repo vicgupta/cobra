@@ -7,6 +7,7 @@ import { statfsSync, statSync } from "node:fs";
 import os from "node:os";
 import type { DB } from "./db";
 import { CollabError, isSystemAdmin } from "./collab";
+import { updateSummaryLines } from "./tool-updates";
 
 export const NOTIFY_TZ = "America/New_York";
 export const DAILY_HOUR = 7;
@@ -131,6 +132,10 @@ export function buildDailyReport(db: DB, now: number, health: Health): DailyRepo
     "",
     "AUDIT HIGHLIGHTS",
     auditRows.length ? auditRows.map((a) => `  - ${fmtNy(a.at)} [${a.src}] ${a.actor}: ${a.what}`).join("\n") : "  (none)",
+    "",
+    "AGENT TOOL UPDATES (4:00 AM ET)",
+    ...updateSummaryLines(db, nyClock(now).date),
+    `  Before/after details: ${APP_URL}/settings/updates`,
     "",
     "SERVICE HEALTH",
     `  Host uptime: ${(health.uptimeSec / 3600).toFixed(1)} h; disk free: ${gb(health.diskFreeBytes)} of ${gb(health.diskTotalBytes)}; DB size: ${mb(health.dbBytes)}`,

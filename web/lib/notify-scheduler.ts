@@ -4,6 +4,8 @@
 import { dbPath, getDb } from "./db";
 import { sendEmail } from "./mail";
 import { maybeSendDaily, serviceHealth } from "./notifications";
+import { maybeRunDailyUpdate } from "./tool-updates";
+import { nodeOps } from "./tool-updates-node";
 
 const g = globalThis as { __cobraNotifyTimer?: ReturnType<typeof setInterval> };
 
@@ -13,6 +15,13 @@ export function startNotifyScheduler(): void {
   const tick = async () => {
     if (busy) return;
     busy = true;
+    try {
+      // 4:00 AM ET agent-tool updates (disable with COBRA_UPDATE_SCHEDULER=off), then the 7 AM email.
+      if (process.env.COBRA_UPDATE_SCHEDULER !== "off") {
+        const u = await maybeRunDailyUpdate(getDb(), nodeOps, Date.now());
+        if (!["not-due", "already", "busy", "waiting"].includes(u)) console.log(`[cobra] daily tool update: ${u}`);
+      }
+    } catch (e) { console.error("[cobra] daily tool update:", e instanceof Error ? e.message : e); }
     try {
       const r = await maybeSendDaily(getDb(), sendEmail, Date.now(), () => serviceHealth(dbPath(), "/var/lib/cobra"));
       if (r === "sent" || r === "failed") console.log(`[cobra] daily admin email: ${r}`);

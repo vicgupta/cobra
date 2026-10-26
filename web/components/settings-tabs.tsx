@@ -1,11 +1,11 @@
-// Sub-tab bar for /settings/*. Notifications is shown to system admins only (its page and API 404 for others).
+// Sub-tab bar for /settings/*. Notifications and Updates are shown to system admins only (its page and API 404 for others).
 import { Suspense } from "react";
 import { SubTabs } from "./tabs";
 import { currentUser } from "@/lib/auth/server";
 import { isSystemAdmin } from "@/lib/collab";
 
 const TABS = [["/settings/templates", "Templates"], ["/settings/team", "Team"], ["/settings/repos", "Repos"], ["/settings/docs", "Docs"], ["/settings/providers", "Providers"], ["/settings/usage", "Usage"], ["/settings/skill-rules", "Skill rules"]] as const;
-const ADMIN_TABS = [...TABS, ["/settings/notifications", "Notifications"]] as const;
+const ADMIN_TABS = [...TABS, ["/settings/notifications", "Notifications"], ["/settings/updates", "Updates"]] as const;
 
 async function AdminAwareTabs() {
   const u = await currentUser();

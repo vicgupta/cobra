@@ -566,6 +566,45 @@ const MIGRATIONS: Array<(db: DB) => void> = [
       used_at INTEGER
     );
   `),
+  // 24 (Tool updates): daily 4 AM ET update of the agent CLIs + model catalogs, stored as before/after snapshots.
+  (db) => db.exec(`
+    CREATE TABLE update_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      enabled INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER,
+      updated_by TEXT
+    );
+    INSERT INTO update_settings (id, enabled) VALUES (1, 1);
+    CREATE TABLE update_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL CHECK (kind IN ('scheduled','manual')),
+      run_date TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('waiting','running','ok','partial','failed','skipped')),
+      reason TEXT,
+      next_try_at INTEGER,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      triggered_by TEXT,
+      created_at INTEGER NOT NULL,
+      started_at INTEGER,
+      finished_at INTEGER
+    );
+    CREATE UNIQUE INDEX update_runs_daily ON update_runs(run_date) WHERE kind = 'scheduled';
+    CREATE TABLE update_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      run_id INTEGER NOT NULL REFERENCES update_runs(id) ON DELETE CASCADE,
+      tool TEXT NOT NULL,
+      label TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('cli','catalog')),
+      before TEXT,
+      after TEXT,
+      result TEXT NOT NULL CHECK (result IN ('changed','unchanged','rolled_back','failed','skipped')),
+      method TEXT,
+      detail TEXT,
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX update_items_run ON update_items(run_id);
+    CREATE TABLE update_catalog_ids (tool TEXT PRIMARY KEY, ids TEXT NOT NULL, at INTEGER NOT NULL);
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

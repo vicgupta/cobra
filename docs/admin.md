@@ -39,3 +39,14 @@ People can join Cobra in three ways. Each one is bound to an email address, and 
 - **Allow new team sign-ups** (Settings > Team > *Sign-ups*, system admins only, audited as `signup_toggle`) is on by default. Turning it off disables *Create a new team* only. Invites and join requests keep working.
 - Existing accounts are untouched, and `scripts/user.mts` still creates users directly.
 - For local testing, `COBRA_MAIL_OUTBOX=/path/file.jsonl` writes emails to a file instead of sending them. Never set it on production. `COBRA_PUBLIC_URL` sets the link base (default `https://nova.kantsy.com`).
+
+## Agent tool updates (Settings > Updates)
+
+Every day at **4:00 AM America/New_York** (DST-aware) Cobra updates the agent CLIs on the server as the service user (`cobra`) and snapshots the model catalogs. Toggle it in **Settings > Updates** (system admins only, default on); every toggle and "Run update now" is audited.
+
+- **Claude Code, Codex, OpenCode** (npm global prefix `~/.local`): `npm i -g --prefix ~/.local/share/cobra-updates/<tool>-XXXX <pkg>@latest` into a staging prefix, smoke-tested with `--version`, then swapped in by an atomic rename. The previous package is kept as `<pkg>.cobra-prev`; if the swapped-in binary fails `--version`, the previous one is renamed back and the row is marked **rolled back**. A failed staged install never touches the live install.
+- **Cursor agent**: the official installer (`cursor.com/install`) adds a new versioned directory; if the new `cursor-agent --version` fails, the `cursor-agent`/`agent` links are atomically repointed to the previous version.
+- **Catalogs**: OpenCode Zen (`opencode models opencode --refresh`), Codex (`~/.codex/models_cache.json`, read only), Cursor (only when `CURSOR_API_KEY` is set). OpenRouter is **on hold** and not refreshed.
+- If an agent run is active, the update retries every 15 minutes until 6:30 AM ET, then is skipped and recorded. If the server was down at 4 AM it catches up the same day.
+- The page shows each run as a before/after table (Before, After, changed / unchanged / rolled back / failed, time) with a history of past runs; the 7 AM admin email includes last night's results.
+- Disable the timer with `COBRA_UPDATE_SCHEDULER=off`. Commands run with a minimal environment (no Cobra secrets) and output is redacted.
