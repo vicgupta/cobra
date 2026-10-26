@@ -1,3 +1,4 @@
+import { customModelIds } from "./provider-credentials";
 // Team agents: a named engine + prompt that any team member can create and run,
 // directly or from workflow steps (`uses: agent` with `with: { agent: <name> }`).
 // Visible to the whole team, never to other teams. Only the creator, team leads
@@ -58,7 +59,7 @@ function validate(db: DB, tenantId: number, b: Input, partial: TeamAgent | null)
   // Changing the engine without naming a model resets it to the default (old model may not exist there).
   const rawModel = b.model !== undefined ? b.model : partial && engine === partial.engine ? partial.model : null;
   let model: string | null;
-  try { model = checkModel(engine, rawModel); } catch (e) { throw new AgentError(400, (e as Error).message); }
+  try { model = checkModel(engine, rawModel, process.env, customModelIds(db)); } catch (e) { throw new AgentError(400, (e as Error).message); }
   const prompt = b.prompt === undefined && partial ? partial.prompt : typeof b.prompt === "string" ? b.prompt.replace(/\r\n/g, "\n").trim() : "";
   if (!prompt) throw new AgentError(400, "prompt is required");
   if (prompt.length > AGENT_PROMPT_MAX) throw new AgentError(400, `prompt must be at most ${AGENT_PROMPT_MAX} characters`);

@@ -14,6 +14,7 @@ import { effortArgs, type ProviderDefaults } from "../providers";
 import type { Engine } from "../engines";
 import { usageCollector, type Usage } from "../usage";
 
+import { codexServerLogin, runAuth, type AuthMode } from "../provider-credentials";
 type Env = Record<string, string | undefined>;
 
 export type LocalRunnerOptions = {
@@ -32,6 +33,15 @@ export type LocalRunnerOptions = {
   cursorBin?: string;
   /** Decrypted Settings > Providers secret for an engine (Cursor: CURSOR_API_KEY). */
   providerSecret?: (engine: Engine) => string | undefined;
+  /** Stored (Settings > Providers) credential for an engine slot, e.g. ("claude-code", "ANTHROPIC_API_KEY").
+   *  Falls back to resolveSecret(name) (the server env file) when it returns undefined. */
+  credential?: (engine: string, name: string) => string | undefined;
+  /** Chosen auth method per engine (Settings > Providers); default "auto". */
+  authMode?: (engine: Engine) => AuthMode;
+  /** Whether the server has a Codex ChatGPT login (~/.codex/auth.json); default: checks $HOME. */
+  codexServerLogin?: () => boolean;
+  /** Admin-defined custom OpenAI-compatible providers for OpenCode: opencode.json + the env carrying keys. */
+  opencodeCustom?: () => { config: Record<string, unknown> | null; env: Record<string, string> };
   /** Value for codex --sandbox; empty means --dangerously-bypass-approvals-and-sandbox (default; see COBRA_CODEX_SANDBOX). */
   codexSandbox?: string;
   gitBin?: string;
@@ -163,6 +173,7 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       orKey = opts.openRouterKey?.();
       if (!orKey) throw new Error("OpenRouter has no API key: a system admin sets it in Settings > Providers (OpenRouter), or COBRA_OPENROUTER_API_KEY in the server env");
     }
+    const cred = (e: string, n: string) => opts.credential?.(e, n) ?? opts.resolveSecret(n);
     if (driver === "opencode") {
       cmd = opts.opencodeBin ?? "opencode";
       // Isolated OpenCode config/data under .git (never committed), removed after the run.
@@ -177,9 +188,17 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
         writeFileSync(path.join(oc, "data", "opencode", "auth.json"), JSON.stringify(a.auth), { mode: 0o600 });
         note(`opencode: using the Codex ChatGPT login for openai/* models${a.expires && a.expires < Date.now() ? " (its access token has expired; run a Codex job or re-login to refresh it)" : ""}`);
       }
-      const ak = opts.resolveSecret("ANTHROPIC_API_KEY");
+      const custom = opts.opencodeCustom?.();
+      if (custom?.config) {
+        mkdirSync(path.join(oc, "config", "opencode"), { recursive: true, mode: 0o700 });
+        writeFileSync(path.join(oc, "config", "opencode", "opencode.json"), JSON.stringify(custom.config), { mode: 0o600 });
+        Object.assign(env, custom.env);
+        const cid = model?.split("/")[0];
+        if (cid && custom.config.provider && Object.hasOwn(custom.config.provider as object, cid)) note(`opencode: using custom provider '${cid}'`);
+      }
+      const ak = cred("claude-code", "ANTHROPIC_API_KEY");
       if (ak) env.ANTHROPIC_API_KEY = ak;
-      const ok = opts.resolveSecret("CODEX_API_KEY");
+      const ok = cred("codex", "CODEX_API_KEY");
       if (ok) env.OPENAI_API_KEY = ok;
       // OpenCode's own provider (opencode/<model>, OpenCode Console / Zen): its own key, never the OpenRouter one.
       const ocKey = opts.providerSecret?.("opencode") ?? opts.resolveSecret("OPENCODE_API_KEY");
@@ -212,6 +231,11 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
         Object.assign(env, c.env);
         cleanup = () => { try { rmSync(c.codexHome!.dir, { recursive: true, force: true }); } catch { /* best effort */ } };
         note(`codex: via OpenRouter (${openRouterSlug(model!)}), per-run CODEX_HOME`);
+      } else {
+        const ra = runAuth("codex", opts.authMode?.("codex") ?? "auto", (n) => cred("codex", n), opts.codexServerLogin ? opts.codexServerLogin() : codexServerLogin());
+        for (const k of ra.unset) delete env[k];
+        Object.assign(env, ra.env);
+        note(ra.note);
       }
       args = ["exec", "--skip-git-repo-check", ...modelArgs("codex", model), ...effortArgs("codex", effort), ...mode, "--json", "--output-last-message", lastFile, prompt + ghNote];
     } else {
@@ -222,10 +246,10 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
         Object.assign(env, c.env);
         note(`claude-code: via OpenRouter (${openRouterSlug(model!)})`);
       } else {
-        const oauth = opts.resolveSecret("CLAUDE_CODE_OAUTH_TOKEN");
-        if (oauth) env.CLAUDE_CODE_OAUTH_TOKEN = oauth;
-        const key = opts.resolveSecret("ANTHROPIC_API_KEY");
-        if (!oauth && key) env.ANTHROPIC_API_KEY = key;
+        const ra = runAuth("claude-code", opts.authMode?.("claude-code") ?? "auto", (n) => cred("claude-code", n), false);
+        for (const k of ra.unset) delete env[k];
+        Object.assign(env, ra.env);
+        note(ra.note);
       }
       cmd = opts.claudeBin ?? "claude";
       args = ["-p", prompt + ghNote, ...modelArgs("claude-code", model), ...effortArgs("claude-code", effort), "--dangerously-skip-permissions", "--output-format", "json"];

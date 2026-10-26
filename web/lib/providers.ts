@@ -1,3 +1,4 @@
+import { customModelIds } from "./provider-credentials";
 // Settings > Providers: the coding-agent CLIs Cobra runs, their models and effort tiers, and the
 // system-wide defaults a system admin may set (default model + default effort per provider).
 //
@@ -57,7 +58,7 @@ const row = (db: DB, e: AgentEngine) => db.prepare("SELECT engine, model, effort
 export function getProviderDefaults(db: DB, engine: AgentEngine, env: Record<string, string | undefined> = process.env): ProviderDefaults {
   const r = row(db, engine);
   if (!r) return { model: null, effort: null };
-  const model = r.model && modelAllowed(engine, r.model, env) ? r.model : null;
+  const model = r.model && modelAllowed(engine, r.model, env, customModelIds(db)) ? r.model : null;
   const effort = r.effort && (tiersFor(engine) as readonly string[]).includes(r.effort) ? (r.effort as EffortTier) : null;
   return { model, effort };
 }
@@ -65,7 +66,7 @@ export function getProviderDefaults(db: DB, engine: AgentEngine, env: Record<str
 export function listProviders(db: DB, env: Record<string, string | undefined> = process.env): ProviderView[] {
   return AGENT_ENGINES.map((e) => {
     const p = PROVIDERS[e], r = row(db, e);
-    return { engine: e, label: p.label, cli: p.cli, models: modelsFor(e, env), modelSource: MODEL_SOURCES[e], modelFlag: p.modelFlag, tiers: p.tiers, effortFlag: p.effortFlag, effortSource: p.effortSource, cliTiers: p.cliTiers, defaults: getProviderDefaults(db, e, env), updatedAt: r?.updated_at ?? null, updatedBy: r?.updated_by ?? null };
+    return { engine: e, label: p.label, cli: p.cli, models: modelsFor(e, env, customModelIds(db)), modelSource: MODEL_SOURCES[e], modelFlag: p.modelFlag, tiers: p.tiers, effortFlag: p.effortFlag, effortSource: p.effortSource, cliTiers: p.cliTiers, defaults: getProviderDefaults(db, e, env), updatedAt: r?.updated_at ?? null, updatedBy: r?.updated_by ?? null };
   });
 }
 
@@ -79,7 +80,7 @@ export function setProviderDefaults(db: DB, u: Admin, engine: unknown, b: { mode
   if (!b || typeof b !== "object" || (b.model === undefined && b.effort === undefined)) throw new CollabError(400, "send model and/or effort");
   const cur = getProviderDefaults(db, e, env);
   let model = cur.model, effort = cur.effort;
-  if (b.model !== undefined) { try { model = checkModel(e, b.model, env); } catch (x) { throw new CollabError(400, (x as Error).message); } }
+  if (b.model !== undefined) { try { model = checkModel(e, b.model, env, customModelIds(db)); } catch (x) { throw new CollabError(400, (x as Error).message); } }
   if (b.effort !== undefined) {
     if (b.effort === null || b.effort === "" || b.effort === "default") effort = null;
     else if (!tiersFor(e).length) throw new CollabError(400, `${PROVIDERS[e].label} has no effort tiers (Not supported); only default is allowed`);

@@ -89,22 +89,24 @@ const ENV = MODEL_ENV;
 const SAFE = /^[A-Za-z0-9][A-Za-z0-9._:/\[\]-]{0,99}$/;
 
 /** Allowed model ids for an engine (env override first). */
-export function modelsFor(engine: AgentEngine, env: Record<string, string | undefined> = process.env): string[] {
+/** custom: admin-defined custom-provider model ids (<provider>/<model>), OpenCode only (lib/provider-credentials.ts). */
+export function modelsFor(engine: AgentEngine, env: Record<string, string | undefined> = process.env, custom: readonly string[] = []): string[] {
   const o = env[ENV[engine]]?.split(",").map((s) => s.trim()).filter((s) => SAFE.test(s));
-  return o?.length ? [...new Set(o)] : [...DEFAULT_MODELS[engine], ...openRouterModelsFor(engine)];
+  const extra = engine === "opencode" ? custom.filter((m) => SAFE.test(m)) : [];
+  return [...new Set([...(o?.length ? o : [...DEFAULT_MODELS[engine], ...openRouterModelsFor(engine)]), ...extra])];
 }
 /** Listed, or a custom openrouter/<vendor>/<model> id on an engine that supports OpenRouter. */
-export const modelAllowed = (engine: AgentEngine, m: string, env: Record<string, string | undefined> = process.env) => modelsFor(engine, env).includes(m) || isValidOpenRouterId(engine, m) || isValidOpenCodeId(engine, m);
-export const allModels = (env: Record<string, string | undefined> = process.env) => Object.fromEntries(ENGINES.map((e) => [e, modelsFor(e, env)])) as Record<AgentEngine, string[]>;
+export const modelAllowed = (engine: AgentEngine, m: string, env: Record<string, string | undefined> = process.env, custom: readonly string[] = []) => modelsFor(engine, env, custom).includes(m) || isValidOpenRouterId(engine, m) || isValidOpenCodeId(engine, m);
+export const allModels = (env: Record<string, string | undefined> = process.env, custom: readonly string[] = []) => Object.fromEntries(ENGINES.map((e) => [e, modelsFor(e, env, custom)])) as Record<AgentEngine, string[]>;
 
 /** null for "default"; throws a message when the model isn't allowed for the engine. */
-export function checkModel(engine: AgentEngine, model: unknown, env: Record<string, string | undefined> = process.env): string | null {
+export function checkModel(engine: AgentEngine, model: unknown, env: Record<string, string | undefined> = process.env, custom: readonly string[] = []): string | null {
   if (model === undefined || model === null || model === "" || model === "default") return null;
   if (typeof model !== "string") throw new Error("model must be a string or null");
-  const list = modelsFor(engine, env);
+  const list = modelsFor(engine, env, custom);
   if (isOpenRouterModel(model.trim()) && !supportsOpenRouter(engine)) throw new Error(`${engine} can't use OpenRouter (not supported); pick Claude Code, Codex or OpenCode`);
   if (isOpenCodeModel(model.trim()) && engine !== "opencode") throw new Error(`opencode/<model> ids are OpenCode's own provider; pick the OpenCode engine`);
-  if (!modelAllowed(engine, model.trim(), env)) throw new Error(`model '${model}' is not available for ${engine} (allowed: ${list.join(", ")}, or default)`);
+  if (!modelAllowed(engine, model.trim(), env, custom)) throw new Error(`model '${model}' is not available for ${engine} (allowed: ${list.join(", ")}, or default)`);
   return model.trim();
 }
 

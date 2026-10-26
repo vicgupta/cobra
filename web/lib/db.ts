@@ -671,6 +671,26 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     CREATE INDEX repo_audit_tenant ON repo_audit(tenant_id, at);
     UPDATE team_repos SET tenant_id = 1 WHERE tenant_id NOT IN (SELECT id FROM tenants) AND EXISTS (SELECT 1 FROM tenants WHERE id = 1);
   `),
+  // 27 (Provider manager): per-provider auth method (auto / api_key / subscription) and admin-defined custom
+  // OpenAI-compatible providers run on the OpenCode engine. Credential values live (encrypted) in provider_secrets.
+  (db) => db.exec(`
+    CREATE TABLE provider_auth (
+      engine TEXT PRIMARY KEY,
+      mode TEXT NOT NULL CHECK (mode IN ('auto','api_key','subscription')),
+      updated_at INTEGER NOT NULL,
+      updated_by TEXT
+    );
+    CREATE TABLE custom_providers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      base_url TEXT NOT NULL,
+      models TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      created_by TEXT,
+      updated_at INTEGER NOT NULL,
+      updated_by TEXT
+    );
+  `),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

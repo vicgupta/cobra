@@ -1,3 +1,4 @@
+import { customModelIds } from "@/lib/provider-credentials";
 import { Suspense } from "react";
 import { AuthGate } from "@/components/auth-gate";
 import { Card } from "@/components/ui";
@@ -15,7 +16,7 @@ function Agents({ user }: { user: SessionUser }) {
   const agents = listAgents(db, u.tenantId).map((a) => ({ ...a, canEdit: canEditAgent(u, a) }));
   return (
     <Card title="Team agents" subtitle="A named engine + prompt, shared with your whole team. Run one directly, or use it in a workflow step with `uses: agent` and `with: { agent: <name> }`.">
-      <AgentManager agents={agents} repos={listTeamRepos(db, u.tenantId).map((r) => r.repo)} models={allModels()} />
+      <AgentManager agents={agents} repos={listTeamRepos(db, u.tenantId).map((r) => r.repo)} models={allModels(process.env, customModelIds(db))} />
     </Card>
   );
 }
