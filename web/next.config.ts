@@ -17,8 +17,8 @@ const nextConfig: NextConfig = {
       { source: "/runs/new", destination: "/", permanent: false },
       { source: "/settings/test-run", destination: "/", permanent: false },
       // Job 7 (Oct 2026): Sessions moved from the header menu into Settings.
-      { source: "/account/sessions", destination: "/settings/sessions", permanent: false },
-      { source: "/sessions", destination: "/settings/sessions", permanent: false },
+      { source: "/account/sessions", destination: "/settings", permanent: false },
+      { source: "/sessions", destination: "/settings", permanent: false },
     ];
   },
   turbopack: {

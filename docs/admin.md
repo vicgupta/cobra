@@ -58,4 +58,4 @@ Each team gets its own daily email at **7:00 AM America/New_York** (DST-aware, o
 - **On by default** for every team. **Recipients:** `Team leads` (team leads and the designated lead, default) or `Entire team` (every member). The tab shows the resolved list.
 - Team leads and system admins change the toggle and recipients and can "Send test now" (emails only the person clicking). Members see the tab and can opt out of their own copy.
 - Skipped days (disabled, or nobody left after opt-outs) are recorded with the reason. Every change is in team_audit (`notify_*`).
-- The system-admin email (Settings > Notifications) is unchanged.
+- The system-admin email is unchanged (MVP has no Settings > Notifications UI; it uses the stored setting).

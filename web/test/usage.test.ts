@@ -113,8 +113,4 @@ test("usage scoping: member/lead see only their team, no cross-team leak; admin 
   assert.equal(all.scope, null);
   assert.deepEqual(all.runs.map((x) => x.id), ["run_a1", "run_b1"]);
   assert.equal(all.teams.length, 2); assert.equal(all.totals.input_tokens, 107); assert.equal(all.totals.cost_usd, 1.5);
-  // the Settings page takes the scope from the session only, never from query params
-  const page = readFileSync(path.join(__dirname, "../app/settings/usage/page.tsx"), "utf8");
-  assert.match(page, /tenantId=\{scope\}/); assert.doesNotMatch(page, /sp\.(team|tenant)/);
-  assert.match(readFileSync(path.join(__dirname, "../components/settings-tabs.tsx"), "utf8"), /\/settings\/usage/);
 });

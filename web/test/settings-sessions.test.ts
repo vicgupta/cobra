@@ -1,4 +1,4 @@
-// Job 7: Sessions moved from the header menu into Settings > Sessions.
+// MVP: Settings keeps Repos, Providers and Team; the old /sessions URLs go to /settings, which opens Repos.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -11,23 +11,19 @@ test("sessions redirects keep the query string (307)", async () => {
   const r = await nextConfig.redirects!();
   for (const s of ["/sessions", "/account/sessions"]) {
     const x = r.find((y) => y.source === s);
-    assert.equal(x?.destination, "/settings/sessions");
+    assert.equal(x?.destination, "/settings"); // /settings then redirects to Repos
     assert.equal(x?.permanent, false);
   }
 });
 
-test("Sessions is a Settings tab for every user, not in the header menu", () => {
+test("MVP Settings tabs: Repos, Providers, Team (+ Updates for admins); removed tabs are gone", () => {
   const tabs = src("components/settings-tabs.tsx");
   const base = tabs.slice(tabs.indexOf("const TABS"), tabs.indexOf("const ADMIN_TABS"));
-  assert.match(base, /\["\/settings\/sessions", "Sessions"\]/);
-  assert.doesNotMatch(base, /\/settings\/notifications|\/settings\/updates/);
+  assert.match(base, /\["\/settings\/repos", "Repos"\], \["\/settings\/providers", "Providers"\], \["\/settings\/team", "Team"\]\]/);
+  assert.doesNotMatch(tabs, /settings\/(sessions|usage|docs|notifications|team-notifications|skill-rules)/);
+  assert.match(src("app/settings/page.tsx"), /redirect\("\/settings\/repos"\)/);
+  for (const p of ["sessions", "usage", "docs", "notifications", "team-notifications", "skill-rules"]) assert.ok(!existsSync(path.join(__dirname, `../app/settings/${p}`)), p);
   assert.doesNotMatch(src("components/user-menu.tsx"), /sessions/i);
-  assert.ok(existsSync(path.join(__dirname, "../app/settings/sessions/page.tsx")));
-  assert.ok(!existsSync(path.join(__dirname, "../app/account/sessions/page.tsx")));
-  const page = src("app/settings/sessions/page.tsx");
-  assert.match(page, /AuthGate/);
-  assert.match(page, /listSessions\(getDb\(\), u\.id, u\.sessionId\)/);
-  assert.doesNotMatch(page, /isSystemAdmin/);
 });
 
 test("theme toggle (Job 7b): single sun/moon button, no system icon, hydration-safe", () => {

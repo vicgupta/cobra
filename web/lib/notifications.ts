@@ -1,6 +1,5 @@
 // System-admin notifications: a daily analytics email at 7:00 AM America/New_York to every system admin
-// (users.role = 'admin'). Settings > Notifications (system admins only) toggles it, shows recipients and
-// the last send, and can send a test to the signed-in admin only. Every send is a notification_sends row;
+// (users.role = 'admin'). notification_settings.daily_enabled toggles it (the MVP has no UI for it; the stored value applies). Every send is a notification_sends row;
 // the unique (send_date) index for kind 'daily' means a day is claimed once, so restarts or several
 // processes can't double-send. Pure Node (no Next imports): mail and clock are injected so tests use a mock.
 import { statfsSync, statSync } from "node:fs";
@@ -140,7 +139,6 @@ export function buildDailyReport(db: DB, now: number, health: Health): DailyRepo
     "SERVICE HEALTH",
     `  Host uptime: ${(health.uptimeSec / 3600).toFixed(1)} h; disk free: ${gb(health.diskFreeBytes)} of ${gb(health.diskTotalBytes)}; DB size: ${mb(health.dbBytes)}`,
     "",
-    `Settings > Notifications: ${APP_URL}/settings/notifications`,
   ].join("\n");
   return { since, until: now, text, counts: { runs: total, failed: nFailed, tokens, costUsd: cost } };
 }

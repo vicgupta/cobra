@@ -139,8 +139,6 @@ export function buildTeamReport(db: DB, tenantId: number, now: number): TeamRepo
     "",
     "TEAM AUDIT HIGHLIGHTS",
     auditRows.length ? auditRows.map((a) => `  - ${fmtNy(a.at)} ${a.actor}: ${a.action}${a.target ? ` ${a.target}` : ""}${a.detail ? ` (${a.detail.slice(0, 120)})` : ""}`).join("\n") : "  (none)",
-    "",
-    `Manage this email: ${APP_URL}/settings/team-notifications`,
   ].join("\n");
   return { since, until: now, text, counts: { runs: total, failed: nFailed } };
 }
