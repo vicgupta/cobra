@@ -92,6 +92,12 @@ export const github = (fetchImpl: typeof fetch = fetch, checkRepo: RepoCheck = e
   const say = (m: string) => log?.(`[cobra] ${m}\n`);
   const footer = (extra = "") => gopts.collab ? `\n\n---\n_Created with Cobra by ${gopts.collab.who}${extra}_` : "";
   const posInt = (v: unknown, name: string) => { const n = Number(v); if (!Number.isInteger(n) || n <= 0) throw new Error(`with.${name} must be a positive number`); return n; };
+  // Simulated: every GitHub-writing action only logs what it would do (no token, no API call).
+  const WRITES: Record<string, string> = { "create-issue": "create an issue", "create-pr": "open a PR", "merge-pr": "merge a PR" };
+  if (simulated && typeof w.action === "string" && WRITES[w.action]) {
+    say(`simulated: would ${WRITES[w.action]} on ${repo} (${w.action}); GitHub was not called`);
+    return { number: 0, url: "", sha: "", merged: false, simulated: true };
+  }
   switch (w.action) {
     case "create-issue": {
       const d = await call("POST", "/issues", { title: w.title, body: w.body ?? "" });

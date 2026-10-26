@@ -1,10 +1,11 @@
-// Basic local agent runner: a per-run scratch workspace (COBRA_WORKSPACES_DIR,
-// default /home/cobra/workspaces/<run-id>), the chosen CLI run headless as the
+// Basic local agent runner: a per-run scratch workspace (per team: <COBRA_TEAMS_ROOT>/<tenantId>/workspaces/<run-id>,
+// root default /home/cobra; legacy COBRA_WORKSPACES_DIR without a team), the chosen CLI run headless as the
 // service user with a timeout, output streamed into the step log. With GITHUB_TOKEN
 // and a team-registered repo it clones the repo and pushes changes to cobra/<run-id>
 // (never the default branch, never --force); otherwise it uses an empty scratch repo.
 // Pure Node (no Next imports) so tests can drive it with fake binaries.
 import { spawn } from "node:child_process";
+import { assertTeamWorkspace, legacyWorkspacesDir, teamWorkspacesDir } from "../workspaces";
 import { mkdirSync, readFileSync, existsSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import type { AgentRunner, RepoCheck } from "./handlers";
@@ -17,6 +18,8 @@ type Env = Record<string, string | undefined>;
 
 export type LocalRunnerOptions = {
   root?: string;
+  /** The team the runs belong to: workspaces go in <COBRA_TEAMS_ROOT>/<tenantId>/workspaces/<runId>. */
+  tenantId?: number;
   resolveSecret: (name: string) => string | undefined;
   checkRepo: RepoCheck;
   defaultBranch?: (repo: string) => string | null | undefined;
@@ -43,7 +46,8 @@ export type LocalRunnerOptions = {
   onUsage?: (runKey: string, usage: Usage) => void;
 };
 
-export const workspacesDir = () => process.env.COBRA_WORKSPACES_DIR || "/home/cobra/workspaces";
+/** Legacy shared dir (pre per-team); new runs use teamWorkspacesDir(tenantId) when the runner has a team. */
+export const workspacesDir = legacyWorkspacesDir;
 
 function run(cmd: string, args: string[], o: { cwd: string; env: Env; signal: AbortSignal; log: (s: string) => void; timeoutMs?: number }): Promise<{ code: number; out: string }> {
   return new Promise((resolve, reject) => {
@@ -97,8 +101,9 @@ export function openRouterRunConfig(driver: Engine, key: string, runDir: string)
 export function localRunner(opts: LocalRunnerOptions): AgentRunner {
   return async ({ runId, driver, with: w, signal, timeoutMs, log }) => {
     if (!/^[\w-]+$/.test(runId)) throw new Error("invalid run id");
-    const root = opts.root ?? workspacesDir();
+    const root = opts.root ?? (opts.tenantId ? teamWorkspacesDir(opts.tenantId) : workspacesDir());
     const dir = path.join(root, runId);
+    if (opts.tenantId && !opts.root) assertTeamWorkspace(opts.tenantId, dir);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     const note = (s: string) => log(`[cobra] ${s}\n`);
     const base: Env = { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: process.env.HOME ?? "/tmp", LANG: "C.UTF-8", GIT_TERMINAL_PROMPT: "0" };

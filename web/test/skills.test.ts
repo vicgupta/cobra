@@ -256,3 +256,61 @@ test("github steps: default to the run's repo/mode; simulated runs never call Gi
   assert.equal(r.status, "succeeded", r.error);
   assert.equal(called, 0, "simulated runs never call GitHub");
 });
+
+test("any length, explicit: huge skill with sections, when, handoffs and goto; per-step sections; timing; no length rejection", async () => {
+  const { db, member } = setup();
+  const lines: string[] = ["# Huge SOP"];
+  for (let i = 0; i < 260; i++) lines.push(`## Part ${i}`, `Do part ${i} carefully.`, `Check part ${i}.`, "");
+  const body = lines.join("\n");
+  assert.ok(body.split("\n").length >= 1000);
+  const steps: Record<string, unknown>[] = [];
+  for (let i = 0; i < 220; i++) {
+    const agentStep = i % 2 === 1;
+    steps.push({ id: `s${i}`, action: agentStep ? "agent" : "simulate", ...(agentStep ? { section: `part-${i}` } : {}),
+      with: agentStep ? { prompt: "work on {{p}}" } : { v: `v${i}`, ...(i === 100 ? { fail: "yes" } : {}) },
+      handoffs: agentStep ? [{ from: `steps.s${i - 1}.outputs.v`, to: "p" }] : [],
+      ...(i % 10 === 9 ? { when: "inputs.skip != true" } : {}),
+      on_failure: i === 100 ? { goto: "s110" } : "stop", outputs: agentStep ? { summary: "result.summary" } : { v: "result.v" } });
+  }
+  steps.push({ id: "verify", action: "simulate", with: { v: "ok" }, on_failure: "stop", outputs: { v: "result.v" } });
+  const t0 = Date.now();
+  const s = createSkill(db, member, { name: "huge2", description: "huge", body, plan: { inputs: { skip: { type: "boolean", default: true } }, steps } });
+  assert.equal(validatePlan(s.plan).ok, true);
+  assert.equal(s.plan.steps.length, 221);
+  const r = await startSkillRun(db, who(member), s, {}, deps).done;
+  const ms = Date.now() - t0;
+  assert.equal(r.status, "succeeded", r.error);
+  assert.ok(ms < 15000, `create + simulated run took ${ms}ms`);
+  // goto: s100 fails, s101..s109 are jumped over, s110 runs
+  assert.equal(r.steps.s100.status, "failed");
+  for (let i = 101; i < 110; i++) assert.ok(["pending", "skipped"].includes(r.steps[`s${i}`].status), `s${i} not run`);
+  assert.equal(r.steps.s110.status, "succeeded");
+  assert.equal(r.steps.s19.status, "skipped", "when condition");
+  // per-step section extraction: each agent step gets exactly its own section
+  for (let i = 1; i < 220; i += 2) {
+    const sec = sectionText(body, `part-${i}`)!;
+    assert.ok(sec.includes(`Do part ${i} carefully.`) && sec.includes(`Check part ${i}.`) && !sec.includes(`part ${i + 1}`), `section ${i}`);
+    const st = r.steps[`s${i}`];
+    if (st.status !== "succeeded") continue;
+    assert.match(String(st.outputs.summary), new RegExp(`SOP section #part-${i}\\b`));
+    assert.match(String(st.outputs.summary), new RegExp(`work on v${i - 1}\\b`), "handoff");
+  }
+  // the length rule only warns: advisory, never counts against the score
+  const g = grade(db, { ...s, body: body + "x".repeat(50000) });
+  const pl = g.results.find((x) => x.code === "prompt_length")!;
+  assert.equal(pl.advisory, true);
+  assert.equal(grade(db, s).score, g.score, "advisory rule doesn't change the score");
+  // no length rejection anywhere between one line and huge
+  for (const n of [1, 10, 100, 1000, 10000, 100000, 500000]) {
+    const sk = createSkill(db, member, { name: `sweep-${n}`, description: "d", body: Array.from({ length: Math.max(1, Math.floor(n / 20)) }, (_, k) => `Line ${k} of the SOP.`).join("\n").slice(0, Math.max(n, 1)) });
+    assert.equal(validatePlan(sk.plan).ok, true, `len ${n}`);
+    assert.equal((await startSkillRun(db, who(member), sk, {}, deps).done).status, "succeeded", `len ${n}`);
+  }
+});
+
+test("built-in master skill is graded (never '—'): first list/view records a review", () => {
+  const { db, member } = setup();
+  const list = svc.list(db, member);
+  const m = (list.body as { skills: { name: string; score: number | null }[] }).skills.find((x) => x.name === MASTER)!;
+  assert.equal(typeof m.score, "number");
+});

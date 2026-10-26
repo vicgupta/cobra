@@ -145,6 +145,8 @@ export function recordReview(db: DB, s: Skill, trigger: string, now = Date.now()
 type ReviewRow = { id: number; skill_id: number; content_hash: string; rules_version: string; score: number; results_json: string; trigger: string; created_at: number };
 const reviewFrom = (r: ReviewRow): Review => ({ id: r.id, skillId: r.skill_id, contentHash: r.content_hash, rulesVersion: r.rules_version, score: r.score, results: JSON.parse(r.results_json), trigger: r.trigger, createdAt: r.created_at });
 export const latestReview = (db: DB, skillId: number): Review | null => { const r = db.prepare("SELECT * FROM skill_reviews WHERE skill_id = ? ORDER BY id DESC LIMIT 1").get(skillId) as ReviewRow | undefined; return r ? reviewFrom(r) : null; };
+/** The latest review, grading the skill now if it has none yet (the built-in master skill is created without one). */
+export const reviewOrGrade = (db: DB, s: Skill): Review => latestReview(db, s.id) ?? recordReview(db, s, "first-view");
 export const reviewHistory = (db: DB, skillId: number): Review[] => (db.prepare("SELECT * FROM skill_reviews WHERE skill_id = ? ORDER BY id DESC LIMIT 20").all(skillId) as ReviewRow[]).map(reviewFrom);
 
 /** Admin re-review on demand (e.g. after rules change). */

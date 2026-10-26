@@ -452,6 +452,21 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     );
     CREATE INDEX skill_audit_skill ON skill_audit(skill_id, at);
   `),
+  // 21: per-team workspaces (<COBRA_TEAMS_ROOT>/<tenant>/workspaces/<run>). Rewrites stored absolute
+  // paths under the old shared dir in run logs/results to the run's team dir (the dirs are moved by
+  // the deploy step; runWorkspacePath() still falls back to the old dir for anything not moved).
+  (db) => {
+    const root = path.resolve(process.env.COBRA_TEAMS_ROOT || "/home/cobra");
+    const legacy = path.resolve(process.env.COBRA_WORKSPACES_DIR || path.join(root, "workspaces")) + "/";
+    const like = "%" + legacy.replace(/[\\%_]/g, "\\$&") + "%";
+    for (const t of ["runs", "run_step_events"]) {
+      const cols = (db.prepare(`PRAGMA table_info("${t}")`).all() as { name: string; type: string }[]).filter((c) => /TEXT/i.test(c.type)).map((c) => c.name);
+      for (const c of cols) {
+        if (c === "id") continue;
+        db.prepare(`UPDATE "${t}" SET "${c}" = REPLACE("${c}", ?, ? || tenant_id || '/workspaces/') WHERE "${c}" LIKE ? ESCAPE '\\' AND tenant_id IS NOT NULL`).run(legacy, root + "/", like);
+      }
+    }
+  },
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

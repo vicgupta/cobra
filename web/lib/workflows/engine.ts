@@ -176,6 +176,8 @@ export async function executeWorkflow(loaded: LoadedWorkflow, opts: ExecuteOptio
             emit({ type: "log", id, chunk: header });
           }
         }
+        // A simulated run never writes to GitHub: every github step is forced to simulated mode (it only logs).
+        if (step.uses === "github" && ((scope.run ?? {}) as Record<string, unknown>).mode === "simulated") withArgs.mode = "simulated";
         const run = step.run === undefined ? undefined : String(interpolate(scope, step.run));
         const timeoutMs = step.timeout_seconds ? step.timeout_seconds * 1000 : undefined;
         const result = await withTimeout((signal) => handler({ runId: opts.runId, stepKey: agentSteps > 1 ? `${opts.runId}-${id}` : opts.runId, step, with: withArgs, run, secrets, signal, timeoutMs, log: (chunk) => emit({ type: "log", id, chunk: redact(chunk, secretValues) }) }), timeoutMs);
