@@ -8,6 +8,8 @@ import { UserMenu } from "@/components/user-menu";
 import { getDb } from "@/lib/db";
 import { getUserTheme } from "@/lib/auth/theme-db";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
+import { headers } from "next/headers";
+import { navLinksFor, showUserMenu } from "@/lib/nav-gate";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -38,5 +40,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 
 async function NavSlot() {
   const u = await currentUser();
-  return <Nav admin={!!u && isSystemAdmin(u.email)} signedIn={!!u} savedTheme={u ? getUserTheme(getDb(), u.id) : null} userMenu={<Suspense fallback={null}><UserMenu /></Suspense>} />;
+  const pathname = (await headers()).get("x-cobra-pathname");
+  const links = navLinksFor(u, !!u && isSystemAdmin(u.email), pathname);
+  const menu = showUserMenu(u, pathname) ? <Suspense fallback={null}><UserMenu /></Suspense> : undefined;
+  return <Nav links={links} signedIn={!!u} savedTheme={u ? getUserTheme(getDb(), u.id) : null} userMenu={menu} />;
 }

@@ -13,9 +13,9 @@ const REMOVED = ["/signup", "/api/auth/signup"];
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (REMOVED.includes(pathname.replace(/\/$/, ""))) return new NextResponse("Not found", { status: 404 });
-  if (PUBLIC.includes(pathname)) return NextResponse.next();
+  if (PUBLIC.includes(pathname)) return withPath(req);
   const token = req.cookies.get("cobra_session")?.value;
-  if (token) return adminGate(pathname, token);
+  if (token) return adminGate(req, pathname, token);
   if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   return NextResponse.redirect(new URL("/login", req.url));
 }
@@ -28,10 +28,17 @@ const isAdminPath = (p: string) => p === "/admin" || p.startsWith("/admin/") || 
  * /admin and /api/admin/* are 404 (real HTTP status, before rendering) for everyone but the
  * COBRA_ADMIN_EMAIL account, which also keeps the full regular app. Pages/APIs check again.
  */
-function adminGate(pathname: string, token: string) {
-  if (!isAdminPath(pathname)) return NextResponse.next();
+function adminGate(req: NextRequest, pathname: string, token: string) {
+  if (!isAdminPath(pathname)) return withPath(req);
   const user = getSessionUser(getDb(), token);
-  if (!user) return NextResponse.next(); // stale cookie: the page/API handles the redirect/401
-  if (gate(user.email, "admin") === "ok") return NextResponse.next();
+  if (!user) return withPath(req); // stale cookie: the page/API handles the redirect/401
+  if (gate(user.email, "admin") === "ok") return withPath(req);
   return pathname.startsWith("/api/") ? NextResponse.json({ error: "Not found" }, { status: 404 }) : new NextResponse("Not found", { status: 404 });
+}
+
+/** Forward the pathname to server components (root layout gates header nav on it). */
+function withPath(req: NextRequest) {
+  const h = new Headers(req.headers);
+  h.set("x-cobra-pathname", req.nextUrl.pathname);
+  return NextResponse.next({ request: { headers: h } });
 }

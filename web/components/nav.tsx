@@ -7,19 +7,12 @@ import { CobraLogo } from "./icons";
 import { ThemeToggle } from "./theme-toggle";
 import type { Theme } from "@/lib/theme";
 
-const userLinks = [
-  { href: "/", label: "Dashboard" },
-  { href: "/skills", label: "Skills" },
-  { href: "/agents", label: "Agents" },
-  { href: "/repos", label: "Repos" },
-  { href: "/settings", label: "Settings" },
-];
-const adminLink = { href: "/admin", label: "Admin" };
+import { isAuthFlowPath } from "@/lib/nav-gate";
 
-export function Nav({ userMenu, admin, signedIn, savedTheme }: { userMenu?: ReactNode; admin?: boolean; signedIn?: boolean; savedTheme?: Theme | null }) {
+/** `links`/`userMenu` are decided server-side (empty / absent when signed out or not a team member). */
+export function Nav({ links, userMenu, signedIn, savedTheme }: { links: Array<{ href: string; label: string }>; userMenu?: ReactNode; signedIn?: boolean; savedTheme?: Theme | null }) {
   const pathname = usePathname();
-  const links = admin ? [...userLinks, adminLink] : userLinks;
-  const authPage = pathname === "/login";
+  const authPage = isAuthFlowPath(pathname);
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-bg/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8">
@@ -27,7 +20,7 @@ export function Nav({ userMenu, admin, signedIn, savedTheme }: { userMenu?: Reac
           <CobraLogo className="h-6 w-6 text-accent" />
           <span>Cobra</span>
         </Link>
-        {!authPage && <nav className="flex gap-1 text-sm">
+        {!authPage && links.length > 0 && <nav className="flex gap-1 text-sm">
           {links.map((l) => {
             const active = l.href === "/" ? pathname === "/" : pathname === l.href || pathname.startsWith(`${l.href}/`);
             return (
