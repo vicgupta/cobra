@@ -27,7 +27,6 @@ export function Nav({ userMenu, admin, signedIn, savedTheme }: { userMenu?: Reac
         <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
           <CobraLogo className="h-6 w-6 text-accent" />
           <span>Cobra</span>
-          <span className="hidden text-xs font-normal text-subtle sm:inline">software factory</span>
         </Link>
         {!authPage && <nav className="flex gap-1 text-sm">
           {links.map((l) => {
