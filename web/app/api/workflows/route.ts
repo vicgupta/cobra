@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { apiGuard } from "@/lib/auth/server";
 import { actor, getDb, githubStore } from "@/lib/workflows/server";
-import { listWorkflowsFor, saveWorkflow } from "@/lib/workflows/service";
+import { listWorkflowsFor, parseStatusFilter, saveWorkflow } from "@/lib/workflows/service";
 
 export async function GET(req: Request) {
   const g = await apiGuard(req);
   if (g.error) return g.error;
-  const r = listWorkflowsFor(getDb(), actor(g.user));
+  const r = listWorkflowsFor(getDb(), actor(g.user), undefined, { status: parseStatusFilter(new URL(req.url).searchParams.get("status")) });
   return NextResponse.json(r.body, { status: r.status });
 }
 

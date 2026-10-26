@@ -66,6 +66,7 @@ export function GovernanceDocs() {
       <li>Steps with <C>uses: agent</C> and <C>with.agent: &lt;name&gt;</C> fold that team agent&apos;s hash into the workflow&apos;s hash, so editing or deleting the agent also sends the workflow back to pending. An unknown agent is an error.</li>
       <li>Admins can always approve; others must match an approver email or role. One rejection by a valid approver makes it rejected. Approved needs at least <C>min_approvals</C> counted approvals.</li>
       <li>Self-approval (server setting COBRA_WORKFLOW_SELF_APPROVAL): <C>admin</C> (default) — the owner/author counts only if they are an admin; <C>never</C>; <C>always</C>.</li>
+      <li>The Workflows list has a Status filter (All, Approved, Pending, Rejected; URL <C>?status=</C>, unknown values mean All), the same for every role. Rejected workflows stay visible but can&apos;t run.</li>
       <li>Only approved workflows run. Any team member can start an approved workflow.</li>
     </ul>
   </>;

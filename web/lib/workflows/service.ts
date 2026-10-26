@@ -33,8 +33,26 @@ function summary(db: DB, user: Actor, w: LoadedWorkflow) {
   };
 }
 
-export function listWorkflowsFor(db: DB, user: Actor, dir?: string): Res {
-  return ok(listAll(db, user.tenantId, dir).map((l) => (l.loaded ? summary(db, user, l.loaded) : { name: l.name, origin: l.origin, errors: l.errors })));
+export const STATUS_FILTERS = ["all", "approved", "pending", "rejected"] as const;
+export type StatusFilter = (typeof STATUS_FILTERS)[number];
+/** Validates ?status= server-side; anything unknown or missing is "all". */
+export function parseStatusFilter(v: unknown): StatusFilter {
+  const raw = Array.isArray(v) ? v[0] : v;
+  const s = typeof raw === "string" ? raw.toLowerCase() : "";
+  return (STATUS_FILTERS as readonly string[]).includes(s) ? (s as StatusFilter) : "all";
+}
+type WithStatus = { approval?: { status: string } };
+/** Same status as the badge (approvalState for the current content hash). Same for every role. */
+export function filterByStatus<T extends WithStatus>(rows: T[], status: StatusFilter): T[] {
+  return status === "all" ? rows : rows.filter((r) => r.approval?.status === status);
+}
+export function statusCounts(rows: WithStatus[]): Record<StatusFilter, number> {
+  return Object.fromEntries(STATUS_FILTERS.map((f) => [f, filterByStatus(rows, f).length])) as Record<StatusFilter, number>;
+}
+
+export function listWorkflowsFor(db: DB, user: Actor, dir?: string, opts: { status?: StatusFilter } = {}): Res {
+  const rows = listAll(db, user.tenantId, dir).map((l) => (l.loaded ? summary(db, user, l.loaded) : { name: l.name, origin: l.origin, errors: l.errors })) as Array<WithStatus & { name: string }>;
+  return ok(filterByStatus(rows, opts.status ?? "all"));
 }
 
 export function workflowDetail(db: DB, user: Actor, name: string, dir?: string): Res {

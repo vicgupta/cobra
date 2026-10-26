@@ -14,7 +14,7 @@ import { approvalState, canApprove, recordDecision, PermissionError } from "../l
 import { github } from "../lib/workflows/handlers";
 import { canViewRun, getRunDetail, startWorkflowRun } from "../lib/workflows/runner";
 import { canEdit, listAll, saveTenantWorkflow, SaveError, seedTemplates, systemTemplates, templateCopySource, type Actor } from "../lib/workflows/store";
-import { decide, listWorkflowsFor, runDetailFor, saveWorkflow, startRun, syncWorkflow, templateCopy, workflowDetail, type RunDeps } from "../lib/workflows/service";
+import { decide, listWorkflowsFor, parseStatusFilter, statusCounts, type StatusFilter, runDetailFor, saveWorkflow, startRun, syncWorkflow, templateCopy, workflowDetail, type RunDeps } from "../lib/workflows/service";
 import { githubFiles, GitHubStorageError } from "../lib/workflows/github-files";
 
 const DIR = workflowsDir();
@@ -412,4 +412,28 @@ test("members create and edit their own workflows with no lead/admin step; run a
   await saveWorkflow(db, lead, { source: src.replace("name: mine", "name: theirs") });
   assert.equal(canEdit(member, listAll(db, member.tenantId).find((l) => l.name === "theirs")!.loaded!), false);
   assert.equal((await saveWorkflow(db, member, { source: src.replace("name: mine", "name: theirs"), previousName: "theirs" })).status, 403);
+});
+
+test("status filter: ?status validated (unknown = all); same results for every role; rejected still can't run", async () => {
+  const { db, admin, lead, member, owner } = setup();
+  seedTemplates(db);
+  await tenantWf(db, owner, "  - id: a\n    uses: noop\n", "ok-flow");
+  await tenantWf(db, owner, "  - id: a\n    uses: noop\n", "bad-flow");
+  await tenantWf(db, owner, "  - id: a\n    uses: noop\n", "wait-flow");
+  assert.equal(decide(db, lead, "ok-flow", { decision: "approve" }).status, 200);
+  assert.equal(decide(db, lead, "bad-flow", { decision: "reject", comment: "no" }).status, 200);
+  for (const [v, want] of [["approved", "approved"], ["PENDING", "pending"], ["rejected", "rejected"], ["", "all"], ["bogus", "all"], [undefined, "all"], [["rejected", "x"], "rejected"]] as const)
+    assert.equal(parseStatusFilter(v), want, String(v));
+  const names = (u: Actor, status: StatusFilter) => (listWorkflowsFor(db, u, undefined, { status }).body as Array<{ name: string }>).map((w) => w.name).filter((n) => n.endsWith("-flow") && n !== "issue-to-merge-flow").sort();
+  for (const u of [member, lead, admin]) {
+    assert.deepEqual(names(u, "all"), ["bad-flow", "ok-flow", "wait-flow"], `${u.role} all includes rejected`);
+    assert.deepEqual(names(u, "approved"), ["ok-flow"]);
+    assert.deepEqual(names(u, "pending"), ["wait-flow"]);
+    assert.deepEqual(names(u, "rejected"), ["bad-flow"]);
+  }
+  const rows = listWorkflowsFor(db, member).body as Array<{ approval?: { status: string } }>;
+  const c = statusCounts(rows);
+  assert.equal(c.all, rows.length); assert.equal(c.rejected, 1); assert.equal(c.approved + c.pending + c.rejected, rows.filter((r) => r.approval).length);
+  assert.equal(workflowDetail(db, member, "bad-flow").status, 200, "members can open rejected workflows");
+  assert.equal(startRun(db, member, "bad-flow", { inputs: { who: "x" } }, deps()).status, 409, "approval gate blocks rejected runs");
 });
