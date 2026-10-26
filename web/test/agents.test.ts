@@ -135,3 +135,23 @@ test("agents: prompt limit is 20000 characters (Job 18)", () => {
   assert.throws(() => createAgent(db, member, { name: "toolong", engine: "codex", prompt: "x".repeat(20001) }), is(400));
   assert.throws(() => updateAgent(db, member, "long", { prompt: "x".repeat(20001) }), is(400));
 });
+
+test("agents: optional description (max 500) is stored, shown, validated and not part of the version hash", () => {
+  const { db, member, m2 } = setup();
+  const a = createAgent(db, member, { name: "rev", engine: "codex", description: "  Reviews PRs  ", prompt: "review it" });
+  assert.equal(a.description, "Reviews PRs");
+  assert.equal(createAgent(db, member, { name: "nodesc", engine: "codex", prompt: "p" }).description, null);
+  const h = a.contentHash;
+  const b = updateAgent(db, member, "rev", { description: "Reviews pull requests for bugs" });
+  assert.equal(b.description, "Reviews pull requests for bugs");
+  assert.equal(b.contentHash, h, "description edits keep the hash (approvals stay valid)");
+  assert.equal(updateAgent(db, member, "rev", { prompt: "review it twice" }).description, "Reviews pull requests for bugs", "omitted description is kept");
+  assert.notEqual(getAgent(db, member.tenantId, "rev")!.contentHash, h);
+  assert.equal(updateAgent(db, member, "rev", { description: "" }).description, null);
+  createAgent(db, member, { name: "edge", engine: "codex", description: "d".repeat(500), prompt: "p" });
+  assert.throws(() => createAgent(db, member, { name: "toolong", engine: "codex", description: "d".repeat(501), prompt: "p" }), is(400));
+  assert.throws(() => createAgent(db, member, { name: "badtype", engine: "codex", description: 5, prompt: "p" }), is(400));
+  assert.throws(() => createAgent(db, member, { name: "noprompt", engine: "codex", description: "x", prompt: "  " }), is(400));
+  assert.throws(() => updateAgent(db, m2, "rev", { description: "hijack" }), is(403));
+  assert.equal(listAgents(db, member.tenantId).find((x) => x.name === "rev")!.description, null);
+});

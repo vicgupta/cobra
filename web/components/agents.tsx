@@ -8,9 +8,13 @@ import { Badge } from "./ui";
 const input = "w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm placeholder:text-zinc-600 focus:border-emerald-500 focus:outline-none";
 const button = "rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50";
 const ghost = "rounded-md border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50";
+// Mirrors AGENT_PROMPT_MAX / AGENT_DESCRIPTION_MAX in lib/agents.ts (server-only module).
+const PROMPT_MAX = 20000, DESC_MAX = 500;
+const PROMPT_EXAMPLE = "You are a careful code reviewer. Read the diff on the current branch, list bugs, risky changes and missing tests, then suggest concrete fixes. Do not push or merge.";
+const label = "block text-sm font-medium text-zinc-200";
 const ENGINE: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex" };
 
-export type AgentView = { name: string; engine: string; model: string | null; prompt: string; defaultRepo: string | null; contentHash: string; createdByEmail: string | null; canEdit: boolean };
+export type AgentView = { name: string; engine: string; model: string | null; description: string | null; prompt: string; defaultRepo: string | null; contentHash: string; createdByEmail: string | null; canEdit: boolean };
 
 async function call(url: string, method: string, body?: unknown) {
   const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -21,17 +25,19 @@ function AgentForm({ initial, repos, models, onDone }: { initial?: AgentView; re
   const [name, setName] = useState(initial?.name ?? "");
   const [engine, setEngine] = useState(initial?.engine ?? "claude-code");
   const [model, setModel] = useState(initial?.model ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const [repo, setRepo] = useState(initial?.defaultRepo ?? "");
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+  const idp = initial ? `agent-${initial.name}` : "agent-new";
   return (
-    <form className="space-y-2" onSubmit={async (e) => {
+    <form className="space-y-3" onSubmit={async (e) => {
       e.preventDefault();
-      const body = { name, engine, model: model || null, prompt, defaultRepo: repo || null };
+      const body = { name, engine, model: model || null, description: description.trim() || null, prompt, defaultRepo: repo || null };
       const r = initial ? await call(`/api/agents/${encodeURIComponent(initial.name)}`, "PATCH", body) : await call("/api/agents", "POST", body);
       if (!r.ok) return setError(r.data.error ?? "Failed");
-      setError(null); if (!initial) { setName(""); setPrompt(""); setRepo(""); setModel(""); }
+      setError(null); if (!initial) { setName(""); setPrompt(""); setDescription(""); setRepo(""); setModel(""); }
       onDone(); router.refresh();
     }}>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
@@ -46,12 +52,21 @@ function AgentForm({ initial, repos, models, onDone }: { initial?: AgentView; re
           <option value="">No default repo</option>{repos.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </div>
-      <textarea aria-label="Prompt" name="prompt" className={`${input} h-28 font-mono`} placeholder="What this agent does" value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+      <div>
+        <label htmlFor={`${idp}-desc`} className={label}>What this agent does <span className="font-normal text-zinc-500">(optional, shown on the agent card)</span></label>
+        <input id={`${idp}-desc`} aria-label="What this agent does" name="description" maxLength={DESC_MAX} className={input} placeholder="e.g. Reviews pull requests for bugs and missing tests" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <p className="mt-1 text-right text-xs text-zinc-500" data-desc-count>{description.length} / {DESC_MAX}</p>
+      </div>
+      <div>
+        <label htmlFor={`${idp}-prompt`} className={label}>Prompt / instructions <span className="text-rose-300">*</span> <span className="font-normal text-zinc-500">(what the agent is told to do on every run)</span></label>
+        <textarea id={`${idp}-prompt`} aria-label="Prompt / instructions" name="prompt" required maxLength={PROMPT_MAX} className={`${input} h-64 resize-y font-mono`} placeholder={`Example: ${PROMPT_EXAMPLE}`} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
+        <p className={`mt-1 text-right text-xs ${prompt.length > PROMPT_MAX * 0.95 ? "text-amber-300" : "text-zinc-500"}`} data-prompt-count>{prompt.length.toLocaleString("en-US")} / {PROMPT_MAX.toLocaleString("en-US")} characters</p>
+      </div>
       <div className="flex gap-2">
         <button className={button} disabled={!name.trim() || !prompt.trim()}>{initial ? "Save agent" : "Create agent"}</button>
         {initial && <button type="button" className={ghost} onClick={onDone}>Cancel</button>}
       </div>
-      {initial && <p className="text-xs text-zinc-500">Changing the engine, model or prompt makes a new version: workflows that use this agent need approval again.</p>}
+      {initial && <p className="text-xs text-zinc-500">Changing the engine, model or prompt makes a new version: workflows that use this agent need approval again. Editing only the description does not.</p>}
       {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
     </form>
   );
@@ -94,6 +109,8 @@ export function AgentManager({ agents, repos, models }: { agents: AgentView[]; r
   const router = useRouter();
   return (
     <div className="space-y-4">
+      <div className="rounded-md border border-zinc-800 p-4"><h3 className="mb-1 text-sm font-medium">New agent</h3><p className="mb-3 text-xs text-zinc-500">Name it, pick the engine, say what it does, and write the prompt it runs with.</p><AgentForm repos={repos} models={models} onDone={() => {}} /></div>
+      <h3 className="text-sm font-medium">Team agents ({agents.length})</h3>
       {agents.length === 0 ? <p className="text-sm text-zinc-500">No agents yet.</p> : (
         <ul className="divide-y divide-zinc-800">{agents.map((a) => (
           <li key={a.name} className="py-3" data-agent={a.name}>
@@ -114,13 +131,16 @@ export function AgentManager({ agents, repos, models }: { agents: AgentView[]; r
                 }}>Delete</button>}
               </span>
             </div>
-            <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-xs text-zinc-400">{a.prompt}</pre>
+            {a.description ? <p className="mt-1 text-sm text-zinc-300" data-description>{a.description}</p> : <p className="mt-1 text-xs italic text-zinc-600">No description</p>}
+            <details className="mt-1" data-prompt-view open={a.prompt.length <= 300 || undefined}>
+              <summary className="cursor-pointer text-xs text-zinc-400 hover:text-zinc-200">Prompt / instructions ({a.prompt.length.toLocaleString("en-US")} chars){a.canEdit ? "" : " · read-only"}</summary>
+              <pre className="mt-1 max-h-96 overflow-auto whitespace-pre-wrap rounded-md border border-zinc-800 bg-zinc-950 p-2 font-mono text-xs text-zinc-300">{a.prompt}</pre>
+            </details>
             {open?.name === a.name && open.kind === "run" && <RunAgentForm agent={a} repos={repos} onClose={() => setOpen(null)} />}
             {open?.name === a.name && open.kind === "edit" && <div className="mt-2"><AgentForm initial={a} repos={repos} models={models} onDone={() => setOpen(null)} /></div>}
           </li>))}</ul>
       )}
       {error && <p role="alert" className="text-sm text-rose-300">{error}</p>}
-      <div className="border-t border-zinc-800 pt-4"><h3 className="mb-2 text-sm font-medium">New agent</h3><AgentForm repos={repos} models={models} onDone={() => {}} /></div>
     </div>
   );
 }

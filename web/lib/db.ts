@@ -285,6 +285,8 @@ const MIGRATIONS: Array<(db: DB) => void> = [
       at INTEGER NOT NULL
     );
   `),
+  // 15 (Agent description): short plain-language purpose shown on the agent card; NOT part of content_hash
+  (db) => db.exec("ALTER TABLE team_agents ADD COLUMN description TEXT;"),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */
