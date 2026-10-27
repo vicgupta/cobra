@@ -176,6 +176,8 @@ async function runStep(db: DB, who: Who, skill: Skill, step: PlanStep, vars: Rec
     if (typeof w.agent === "string" && w.agent) {
       const a = getAgent(db, skill.tenantId, w.agent);
       if (!a) throw new Error(`unknown agent '${w.agent}'`);
+      // Depth cap: an agent that runs a skill can't be a step inside another skill (no agent -> skill -> agent chains).
+      if (a.skillRef) throw new Error(`agent '${a.name}' runs a skill; skill steps can only call prompt agents`);
       w.driver = a.engine; if (a.model) w.model = a.model;
       prompt = finalPrompt(a.prompt, prompt);
     }

@@ -54,7 +54,8 @@ export function withAgents(db: DB, tenantId: number, loaded: LoadedWorkflow): Lo
   const agents: Record<string, ResolvedAgent> = {}, agentErrors: string[] = [];
   for (const n of refs) {
     const a = getAgent(db, tenantId, n);
-    if (a) agents[n] = { engine: a.engine, model: a.model, prompt: a.prompt, hash: a.contentHash };
+    if (a?.skillRef) agentErrors.push(`agent '${n}' runs a skill; workflow steps can only use prompt agents`);
+    else if (a) agents[n] = { engine: a.engine, model: a.model, prompt: a.prompt, hash: a.contentHash };
     else agentErrors.push(`unknown agent '${n}' (steps: ${loaded.workflow.steps.filter((s) => s.with.agent === n).map((s) => s.id).join(", ")}); create it on the Agents page`);
   }
   const hash = createHash("sha256").update([loaded.hash, ...refs.map((n) => `agent:${n}:${agents[n]?.hash ?? "missing"}`)].join("\n")).digest("hex");

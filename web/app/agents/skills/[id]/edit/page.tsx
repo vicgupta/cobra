@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CollabPage } from "@/components/collab-page";
 import { Card } from "@/components/ui";
@@ -7,10 +8,10 @@ import { canEdit, getSkill, type Actor } from "@/lib/skills/store";
 
 export const metadata = { title: "Edit skill · Cobra" };
 
-export default function EditSkillPage({ params }: PageProps<"/skills/[id]/edit">) {
-  return <CollabPage title="Edit skill" crumbs="Skills">{(u) => <Body u={u} params={params} />}</CollabPage>;
+export default function EditSkillPage({ params }: PageProps<"/agents/skills/[id]/edit">) {
+  return <CollabPage title="Edit skill" crumbs={<Link href="/agents/skills" className="hover:underline">Agents · Skills library</Link>}>{(u) => <Body u={u} params={params} />}</CollabPage>;
 }
-async function Body({ u, params }: { u: Actor; params: PageProps<"/skills/[id]/edit">["params"] }) {
+async function Body({ u, params }: { u: Actor; params: PageProps<"/agents/skills/[id]/edit">["params"] }) {
   const db = getDb();
   const s = getSkill(db, u, Number((await params).id));
   if (!s) notFound();

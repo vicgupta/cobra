@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CollabPage } from "@/components/collab-page";
 import { Card } from "@/components/ui";
 import { SkillEditor, type Starter } from "@/components/skills";
@@ -16,7 +17,7 @@ const REVIEWED = {
 };
 
 export default function NewSkillPage() {
-  return <CollabPage title="New skill" crumbs="Skills">{(u) => {
+  return <CollabPage title="New skill" crumbs={<Link href="/agents/skills" className="hover:underline">Agents · Skills library</Link>}>{(u) => {
     const master = listSkills(getDb(), u).find((s) => s.name === MASTER && s.tenantId === u.tenantId);
     const starters: Starter[] = [
       { key: "one-line", label: "One-line SOP", description: "A single instruction; the plan is derived", body: "Fix the failing test and explain the root cause.", plan: "" },

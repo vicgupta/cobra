@@ -2,7 +2,6 @@
 // server layout (decides what is rendered at all) and the client Nav (route-level hiding).
 export const NAV_LINKS = [
   { href: "/", label: "Dashboard" },
-  { href: "/skills", label: "Skills" },
   { href: "/agents", label: "Agents" },
   { href: "/repos", label: "Repos" },
   { href: "/settings", label: "Settings" },

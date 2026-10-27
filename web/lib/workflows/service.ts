@@ -229,6 +229,7 @@ export function runAgent(db: DB, user: Actor, name: string, body: AgentRunBody |
   const a = getAgent(db, user.tenantId, name);
   if (!a) return err(404, `agent '${name}' not found`);
   if (!isEngine(a.engine)) return err(400, `agent '${name}' uses ${a.engine}: ${UNSUPPORTED_ENGINE} (this build runs Claude Code or Codex only)`);
+  if (a.skillRef) return err(400, `agent '${name}' runs a skill; start it from the Agents page (lib/agent-run.ts runTeamAgent)`);
   const b = body ?? {};
   if (b.instructions !== undefined && typeof b.instructions !== "string") return err(400, "instructions must be text");
   const extra = typeof b.instructions === "string" ? b.instructions.trim() : "";
@@ -237,7 +238,7 @@ export function runAgent(db: DB, user: Actor, name: string, body: AgentRunBody |
 }
 
 /** A pre-approved single agent step: a team agent (agent set) or a plain engine + prompt. */
-export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: string; model?: string | null; prompt: string; hash?: string; repo?: string; mode?: unknown; purpose?: string }, deps: RunDeps): Res & { run?: ReturnType<typeof startWorkflowRun> } {
+export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: string; model?: string | null; prompt: string; hash?: string; repo?: string; mode?: unknown; purpose?: string; scheduled?: boolean }, deps: RunDeps): Res & { run?: ReturnType<typeof startWorkflowRun> } {
   const mode = str(o.mode) ?? "simulated";
   if (mode !== "simulated" && mode !== "real") return err(400, "mode must be simulated or real");
   if (!isEngine(o.engine)) return err(400, `${o.engine}: ${UNSUPPORTED_ENGINE}; engine must be ${ENGINE_LIST}`);
@@ -257,7 +258,8 @@ export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: stri
     outputs: { summary: "${{ steps.agent.outputs.summary }}", branch: "${{ steps.agent.outputs.branch }}", pushed: "${{ steps.agent.outputs.pushed }}" },
   };
   const loaded: LoadedWorkflow = { workflow, file: wfName, source: "", hash, origin: "tenant", agents: { [label]: { engine, model: o.model ?? null, prompt, hash } }, agentErrors: [] };
-  const run = startWorkflowRun(db, { tenantId: user.tenantId, userId: user.id }, loaded, {}, {
+  // Cron runs have no user: created_by stays NULL and triggered_by records 'schedule'.
+  const run = startWorkflowRun(db, o.scheduled ? { tenantId: user.tenantId, userId: null, triggeredBy: "schedule" } : { tenantId: user.tenantId, userId: user.id }, loaded, {}, {
     handlers: deps.handlers, resolveSecret: deps.resolveSecret, redact: deps.redact(), preApproved: true, inputs: {},
     meta: { engine, prompt, promptSource: o.agent ? "agent" : "custom", mode, repo },
   });

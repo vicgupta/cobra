@@ -67,5 +67,5 @@ test("repos tabs and redirects", async () => {
   assert.equal(by("/repos")?.destination, "/repos/overview");
   assert.equal(by("/issues/:path*")?.destination, "/repos/issues/:path*");
   assert.equal(by("/pulls/:path*")?.destination, "/repos/pull-requests/:path*");
-  assert.ok(r.every((x) => x.permanent === false && x.destination !== "/settings/repos"));
+  assert.ok(r.filter((x) => !x.source.startsWith("/skills")).every((x) => x.permanent === false && x.destination !== "/settings/repos"));
 });

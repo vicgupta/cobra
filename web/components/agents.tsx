@@ -17,7 +17,11 @@ const PROMPT_EXAMPLE = "You are a careful code reviewer. Read the diff on the cu
 const label = "block text-sm font-medium text-fg-soft";
 const ENGINE: Record<string, string> = ENGINE_LABEL;
 
-export type AgentView = { name: string; engine: string; model: string | null; description: string | null; prompt: string; defaultRepo: string | null; contentHash: string; createdByEmail: string | null; createdAt?: number; canEdit: boolean };
+export type AgentView = { name: string; engine: string; model: string | null; description: string | null; prompt: string; defaultRepo: string | null; skillRef?: string | null;
+  cron?: string | null; cronEnabled?: boolean; cronMode?: "simulated" | "real"; contentHash: string; createdByEmail: string | null; createdAt?: number; canEdit: boolean };
+/** A skill an agent can run: "sop:<id>" (with approval status) or "text:<file>". */
+export type SkillOption = { ref: string; label: string; kind: "sop" | "text"; status: string; href?: string };
+const CRON_EXAMPLES = "e.g. 0 9 * * 1-5 (9:00 AM weekdays) · */30 * * * * (every 30 min)";
 
 async function call(url: string, method: string, body?: unknown) {
   const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -35,7 +39,12 @@ export function ModelPicker({ engine, models, value, onChange }: { engine: strin
   );
 }
 
-function AgentForm({ initial, repos, models, onDone }: { initial?: AgentView; repos: string[]; models: Record<string, string[]>; onDone: () => void }) {
+function AgentForm({ initial, repos, models, skills, onDone }: { initial?: AgentView; repos: string[]; models: Record<string, string[]>; skills: SkillOption[]; onDone: () => void }) {
+  const [kind, setKind] = useState<"prompt" | "skill">(initial?.skillRef ? "skill" : "prompt");
+  const [skillRef, setSkillRef] = useState(initial?.skillRef ?? "");
+  const [cron, setCron] = useState(initial?.cron ?? "");
+  const [cronEnabled, setCronEnabled] = useState(!!initial?.cronEnabled);
+  const [cronMode, setCronMode] = useState<"simulated" | "real">(initial?.cronMode ?? "simulated");
   const [name, setName] = useState(initial?.name ?? "");
   const [engine, setEngine] = useState(initial?.engine ?? "claude-code");
   const [model, setModel] = useState(initial?.model ?? "");
@@ -48,10 +57,10 @@ function AgentForm({ initial, repos, models, onDone }: { initial?: AgentView; re
   return (
     <form className="space-y-3" onSubmit={async (e) => {
       e.preventDefault();
-      const body = { name, engine, model: model || null, description: description.trim() || null, prompt, defaultRepo: repo || null };
+      const body = { name, engine, model: model || null, description: description.trim() || null, kind, ...(kind === "prompt" ? { prompt, skillRef: null } : { skillRef }), defaultRepo: repo || null, cron: cron.trim() || null, cronEnabled: cronEnabled && !!cron.trim(), cronMode };
       const r = initial ? await call(`/api/agents/${encodeURIComponent(initial.name)}`, "PATCH", body) : await call("/api/agents", "POST", body);
       if (!r.ok) return setError(r.data.error ?? "Failed");
-      setError(null); if (!initial) { setName(""); setPrompt(""); setDescription(""); setRepo(""); setModel(""); }
+      setError(null); if (!initial) { setName(""); setPrompt(""); setDescription(""); setRepo(""); setModel(""); setSkillRef(""); setKind("prompt"); setCron(""); setCronEnabled(false); setCronMode("simulated"); }
       onDone(); router.refresh();
     }}>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
@@ -69,16 +78,44 @@ function AgentForm({ initial, repos, models, onDone }: { initial?: AgentView; re
         <input id={`${idp}-desc`} aria-label="What this agent does" name="description" maxLength={DESC_MAX} className={input} placeholder="e.g. Reviews pull requests for bugs and missing tests" value={description} onChange={(e) => setDescription(e.target.value)} />
         <p className="mt-1 text-right text-xs text-subtle" data-desc-count>{description.length} / {DESC_MAX}</p>
       </div>
-      <div>
+      <fieldset className="space-y-2" data-agent-kind>
+        <legend className={label}>What this agent runs <span className="text-danger">*</span> <span className="font-normal text-subtle">(a prompt or one existing skill)</span></legend>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <label className="flex items-center gap-2"><input type="radio" name={`${idp}-kind`} value="prompt" checked={kind === "prompt"} onChange={() => setKind("prompt")} /> Prompt / instructions</label>
+          <label className="flex items-center gap-2"><input type="radio" name={`${idp}-kind`} value="skill" checked={kind === "skill"} onChange={() => setKind("skill")} /> Skill</label>
+        </div>
+      </fieldset>
+      {kind === "prompt" ? <div>
         <label htmlFor={`${idp}-prompt`} className={label}>Prompt / instructions <span className="text-danger">*</span> <span className="font-normal text-subtle">(what the agent is told to do on every run)</span></label>
         <textarea id={`${idp}-prompt`} aria-label="Prompt / instructions" name="prompt" required maxLength={PROMPT_MAX} className={`${input} h-64 resize-y font-mono`} placeholder={`Example: ${PROMPT_EXAMPLE}`} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
         <p className={`mt-1 text-right text-xs ${prompt.length > PROMPT_MAX * 0.95 ? "text-warning" : "text-subtle"}`} data-prompt-count>{prompt.length.toLocaleString("en-US")} / {PROMPT_MAX.toLocaleString("en-US")} characters</p>
-      </div>
+      </div> : (
+      <div>
+        <label htmlFor={`${idp}-skill`} className={label}>Skill <span className="text-danger">*</span> <span className="font-normal text-subtle">(manage skills in the Skills library tab)</span></label>
+        <select id={`${idp}-skill`} aria-label="Skill" name="skillRef" className={input} value={skillRef} onChange={(e) => setSkillRef(e.target.value)}>
+          <option value="">Pick a skill…</option>
+          {skillRef && !skills.some((o) => o.ref === skillRef) && <option value={skillRef}>{skillRef} (not found)</option>}
+          <optgroup label="SOP skills">{skills.filter((o) => o.kind === "sop").map((o) => <option key={o.ref} value={o.ref}>{o.label} · {o.status}</option>)}</optgroup>
+          <optgroup label="Text skills">{skills.filter((o) => o.kind === "text").map((o) => <option key={o.ref} value={o.ref}>{o.label}</option>)}</optgroup>
+        </select>
+        {skillRef && <p className="mt-1 text-xs text-subtle" data-skill-status>Approval: {skills.find((o) => o.ref === skillRef)?.status ?? "unknown"}. Saving never needs approval; real runs of a SOP skill need it approved. Extra instructions at run time are passed to the skill as inputs.</p>}
+      </div>)}
+      <fieldset className="space-y-2 rounded-md border border-border p-3" data-agent-cron>
+        <legend className="px-1 text-sm font-medium text-fg-soft">Schedule <span className="font-normal text-subtle">(optional · cron, America/New_York)</span></legend>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <input aria-label="Cron schedule" name="cron" className={`${input} font-mono`} placeholder="0 9 * * 1-5" value={cron} onChange={(e) => setCron(e.target.value)} />
+          <select aria-label="Scheduled run mode" name="cronMode" className={input} value={cronMode} onChange={(e) => setCronMode(e.target.value as "simulated" | "real")}>
+            <option value="simulated">Scheduled runs: simulated</option><option value="real">Scheduled runs: real</option>
+          </select>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" aria-label="Schedule enabled" name="cronEnabled" checked={cronEnabled} disabled={!cron.trim()} onChange={(e) => setCronEnabled(e.target.checked)} /> Enabled</label>
+        </div>
+        <p className="text-xs text-subtle">{CRON_EXAMPLES}. Off unless enabled; scheduled runs show “schedule” as Triggered by on the dashboard.</p>
+      </fieldset>
       <div className="flex gap-2">
-        <button className={button} disabled={!name.trim() || !prompt.trim()}>{initial ? "Save agent" : "Create agent"}</button>
+        <button className={button} disabled={!name.trim() || (kind === "prompt" ? !prompt.trim() : !skillRef)}>{initial ? "Save agent" : "Create agent"}</button>
         {initial && <button type="button" className={ghost} onClick={onDone}>Cancel</button>}
       </div>
-      {initial && <p className="text-xs text-subtle">Changing the engine, model or prompt makes a new version: workflows that use this agent need approval again. Editing only the description does not.</p>}
+      {initial && <p className="text-xs text-subtle">Changing the engine, model, prompt or skill makes a new version: workflows that use this agent need approval again. Editing only the description does not.</p>}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     </form>
   );
@@ -108,14 +145,14 @@ function RunAgentForm({ agent, repos, onClose }: { agent: AgentView; repos: stri
           <option value="simulated">Simulated (records only)</option><option value="real">Real (runs the agent)</option>
         </select>
       </div>
-      <textarea aria-label="Extra instructions" name="instructions" className={`${input} h-20`} placeholder="Optional extra instructions (appended to the agent's prompt)" value={instructions} onChange={(e) => setInstructions(e.target.value)} />
+      <textarea aria-label="Extra instructions" name="instructions" className={`${input} h-20`} placeholder={agent.skillRef ? "Optional extra instructions (passed to the skill as inputs)" : "Optional extra instructions (appended to the agent's prompt)"} value={instructions} onChange={(e) => setInstructions(e.target.value)} />
       <div className="flex gap-2"><button className={button} disabled={busy}>{busy ? "Starting…" : "Start run"}</button><button type="button" className={ghost} onClick={onClose}>Cancel</button></div>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     </form>
   );
 }
 
-export function AgentManager({ agents, repos, models }: { agents: AgentView[]; repos: string[]; models: Record<string, string[]> }) {
+export function AgentManager({ agents, repos, models, skills = [] }: { agents: AgentView[]; repos: string[]; models: Record<string, string[]>; skills?: SkillOption[] }) {
   const [open, setOpen] = useState<{ name: string; kind: "run" | "edit" } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -123,7 +160,7 @@ export function AgentManager({ agents, repos, models }: { agents: AgentView[]; r
   const router = useRouter();
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-border p-4"><h3 className="mb-1 text-sm font-medium">New agent</h3><p className="mb-3 text-xs text-subtle">Name it, pick the engine, say what it does, and write the prompt it runs with.</p><AgentForm repos={repos} models={models} onDone={() => {}} /></div>
+      <div className="rounded-md border border-border p-4"><h3 className="mb-1 text-sm font-medium">New agent</h3><p className="mb-3 text-xs text-subtle">Name it, pick the engine, say what it does, then give it a prompt or pick one skill. Optionally schedule it.</p><AgentForm repos={repos} models={models} skills={skills} onDone={() => {}} /></div>
       <h3 className="text-sm font-medium">Team agents ({agents.length})</h3>
       {agents.length === 0 ? <p className="text-sm text-subtle">No agents yet.</p> : (
         <ul className="divide-y divide-border">{agents.map((a) => (
@@ -134,6 +171,8 @@ export function AgentManager({ agents, repos, models }: { agents: AgentView[]; r
               <span className="font-mono text-xs text-fg-soft" data-model>{a.model ?? "default model"}</span>
               <span className="font-mono text-xs text-subtle" title="version (sha256 of engine + prompt + model)">v {a.contentHash.slice(0, 12)}</span>
               {a.defaultRepo && <span className="font-mono text-xs text-muted">{a.defaultRepo}</span>}
+              {a.skillRef ? <span data-agent-skill><Badge tone="violet">skill: {skills.find((o) => o.ref === a.skillRef)?.label ?? a.skillRef} · {skills.find((o) => o.ref === a.skillRef)?.status ?? "not found"}</Badge></span> : <span data-agent-prompt><Badge tone="gray">prompt</Badge></span>}
+              {a.cron && <span className="font-mono text-xs text-muted" data-agent-cron title="America/New_York">{a.cronEnabled ? "⏱" : "⏸"} {a.cron} ({a.cronEnabled ? `on · ${a.cronMode ?? "simulated"}` : "off"})</span>}
               <span className="text-xs text-subtle" data-added-by>Added by {a.createdByEmail ?? "unknown"}{a.createdAt ? ` · ${new Date(a.createdAt).toLocaleDateString()}` : ""}</span>
               <span className="ml-auto flex gap-2">
                 {isEngine(a.engine) ? <button className={button} onClick={() => setOpen({ name: a.name, kind: "run" })}>Run</button> : <button className={button} disabled title={UNSUPPORTED_ENGINE}>Run</button>}
@@ -143,12 +182,12 @@ export function AgentManager({ agents, repos, models }: { agents: AgentView[]; r
             </div>
             {!a.canEdit && <p className="mt-1 text-xs text-subtle" data-run-only>You can run this agent. Only its creator ({a.createdByEmail ?? "unknown"}), team leads, the designated lead and admins can edit or delete it.</p>}
             {a.description ? <p className="mt-1 text-sm text-fg-soft" data-description>{a.description}</p> : <p className="mt-1 text-xs italic text-faint">No description</p>}
-            <details className="mt-1" data-prompt-view open={a.prompt.length <= 300 || undefined}>
+            {!a.skillRef && <details className="mt-1" data-prompt-view open={a.prompt.length <= 300 || undefined}>
               <summary className="cursor-pointer text-xs text-muted hover:text-fg-soft">Prompt / instructions ({a.prompt.length.toLocaleString("en-US")} chars){a.canEdit ? "" : " · read-only"}</summary>
               <pre className="mt-1 max-h-96 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-code p-2 font-mono text-xs text-code-fg">{a.prompt}</pre>
-            </details>
+            </details>}
             {open?.name === a.name && open.kind === "run" && <RunAgentForm agent={a} repos={repos} onClose={() => setOpen(null)} />}
-            {open?.name === a.name && open.kind === "edit" && <div className="mt-2"><AgentForm initial={a} repos={repos} models={models} onDone={() => setOpen(null)} /></div>}
+            {open?.name === a.name && open.kind === "edit" && <div className="mt-2"><AgentForm initial={a} repos={repos} models={models} skills={skills} onDone={() => setOpen(null)} /></div>}
           </li>))}</ul>
       )}
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}

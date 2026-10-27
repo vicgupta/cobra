@@ -44,7 +44,7 @@ export function SkillEditor({ id, initial, starters = [] }: { id?: number; initi
     setBusy(false);
     if (!r.ok) { setErrors((r.j.errors as string[]) ?? [String(r.j.error ?? `error ${r.status}`)]); return; }
     const sid = (r.j.skill as { id: number }).id;
-    router.push(`/skills/${sid}`); router.refresh();
+    router.push(`/agents/skills/${sid}`); router.refresh();
   };
   return (
     <div className="space-y-4">

@@ -31,10 +31,10 @@ test("nav-gate: every signup-flow screen hides nav even with a full session", ()
 });
 
 test("nav-gate: signed-in members keep the normal menu unchanged (admin gets Admin)", () => {
-  assert.deepEqual(navLinksFor(member, false, "/").map((l) => l.label), ["Dashboard", "Skills", "Agents", "Repos", "Settings"]);
-  assert.deepEqual(navLinksFor(member, true, "/skills").map((l) => l.label), ["Dashboard", "Skills", "Agents", "Repos", "Settings", "Admin"]);
+  assert.deepEqual(navLinksFor(member, false, "/").map((l) => l.label), ["Dashboard", "Agents", "Repos", "Settings"]);
+  assert.deepEqual(navLinksFor(member, true, "/skills").map((l) => l.label), ["Dashboard", "Agents", "Repos", "Settings", "Admin"]);
   assert.equal(showUserMenu(member, "/"), true);
-  assert.equal(navLinksFor(member, false, null).length, 5);
+  assert.equal(navLinksFor(member, false, null).length, 4);
 });
 
 test("nav-gate: wired server-side (layout decides links/menu; proxy forwards pathname)", () => {

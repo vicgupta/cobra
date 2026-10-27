@@ -20,8 +20,8 @@ type D = {
 const C = ({ children }: { children: React.ReactNode }) => <code className="rounded bg-surface-2 px-1 text-[0.85em]">{children}</code>;
 const when = (t: number) => new Date(t).toISOString().replace("T", " ").slice(0, 16) + " UTC";
 
-export default function SkillPage({ params }: PageProps<"/skills/[id]">) {
-  return <CollabPage title="Skill" crumbs={<Link href="/skills" className="hover:underline">Skills</Link>}>{(u) => <Body u={u} params={params} />}</CollabPage>;
+export default function SkillPage({ params }: PageProps<"/agents/skills/[id]">) {
+  return <CollabPage title="Skill" crumbs={<Link href="/agents/skills" className="hover:underline">Agents · Skills library</Link>}>{(u) => <Body u={u} params={params} />}</CollabPage>;
 }
 
 function PlanView({ s }: { s: Skill }) {
@@ -66,7 +66,7 @@ function SopView({ body }: { body: string }) {
   );
 }
 
-async function Body({ u, params }: { u: Actor; params: PageProps<"/skills/[id]">["params"] }) {
+async function Body({ u, params }: { u: Actor; params: PageProps<"/agents/skills/[id]">["params"] }) {
   const r = detail(getDb(), u, (await params).id);
   if (r.status === 404) notFound();
   const d = r.body as D, s = d.skill;
@@ -76,7 +76,7 @@ async function Body({ u, params }: { u: Actor; params: PageProps<"/skills/[id]">
         <h2 className="text-xl font-semibold">{s.name}</h2><span className="text-sm text-subtle">v{s.version}</span>
         {s.kind === "master" ? <Badge tone="violet">master skill</Badge> : <Badge>SOP skill</Badge>}<StatusBadge status={d.approval.status} />
         {u.role === "admin" && <Badge tone="blue">team: {d.summary.team}</Badge>}
-        {d.can.edit && <Link href={`/skills/${s.id}/edit`} className="ml-auto rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-soft hover:bg-surface-2">Edit</Link>}
+        {d.can.edit && <Link href={`/agents/skills/${s.id}/edit`} className="ml-auto rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-soft hover:bg-surface-2">Edit</Link>}
       </div>
       {s.description ? <p className="text-sm text-fg-soft">{s.description}</p> : <p className="text-sm text-subtle">No description.</p>}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -92,7 +92,7 @@ async function Body({ u, params }: { u: Actor; params: PageProps<"/skills/[id]">
       </div>
       {(d.composed.length > 0 || d.composeError) && <Card title="Composed skills" subtitle="call_skill targets (recursive); each runs as its own run with its own audit trail">
         {d.composeError && <p className="text-sm text-danger">{d.composeError}</p>}
-        <ul className="text-sm">{d.composed.map((k) => <li key={k.id}><Link className="text-success hover:underline" href={`/skills/${k.id}`}>{k.name}</Link> <span className="text-subtle">v{k.version}</span></li>)}</ul></Card>}
+        <ul className="text-sm">{d.composed.map((k) => <li key={k.id}><Link className="text-success hover:underline" href={`/agents/skills/${k.id}`}>{k.name}</Link> <span className="text-subtle">v{k.version}</span></li>)}</ul></Card>}
       <PlanView s={s} />
       <SopView body={s.body} />
       <Card title="Runs" subtitle="Latest 20">

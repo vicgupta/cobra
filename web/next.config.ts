@@ -19,6 +19,9 @@ const nextConfig: NextConfig = {
       // Job 7 (Oct 2026): Sessions moved from the header menu into Settings.
       { source: "/account/sessions", destination: "/settings", permanent: false },
       { source: "/sessions", destination: "/settings", permanent: false },
+      // Oct 2026: Skills folded into Agents ("Agents | Skills library" toggle). Permanent; query string kept.
+      { source: "/skills", destination: "/agents/skills", permanent: true },
+      { source: "/skills/:path*", destination: "/agents/skills/:path*", permanent: true },
     ];
   },
   turbopack: {

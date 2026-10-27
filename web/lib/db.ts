@@ -736,6 +736,14 @@ const MIGRATIONS: Array<(db: DB) => void> = [
   // 29 (agent edit/delete): soft delete. A deleted agent keeps its row (renamed to '<name>~<id>' so the slug can
   // be reused; '~' is never valid in a slug) with deleted_at/deleted_by; runs keep their 'agent:<name>' label.
   (db) => db.exec("ALTER TABLE team_agents ADD COLUMN deleted_at INTEGER; ALTER TABLE team_agents ADD COLUMN deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL;"),
+  // 30 (Skills folded into Agents): additive only. An agent runs its prompt OR one skill (skill_ref "sop:<id>" / "text:<file>",
+  // NULL = prompt agent; existing rows stay prompt agents). Optional cron (America/New_York), off by default;
+  // cron_last_fire is the claimed minute (ms) so restarts and several instances never double-fire.
+  (db) => db.exec(`ALTER TABLE team_agents ADD COLUMN skill_ref TEXT;
+    ALTER TABLE team_agents ADD COLUMN cron TEXT;
+    ALTER TABLE team_agents ADD COLUMN cron_enabled INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE team_agents ADD COLUMN cron_mode TEXT NOT NULL DEFAULT 'simulated';
+    ALTER TABLE team_agents ADD COLUMN cron_last_fire INTEGER;`),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

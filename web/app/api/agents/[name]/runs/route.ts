@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { apiGuard } from "@/lib/auth/server";
 import { actor, getDb, runDeps } from "@/lib/workflows/server";
-import { runAgent } from "@/lib/workflows/service";
+import { runTeamAgent } from "@/lib/agent-run";
 
-/** Direct run of a team agent (no workflow approval); body { repo?, mode: simulated|real, instructions? }. */
+/** Direct run of a team agent (prompt or skill); body { repo?, mode: simulated|real, instructions? }. Skill agents need the skill approved for real runs. */
 export async function POST(req: Request, ctx: { params: Promise<{ name: string }> }) {
   const g = await apiGuard(req);
   if (g.error) return g.error;
-  const r = runAgent(getDb(), actor(g.user), (await ctx.params).name, await req.json().catch(() => null), runDeps(g.user.tenantId, actor(g.user)));
+  const r = runTeamAgent(getDb(), actor(g.user), (await ctx.params).name, await req.json().catch(() => null), runDeps(g.user.tenantId, actor(g.user)));
   return NextResponse.json(r.body, { status: r.status });
 }

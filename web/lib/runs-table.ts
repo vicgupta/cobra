@@ -110,3 +110,15 @@ export function nextSort(cur: { key: SortKey; dir: SortDir }, key: SortKey): { k
 
 export const ariaSort = (cur: { key: SortKey; dir: SortDir }, key: SortKey): "ascending" | "descending" | "none" =>
   cur.key !== key ? "none" : cur.dir === "asc" ? "ascending" : "descending";
+
+/** The dashboard's Recent runs query (every run of the team: workflows, agents, skills, scheduled). */
+export function recentRunRows(db: import("./db").DB, tenantId: number, limit = 50): RunRow[] {
+  type R = { id: string; title: string; workflow: string | null; status: string | null; started_at: number; ended_at: number | null; triggered_by: string | null; uname: string | null; uemail: string | null };
+  const rows = db.prepare(`SELECT r.id, r.title, r.workflow, r.status, r.started_at, r.ended_at, r.triggered_by, u.name AS uname, u.email AS uemail
+    FROM runs r LEFT JOIN users u ON u.id = r.created_by WHERE r.tenant_id = ? ORDER BY r.started_at DESC LIMIT ?`).all(tenantId, limit) as R[];
+  return rows.map((r) => {
+    const { name, kind } = runName(r.workflow, r.title);
+    const trig = r.uname || r.uemail ? triggeredByLabel(r.uname, r.uemail) : triggeredByLabel(null, r.triggered_by);
+    return { id: r.id, name, kind, status: r.status ?? "unknown", startedAt: r.started_at, endedAt: r.ended_at, triggeredBy: trig };
+  });
+}
