@@ -744,6 +744,27 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     ALTER TABLE team_agents ADD COLUMN cron_enabled INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE team_agents ADD COLUMN cron_mode TEXT NOT NULL DEFAULT 'simulated';
     ALTER TABLE team_agents ADD COLUMN cron_last_fire INTEGER;`),
+  // 31 (Tasks): additive only. A task = an agent (+ optional one skill override) on a cron schedule
+  // (America/New_York) with run criteria. Disabled by default; last_fire is the claimed minute (no double fires).
+  (db) => db.exec(`CREATE TABLE tasks (
+      id INTEGER PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      agent TEXT NOT NULL,
+      skill_ref TEXT,
+      cron TEXT,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      mode TEXT NOT NULL DEFAULT 'simulated',
+      repo TEXT,
+      instructions TEXT,
+      last_fire INTEGER,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      deleted_at INTEGER,
+      deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE UNIQUE INDEX tasks_tenant_name ON tasks(tenant_id, name) WHERE deleted_at IS NULL;`),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

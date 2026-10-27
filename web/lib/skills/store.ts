@@ -139,7 +139,7 @@ export type SaveInput = { name?: unknown; description?: unknown; body?: unknown;
 
 function prepare(db: DB, tenantId: number, b: SaveInput, current?: Skill) {
   const errors: string[] = [];
-  const name = typeof b.name === "string" ? b.name.trim() : current?.name ?? "";
+  const name = typeof b.name === "string" ? b.name.trim().toLowerCase() : current?.name ?? "";
   if (!NAME.test(name)) errors.push("name: lowercase letters, digits and '-', starting with a letter (max 63)");
   const description = typeof b.description === "string" ? b.description.trim() : current?.description ?? "";
   const body = typeof b.body === "string" ? b.body.replace(/\r\n/g, "\n") : current?.body ?? "";
@@ -178,7 +178,7 @@ export function updateSkill(db: DB, u: Actor, id: number, b: SaveInput, note = "
   const cur = getSkill(db, u, id);
   if (!cur) throw new SkillError(404, ["skill not found"]);
   if (!canEdit(db, u, cur)) throw new SkillError(403, ["you can't edit this skill (its creator, team leads, the designated lead and system admins can)"]);
-  if (typeof b.name === "string" && b.name.trim() !== cur.name) throw new SkillError(400, ["skills can't be renamed; create a new one"]);
+  if (typeof b.name === "string" && b.name.trim().toLowerCase() !== cur.name) throw new SkillError(400, ["skills can't be renamed; create a new one"]);
   const p = prepare(db, cur.tenantId, { ...b, name: cur.name }, cur);
   const hash = ownHash(p);
   if (hash === cur.contentHash) return { skill: cur, changed: false };

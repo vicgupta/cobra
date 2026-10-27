@@ -23,6 +23,25 @@ export function tickAgentSchedules(db: DB, now: number, fire: (a: DueAgent) => v
   return fired;
 }
 
+export type DueTask = { id: number; tenantId: number; name: string; minute: number };
+
+/** Same per-minute DB claim as agents, for enabled tasks (the one scheduling place in the UI). */
+export function tickTaskSchedules(db: DB, now: number, fire: (t: DueTask) => void): DueTask[] {
+  const minute = minuteFloor(now);
+  const rows = db.prepare("SELECT id, tenant_id AS tenantId, name, cron FROM tasks WHERE enabled = 1 AND cron IS NOT NULL AND deleted_at IS NULL").all() as Array<{ id: number; tenantId: number; name: string; cron: string }>;
+  const claim = db.prepare("UPDATE tasks SET last_fire = ? WHERE id = ? AND enabled = 1 AND deleted_at IS NULL AND (last_fire IS NULL OR last_fire < ?)");
+  const fired: DueTask[] = [];
+  for (const r of rows) {
+    let due = false;
+    try { due = cronMatches(parseCron(r.cron), minute); } catch { continue; }
+    if (!due || Number(claim.run(minute, r.id, minute).changes) !== 1) continue;
+    const t: DueTask = { id: r.id, tenantId: r.tenantId, name: r.name, minute };
+    fired.push(t);
+    try { fire(t); } catch (e) { console.error(`[cobra] scheduled task ${r.name}:`, e instanceof Error ? e.message : e); }
+  }
+  return fired;
+}
+
 const g = globalThis as { __cobraAgentTimer?: ReturnType<typeof setInterval>; __cobraAgentStarted?: boolean };
 
 /** Started from instrumentation.ts (Node runtime, production). Disable with COBRA_AGENT_SCHEDULER=off. */
@@ -35,6 +54,12 @@ export function startAgentScheduler(): void {
       const { runDeps } = await import("./workflows/server");
       const { runTeamAgent, scheduleActor } = await import("./agent-run");
       const db = getDb();
+      const { runTask } = await import("./task-run");
+      tickTaskSchedules(db, Date.now(), (t) => {
+        const r = runTask(db, null, t.tenantId, t.id, runDeps(t.tenantId), { scheduled: true });
+        console.log(`[cobra] scheduled task ${t.name} (team ${t.tenantId}): ${r.status}${r.status >= 400 ? ` ${JSON.stringify(r.body).slice(0, 200)}` : ""}`);
+      });
+      // Agent-level cron (columns kept) is no longer offered in the UI; it still fires only if a row has it enabled.
       tickAgentSchedules(db, Date.now(), (a) => {
         const r = runTeamAgent(db, scheduleActor(a.tenantId), a.name, { mode: a.mode }, runDeps(a.tenantId), { scheduled: true });
         console.log(`[cobra] scheduled agent ${a.name} (team ${a.tenantId}, ${a.mode}): ${r.status}${r.status >= 400 ? ` ${JSON.stringify(r.body).slice(0, 200)}` : ""}`);

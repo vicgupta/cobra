@@ -3,7 +3,7 @@
 // (skr_ runs, real runs need the skill approved), text skills through runDirect with the skill text.
 // Optional extra instructions are passed as the skill's inputs (prompt / instructions / task).
 import type { DB } from "./db";
-import { getAgent, skillAgentRefs, textSkillsDir, type TeamAgent } from "./agents";
+import { finalPrompt, getAgent, skillAgentRefs, textSkillsDir, type TeamAgent } from "./agents";
 import { canMerge } from "./collab";
 import { runAgent, runDirect, type Res, type RunDeps } from "./workflows/service";
 import type { Actor } from "./workflows/store";
@@ -18,18 +18,25 @@ const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : unde
 /** A stand-in actor for cron runs (no user; runs record triggered_by 'schedule'). */
 export const scheduleActor = (tenantId: number): Actor => ({ id: 0, email: "schedule", role: "member", tenantId });
 
-export function runTeamAgent(db: DB, user: Actor, name: string, body: TeamAgentRunBody | null, deps: RunDeps, o: { scheduled?: boolean; textDir?: string } = {}): Res {
+/** Options: scheduled (no user; triggered_by = triggeredBy ?? 'schedule'), skillRef (a task's skill override), textDir (tests). */
+export type RunOpts = { scheduled?: boolean; textDir?: string; skillRef?: string | null; triggeredBy?: string; task?: string };
+
+export function runTeamAgent(db: DB, user: Actor, name: string, body: TeamAgentRunBody | null, deps: RunDeps, o: RunOpts = {}): Res {
   const a = getAgent(db, user.tenantId, name);
   if (!a) return err(404, `agent '${name}' not found`);
-  if (!a.skillRef) {
-    if (!o.scheduled) return runAgent(db, user, name, body, deps);
+  const ref = o.skillRef || a.skillRef;
+  if (!ref) {
+    if (!o.scheduled && !o.task) return runAgent(db, user, name, body, deps);
     const b = body ?? {};
-    return runDirect(db, user, { agent: a.name, engine: a.engine, model: a.model, prompt: a.prompt, hash: a.contentHash, repo: str(b.repo) ?? a.defaultRepo ?? undefined, mode: b.mode, scheduled: true }, deps);
+    if (b.instructions !== undefined && typeof b.instructions !== "string") return err(400, "instructions must be text");
+    const prompt = finalPrompt(a.prompt, b.instructions);
+    return runDirect(db, user, { agent: a.name, engine: a.engine, model: a.model, prompt, hash: a.contentHash, repo: str(b.repo) ?? a.defaultRepo ?? undefined, mode: b.mode,
+      purpose: o.task ? `Task ${o.task} · agent ${a.name}` : undefined, scheduled: o.scheduled, triggeredBy: o.triggeredBy }, deps);
   }
-  return runSkillAgent(db, user, a, body ?? {}, deps, o);
+  return runSkillAgent(db, user, { ...a, skillRef: ref }, body ?? {}, deps, o);
 }
 
-function runSkillAgent(db: DB, user: Actor, a: TeamAgent, b: TeamAgentRunBody, deps: RunDeps, o: { scheduled?: boolean; textDir?: string }): Res {
+function runSkillAgent(db: DB, user: Actor, a: TeamAgent, b: TeamAgentRunBody, deps: RunDeps, o: RunOpts): Res {
   if (b.instructions !== undefined && typeof b.instructions !== "string") return err(400, "instructions must be text");
   const extra = typeof b.instructions === "string" ? b.instructions.trim() : "";
   if (extra.length > 4000) return err(400, "instructions must be at most 4000 characters");
@@ -40,7 +47,7 @@ function runSkillAgent(db: DB, user: Actor, a: TeamAgent, b: TeamAgentRunBody, d
   if (kind === "text") {
     const skill = loadTextSkills(o.textDir ?? textSkillsDir()).find((s) => s.id === ref);
     if (!skill) return err(404, `text skill '${ref}' not found`);
-    const r = runDirect(db, user, { agent: a.name, engine: a.engine, model: a.model, prompt: buildPrompt(skill, extra || "Follow the skill.", o.scheduled ? false : canMerge(db, user)), hash: a.contentHash, repo, mode, purpose: `Agent ${a.name} · text skill ${skill.id}`, scheduled: o.scheduled }, deps);
+    const r = runDirect(db, user, { agent: a.name, engine: a.engine, model: a.model, prompt: buildPrompt(skill, extra || "Follow the skill.", o.scheduled ? false : canMerge(db, user)), hash: a.contentHash, repo, mode, purpose: `${o.task ? `Task ${o.task} · ` : ""}Agent ${a.name} · text skill ${skill.id}`, scheduled: o.scheduled, triggeredBy: o.triggeredBy }, deps);
     return { ...r, body: { ...(r.body as object), skill: `text:${skill.id}` } };
   }
   const s = getSkill(db, { role: "member", tenantId: user.tenantId }, Number(ref));
@@ -50,8 +57,8 @@ function runSkillAgent(db: DB, user: Actor, a: TeamAgent, b: TeamAgentRunBody, d
   if (repo && !/^[\w.-]+\/[\w.-]+$/.test(repo)) return err(400, "repo must look like owner/name");
   const inputs = extra ? { prompt: extra, instructions: extra, task: extra } : {};
   try {
-    const who = o.scheduled ? { tenantId: user.tenantId, userId: null, email: "schedule" } : { tenantId: user.tenantId, userId: user.id, email: user.email };
-    const r = startSkillRun(db, who, s, inputs, deps, { mode, repo: repo ?? "", parent: `agent ${a.name}` });
+    const who = o.scheduled ? { tenantId: user.tenantId, userId: null, email: o.triggeredBy ?? "schedule" } : { tenantId: user.tenantId, userId: user.id, email: user.email };
+    const r = startSkillRun(db, who, s, inputs, deps, { mode, repo: repo ?? "", parent: o.task ? `task ${o.task} · agent ${a.name}` : `agent ${a.name}` });
     void r.done;
     return { status: 201, body: { id: r.id, url: `/runs/${r.id}`, agent: a.name, skill: `sop:${s.id}`, mode } };
   } catch (e) {

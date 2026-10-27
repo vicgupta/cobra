@@ -20,7 +20,7 @@ export default function NewSkillPage() {
   return <CollabPage title="New skill" crumbs={<Link href="/agents/skills" className="hover:underline">Agents · Skills library</Link>}>{(u) => {
     const master = listSkills(getDb(), u).find((s) => s.name === MASTER && s.tenantId === u.tenantId);
     const starters: Starter[] = [
-      { key: "one-line", label: "One-line SOP", description: "A single instruction; the plan is derived", body: "Fix the failing test and explain the root cause.", plan: "" },
+      { key: "one-line", label: "One-line SOP", description: "A single instruction", body: "Fix the failing test and explain the root cause.", plan: "" },
       { key: "reviewed", label: "Implement + review", description: "Two agent steps, each given its own SOP section", body: "# Reviewed change\n\n## Implement\nMake the change with tests.\n\n## Review\nCheck correctness, tests and style.\n", plan: JSON.stringify(REVIEWED, null, 2) },
       ...(master ? [{ key: "master", label: "Master skill (workflow)", description: "Compose skills with call_skill steps", body: master.body, plan: JSON.stringify(master.plan, null, 2) }] : []),
     ];

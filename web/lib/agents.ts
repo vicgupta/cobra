@@ -106,7 +106,7 @@ export function checkSkillRef(db: DB, tenantId: number, ref: string, agentNames:
   return `sop:${id}`;
 }
 function validate(db: DB, tenantId: number, b: Input, partial: TeamAgent | null) {
-  const name = b.name === undefined && partial ? partial.name : typeof b.name === "string" ? b.name.trim() : "";
+  const name = b.name === undefined && partial ? partial.name : typeof b.name === "string" ? b.name.trim().toLowerCase() : "";
   if (!AGENT_NAME_RE.test(name)) throw new AgentError(400, "name must be a slug: lowercase letters, digits and '-', starting with a letter (max 63)");
   const engine = (b.engine === undefined && partial ? partial.engine : b.engine) as AgentEngine;
   if (!AGENT_ENGINES.includes(engine)) throw new AgentError(400, `engine must be one of ${AGENT_ENGINES.join(", ")}`);

@@ -16,5 +16,5 @@ async function Body({ u, params }: { u: Actor; params: PageProps<"/agents/skills
   const s = getSkill(db, u, Number((await params).id));
   if (!s) notFound();
   if (!canEdit(db, u, s)) return <p className="text-sm text-muted">Only the creator, team leads, the designated lead and system admins can edit this skill.</p>;
-  return <Card title={s.name} subtitle={`Saving creates v${s.version + 1}; any change needs re-approval.`}><SkillEditor id={s.id} initial={{ name: s.name, description: s.description, body: s.body, plan: JSON.stringify(s.plan, null, 2) }} /></Card>;
+  return <Card title={s.name} subtitle={`Saving creates v${s.version + 1}; any change needs re-approval.`}><SkillEditor id={s.id} initial={{ name: s.name, description: s.description, body: s.body }} /></Card>;
 }

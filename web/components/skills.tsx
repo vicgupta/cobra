@@ -16,31 +16,31 @@ const Errors = ({ e }: { e: string[] }) => e.length ? <ul className="mt-2 list-d
 
 export type Starter = { key: string; label: string; description: string; body: string; plan: string };
 
-/** New/edit form: SOP body + JSON plan with live validation. */
-export function SkillEditor({ id, initial, starters = [] }: { id?: number; initial?: { name: string; description: string; body: string; plan: string }; starters?: Starter[] }) {
+/** New/edit form: name, description and the plain-text SOP body (no JSON anywhere). A starter may carry a hidden plan; edits keep the stored plan. */
+export function SkillEditor({ id, initial, starters = [] }: { id?: number; initial?: { name: string; description: string; body: string }; starters?: Starter[] }) {
   const router = useRouter();
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [body, setBody] = useState(initial?.body ?? "");
-  const [plan, setPlan] = useState(initial?.plan ?? "");
+  const [plan, setPlan] = useState(""); // hidden: only a starter sets it (new skills); never shown
   const [check, setCheck] = useState<{ ok: boolean; errors?: string[]; steps?: number; derived?: boolean } | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     const t = setTimeout(async () => {
-      let parsed: unknown = plan;
-      if (plan.trim()) { try { parsed = JSON.parse(plan); } catch (e) { setCheck({ ok: false, errors: [`plan isn't valid JSON: ${(e as Error).message}`] }); return; } }
-      const r = await post("/api/skills/validate", { plan: plan.trim() ? parsed : null, body, description });
+      let parsed: unknown = null;
+      if (!id && plan.trim()) { try { parsed = JSON.parse(plan); } catch { parsed = null; } }
+      const r = await post("/api/skills/validate", { plan: parsed, body, description });
       setCheck(r.j as never);
     }, 400);
     return () => clearTimeout(t);
-  }, [plan, body, description]);
+  }, [id, plan, body, description]);
   const start = (s: Starter) => { setBody(s.body); setPlan(s.plan); if (!description) setDescription(s.description); };
   const save = async () => {
     setBusy(true); setErrors([]);
     let p: unknown = null;
-    if (plan.trim()) { try { p = JSON.parse(plan); } catch { setErrors(["plan isn't valid JSON"]); setBusy(false); return; } }
-    const r = id ? await post(`/api/skills/${id}`, { description, body, plan: p }, "PUT") : await post("/api/skills", { name, description, body, plan: p });
+    if (!id && plan.trim()) { try { p = JSON.parse(plan); } catch { p = null; } }
+    const r = id ? await post(`/api/skills/${id}`, { description, body }, "PUT") : await post("/api/skills", { name, description, body, plan: p });
     setBusy(false);
     if (!r.ok) { setErrors((r.j.errors as string[]) ?? [String(r.j.error ?? `error ${r.status}`)]); return; }
     const sid = (r.j.skill as { id: number }).id;
@@ -50,19 +50,16 @@ export function SkillEditor({ id, initial, starters = [] }: { id?: number; initi
     <div className="space-y-4">
       {!id && starters.length > 0 && <div className="flex flex-wrap items-center gap-2 text-sm"><span className="text-muted">Start from:</span>{starters.map((s) => <button key={s.key} type="button" className={btn} onClick={() => start(s)} title={s.description}>{s.label}</button>)}</div>}
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm">Name<input className={input} value={name} disabled={!!id} onChange={(e) => setName(e.target.value)} placeholder="release-checklist" /></label>
+        <label className="text-sm">Name<input className={input} value={name} disabled={!!id} onChange={(e) => setName(e.target.value.toLowerCase())} placeholder="release-checklist" /></label>
         <label className="text-sm">Description<input className={input} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="One line: what this SOP does" /></label>
       </div>
-      <label className="block text-sm">SOP (markdown; headings become sections steps can reference)
-        <textarea className={`${input} h-64 font-mono`} value={body} onChange={(e) => setBody(e.target.value)} placeholder={"# My SOP\n\nOne line is enough: leave the plan empty and a one-step plan is derived."} />
-      </label>
-      <label className="block text-sm">Plan (JSON; leave empty to derive a one-step plan from the SOP)
-        <textarea className={`${input} h-80 font-mono text-xs`} value={plan} onChange={(e) => setPlan(e.target.value)} spellCheck={false} placeholder='{"steps":[{"id":"run","action":"agent","with":{"prompt":"..."},"on_failure":"stop"}]}' />
+      <label className="block text-sm">SOP (plain text; headings become sections)
+        <textarea className={`${input} h-64 font-mono`} value={body} onChange={(e) => setBody(e.target.value)} placeholder={"# My SOP\n\nOne line is enough."} />
       </label>
       <div className="rounded-md border border-border p-3 text-sm" data-testid="live-validation">
         {!check ? <span className="text-subtle">Checking…</span> : check.ok
-          ? <><span className="text-success">Plan valid</span> · {check.steps} step(s){check.derived && " (derived from the SOP)"}</>
-          : <><span className="text-danger">Plan invalid</span><Errors e={check.errors ?? []} /></>}
+          ? <span className="text-success">Ready to save</span>
+          : <><span className="text-danger">Can&apos;t save yet</span><Errors e={check.errors ?? []} /></>}
       </div>
       <Errors e={errors} />
       <div className="flex gap-2"><button className={primary} disabled={busy || (!id && !name)} onClick={save}>{id ? "Save new version" : "Create skill"}</button></div>

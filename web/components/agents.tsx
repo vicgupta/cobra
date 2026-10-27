@@ -21,7 +21,6 @@ export type AgentView = { name: string; engine: string; model: string | null; de
   cron?: string | null; cronEnabled?: boolean; cronMode?: "simulated" | "real"; contentHash: string; createdByEmail: string | null; createdAt?: number; canEdit: boolean };
 /** A skill an agent can run: "sop:<id>" (with approval status) or "text:<file>". */
 export type SkillOption = { ref: string; label: string; kind: "sop" | "text"; status: string; href?: string };
-const CRON_EXAMPLES = "e.g. 0 9 * * 1-5 (9:00 AM weekdays) · */30 * * * * (every 30 min)";
 
 async function call(url: string, method: string, body?: unknown) {
   const r = await fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -42,9 +41,6 @@ export function ModelPicker({ engine, models, value, onChange }: { engine: strin
 function AgentForm({ initial, repos, models, skills, onDone }: { initial?: AgentView; repos: string[]; models: Record<string, string[]>; skills: SkillOption[]; onDone: () => void }) {
   const [kind, setKind] = useState<"prompt" | "skill">(initial?.skillRef ? "skill" : "prompt");
   const [skillRef, setSkillRef] = useState(initial?.skillRef ?? "");
-  const [cron, setCron] = useState(initial?.cron ?? "");
-  const [cronEnabled, setCronEnabled] = useState(!!initial?.cronEnabled);
-  const [cronMode, setCronMode] = useState<"simulated" | "real">(initial?.cronMode ?? "simulated");
   const [name, setName] = useState(initial?.name ?? "");
   const [engine, setEngine] = useState(initial?.engine ?? "claude-code");
   const [model, setModel] = useState(initial?.model ?? "");
@@ -57,14 +53,14 @@ function AgentForm({ initial, repos, models, skills, onDone }: { initial?: Agent
   return (
     <form className="space-y-3" onSubmit={async (e) => {
       e.preventDefault();
-      const body = { name, engine, model: model || null, description: description.trim() || null, kind, ...(kind === "prompt" ? { prompt, skillRef: null } : { skillRef }), defaultRepo: repo || null, cron: cron.trim() || null, cronEnabled: cronEnabled && !!cron.trim(), cronMode };
+      const body = { name, engine, model: model || null, description: description.trim() || null, kind, ...(kind === "prompt" ? { prompt, skillRef: null } : { skillRef }), defaultRepo: repo || null };
       const r = initial ? await call(`/api/agents/${encodeURIComponent(initial.name)}`, "PATCH", body) : await call("/api/agents", "POST", body);
       if (!r.ok) return setError(r.data.error ?? "Failed");
-      setError(null); if (!initial) { setName(""); setPrompt(""); setDescription(""); setRepo(""); setModel(""); setSkillRef(""); setKind("prompt"); setCron(""); setCronEnabled(false); setCronMode("simulated"); }
+      setError(null); if (!initial) { setName(""); setPrompt(""); setDescription(""); setRepo(""); setModel(""); setSkillRef(""); setKind("prompt"); }
       onDone(); router.refresh();
     }}>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
-        <input aria-label="Agent name" name="name" className={input} placeholder="name (e.g. reviewer)" value={name} onChange={(e) => setName(e.target.value)} />
+        <input aria-label="Agent name" name="name" className={input} placeholder="name (e.g. reviewer)" value={name} onChange={(e) => setName(e.target.value.toLowerCase())} />
         <select aria-label="Engine" name="engine" className={input} value={engine} onChange={(e) => { setEngine(e.target.value); setModel(""); }}>
           {ENGINES.map((e) => <option key={e} value={e}>{ENGINE_LABEL[e]}</option>)}
         </select>
@@ -95,22 +91,11 @@ function AgentForm({ initial, repos, models, skills, onDone }: { initial?: Agent
         <select id={`${idp}-skill`} aria-label="Skill" name="skillRef" className={input} value={skillRef} onChange={(e) => setSkillRef(e.target.value)}>
           <option value="">Pick a skill…</option>
           {skillRef && !skills.some((o) => o.ref === skillRef) && <option value={skillRef}>{skillRef} (not found)</option>}
-          <optgroup label="SOP skills">{skills.filter((o) => o.kind === "sop").map((o) => <option key={o.ref} value={o.ref}>{o.label} · {o.status}</option>)}</optgroup>
+          <optgroup label="SOP skills">{skills.filter((o) => o.kind === "sop").map((o) => <option key={o.ref} value={o.ref}>{o.label}</option>)}</optgroup>
           <optgroup label="Text skills">{skills.filter((o) => o.kind === "text").map((o) => <option key={o.ref} value={o.ref}>{o.label}</option>)}</optgroup>
         </select>
         {skillRef && <p className="mt-1 text-xs text-subtle" data-skill-status>Approval: {skills.find((o) => o.ref === skillRef)?.status ?? "unknown"}. Saving never needs approval; real runs of a SOP skill need it approved. Extra instructions at run time are passed to the skill as inputs.</p>}
       </div>)}
-      <fieldset className="space-y-2 rounded-md border border-border p-3" data-agent-cron>
-        <legend className="px-1 text-sm font-medium text-fg-soft">Schedule <span className="font-normal text-subtle">(optional · cron, America/New_York)</span></legend>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <input aria-label="Cron schedule" name="cron" className={`${input} font-mono`} placeholder="0 9 * * 1-5" value={cron} onChange={(e) => setCron(e.target.value)} />
-          <select aria-label="Scheduled run mode" name="cronMode" className={input} value={cronMode} onChange={(e) => setCronMode(e.target.value as "simulated" | "real")}>
-            <option value="simulated">Scheduled runs: simulated</option><option value="real">Scheduled runs: real</option>
-          </select>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" aria-label="Schedule enabled" name="cronEnabled" checked={cronEnabled} disabled={!cron.trim()} onChange={(e) => setCronEnabled(e.target.checked)} /> Enabled</label>
-        </div>
-        <p className="text-xs text-subtle">{CRON_EXAMPLES}. Off unless enabled; scheduled runs show “schedule” as Triggered by on the dashboard.</p>
-      </fieldset>
       <div className="flex gap-2">
         <button className={button} disabled={!name.trim() || (kind === "prompt" ? !prompt.trim() : !skillRef)}>{initial ? "Save agent" : "Create agent"}</button>
         {initial && <button type="button" className={ghost} onClick={onDone}>Cancel</button>}
@@ -160,7 +145,7 @@ export function AgentManager({ agents, repos, models, skills = [] }: { agents: A
   const router = useRouter();
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-border p-4"><h3 className="mb-1 text-sm font-medium">New agent</h3><p className="mb-3 text-xs text-subtle">Name it, pick the engine, say what it does, then give it a prompt or pick one skill. Optionally schedule it.</p><AgentForm repos={repos} models={models} skills={skills} onDone={() => {}} /></div>
+      <div className="rounded-md border border-border p-4"><h3 className="mb-1 text-sm font-medium">New agent</h3><p className="mb-3 text-xs text-subtle">Name it, pick the engine, say what it does, then give it a prompt or pick one skill. Schedule it from Tasks.</p><AgentForm repos={repos} models={models} skills={skills} onDone={() => {}} /></div>
       <h3 className="text-sm font-medium">Team agents ({agents.length})</h3>
       {agents.length === 0 ? <p className="text-sm text-subtle">No agents yet.</p> : (
         <ul className="divide-y divide-border">{agents.map((a) => (
@@ -171,8 +156,7 @@ export function AgentManager({ agents, repos, models, skills = [] }: { agents: A
               <span className="font-mono text-xs text-fg-soft" data-model>{a.model ?? "default model"}</span>
               <span className="font-mono text-xs text-subtle" title="version (sha256 of engine + prompt + model)">v {a.contentHash.slice(0, 12)}</span>
               {a.defaultRepo && <span className="font-mono text-xs text-muted">{a.defaultRepo}</span>}
-              {a.skillRef ? <span data-agent-skill><Badge tone="violet">skill: {skills.find((o) => o.ref === a.skillRef)?.label ?? a.skillRef} · {skills.find((o) => o.ref === a.skillRef)?.status ?? "not found"}</Badge></span> : <span data-agent-prompt><Badge tone="gray">prompt</Badge></span>}
-              {a.cron && <span className="font-mono text-xs text-muted" data-agent-cron title="America/New_York">{a.cronEnabled ? "⏱" : "⏸"} {a.cron} ({a.cronEnabled ? `on · ${a.cronMode ?? "simulated"}` : "off"})</span>}
+              {a.skillRef ? <span data-agent-skill><Badge tone="violet">skill: {skills.find((o) => o.ref === a.skillRef)?.label ?? "not found"}</Badge> <span className="text-xs text-subtle" data-skill-approval>{skills.find((o) => o.ref === a.skillRef)?.status ?? ""}</span></span> : <span data-agent-prompt><Badge tone="gray">prompt</Badge></span>}
               <span className="text-xs text-subtle" data-added-by>Added by {a.createdByEmail ?? "unknown"}{a.createdAt ? ` · ${new Date(a.createdAt).toLocaleDateString()}` : ""}</span>
               <span className="ml-auto flex gap-2">
                 {isEngine(a.engine) ? <button className={button} onClick={() => setOpen({ name: a.name, kind: "run" })}>Run</button> : <button className={button} disabled title={UNSUPPORTED_ENGINE}>Run</button>}
