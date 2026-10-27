@@ -122,8 +122,8 @@ test("task runs (prompt agent, SOP skill override; built-in text skill refused) 
   assert.equal(getTask(db, member.tenantId, a.id)!.lastRun!.id.length > 0, true);
 });
 
-test("nav: Dashboard, Agents, Tasks, Repos, Settings; Tasks page and API exist", () => {
-  assert.deepEqual(NAV_LINKS.map((l) => l.label), ["Dashboard", "Agents", "Tasks", "Repos", "Settings"]);
+test("nav: Dashboard, Tasks, Agents, Repos, Settings; Tasks page and API exist", () => {
+  assert.deepEqual(NAV_LINKS.map((l) => l.label), ["Dashboard", "Tasks", "Agents", "Repos", "Settings"]);
   for (const f of ["app/tasks/page.tsx", "app/api/tasks/route.ts", "app/api/tasks/[id]/route.ts", "app/api/tasks/[id]/runs/route.ts"]) assert.ok(readFileSync(f, "utf8").length > 0, f);
 });
 
