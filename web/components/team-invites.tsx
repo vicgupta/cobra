@@ -60,3 +60,21 @@ export function SignupToggle({ allow }: { allow: boolean }) {
     </label>
   );
 }
+
+/** System admins: create a team (and move into it). */
+export function CreateTeamForm() {
+  const c = useCall();
+  const [name, setName] = useState("");
+  return (
+    <form className="flex flex-wrap items-center gap-2" data-create-team onSubmit={async (e) => { e.preventDefault(); if (await c.run("/api/team/teams", "POST", { name, join: true }, () => "Team created; you're now in it")) setName(""); }}>
+      <input required aria-label="New team name" placeholder="Team name" maxLength={80} className={`${input} min-w-64`} value={name} onChange={(e) => setName(e.target.value)} />
+      <button className={button} disabled={c.busy}>Create team</button>{c.status}
+    </form>
+  );
+}
+
+/** System admins: move into an existing team. */
+export function JoinTeamButton({ id, name }: { id: number; name: string }) {
+  const c = useCall();
+  return <span className="flex items-center gap-2"><button className={ghost} disabled={c.busy} onClick={() => { if (confirm(`Move to team "${name}"? You'll see that team's skills, agents and repos instead of this one's.`)) void c.run(`/api/team/teams/${id}/join`, "POST", {}, () => `Joined ${name}`); }}>Join</button>{c.status}</span>;
+}

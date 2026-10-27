@@ -5,7 +5,8 @@ import { designatedLead, isSystemAdmin } from "@/lib/collab";
 import { displayTeamMembers } from "@/lib/team";
 import { getDb } from "@/lib/workflows/server";
 import { listInvites, listJoinRequests, signupSettings } from "@/lib/registration";
-import { InviteForm, JoinRequestActions, RevokeInvite, SignupToggle } from "@/components/team-invites";
+import { CreateTeamForm, InviteForm, JoinRequestActions, JoinTeamButton, RevokeInvite, SignupToggle } from "@/components/team-invites";
+import { listTeams } from "@/lib/admin-teams";
 
 const ts = (ms: number) => new Date(ms).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) + " ET";
 const STATUS_TONE: Record<string, "green" | "gray" | "amber" | "blue"> = { active: "green", pending: "amber", link_sent: "blue", used: "gray", accepted: "green", revoked: "gray", dismissed: "gray", expired: "gray" };
@@ -69,6 +70,20 @@ export function TeamView() {
                   <Card title="Sign-ups" subtitle="System admins only. Applies to the whole Cobra install. Changes are audited.">
                     <SignupToggle allow={s.allowTeamSignups} />
                     {s.updatedBy && <p className="mt-2 text-xs text-subtle">Last changed {s.updatedAt ? ts(s.updatedAt) : ""} by {s.updatedBy}</p>}
+                  </Card>
+                ); })()}
+                {admin && (() => { const teams = listTeams(db, u); return (
+                  <Card title="Teams" subtitle="System admins only. Create a team, or join one to work in it. You're in one team at a time; team-scoped things (skills, agents, repos) follow the team you're in.">
+                    <CreateTeamForm />
+                    <table className="mt-4 w-full text-sm" data-teams>
+                      <thead><tr className="text-left text-xs text-subtle"><th className="py-2">Team</th><th>Slug</th><th>Members</th><th></th></tr></thead>
+                      <tbody className="divide-y divide-border">{teams.map((t) => (
+                        <tr key={t.id} data-team={t.slug}>
+                          <td className="py-2">{t.name}</td><td className="font-mono text-xs">{t.slug}</td><td>{t.members}</td>
+                          <td>{t.current ? <Badge tone="green">current</Badge> : <JoinTeamButton id={t.id} name={t.name} />}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
                   </Card>
                 ); })()}
               </>;
