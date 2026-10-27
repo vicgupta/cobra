@@ -38,6 +38,7 @@ People can join Cobra in three ways. Each one is bound to an email address, and 
 - Caps: at most 5 open verifications per email, 3 pending join requests per email, and 25 per team. Anything over a cap is silently dropped.
 - **Allow new team sign-ups** (Settings > Team > *Sign-ups*, system admins only, audited as `signup_toggle`) is on by default. Turning it off disables *Create a new team* only. Invites and join requests keep working.
 - Existing accounts are untouched, and `scripts/user.mts` still creates users directly.
+- All system emails (password resets, sign-up verification, invites, magic links, join links, notifications) are sent from `danny@kantsy.com` via the Kantsy API; `COBRA_MAIL_FROM` in the server env file overrides it.
 - For local testing, `COBRA_MAIL_OUTBOX=/path/file.jsonl` writes emails to a file instead of sending them. Never set it on production. `COBRA_PUBLIC_URL` sets the link base (default `https://nova.kantsy.com`).
 
 ## Agent tool updates (Settings > Updates)
