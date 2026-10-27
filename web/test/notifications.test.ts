@@ -30,12 +30,12 @@ test("daily send: not before 7, once per NY date to every admin, catch-up until 
   assert.equal(await maybeSendDaily(db, send, t7, H, ""), "sent");
   assert.deepEqual(sent.map((s) => s[0]).sort(), ["ops@a.com", "vic@a.com"], "no COBRA_ADMIN_EMAIL: every admin");
   assert.match(sent[0][1], /Cobra daily digest 2026-10-27 \(all teams\)/);
-  assert.equal(await maybeSendDaily(db, send, t7 + 60_000, H), "already");
-  const [a, b] = await Promise.all([maybeSendDaily(db, send, Date.UTC(2026, 9, 28, 11, 1), H), maybeSendDaily(db, send, Date.UTC(2026, 9, 28, 11, 1), H)]);
+  assert.equal(await maybeSendDaily(db, send, t7 + 60_000, H, ""), "already");
+  const [a, b] = await Promise.all([maybeSendDaily(db, send, Date.UTC(2026, 9, 28, 11, 1), H, ""), maybeSendDaily(db, send, Date.UTC(2026, 9, 28, 11, 1), H, "")]);
   assert.deepEqual([a, b].sort(), ["already", "sent"], "concurrent ticks: one send");
   assert.equal(sent.length, 4);
-  assert.equal(await maybeSendDaily(db, send, Date.UTC(2026, 9, 29, 17, 0), H), "not-due", "1 PM ET: too late for catch-up");
-  assert.equal(await maybeSendDaily(db, send, Date.UTC(2026, 9, 30, 15, 30), H), "sent", "11:30 AM ET catch-up");
+  assert.equal(await maybeSendDaily(db, send, Date.UTC(2026, 9, 29, 17, 0), H, ""), "not-due", "1 PM ET: too late for catch-up");
+  assert.equal(await maybeSendDaily(db, send, Date.UTC(2026, 9, 30, 15, 30), H, ""), "sent", "11:30 AM ET catch-up");
   const { admin } = { admin: { id: 1, email: "vic@a.com", role: "admin" } };
   setDailyEnabled(db, admin, false);
   assert.equal(await maybeSendDaily(db, send, Date.UTC(2026, 9, 31, 11, 0), H), "disabled");

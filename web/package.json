@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test test/*.test.ts",
+    "test": "tsx --import ./test/setup-env.ts --test test/*.test.ts",
     "user:create": "tsx scripts/user.mts create",
     "user:reset-password": "tsx scripts/user.mts reset-password",
     "workflow:list": "tsx scripts/workflow.mts list",
