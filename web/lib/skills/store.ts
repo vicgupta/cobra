@@ -21,7 +21,6 @@ type Row = { id: number; tenant_id: number; name: string; version: number; descr
 const fromRow = (r: Row): Skill => ({ id: r.id, tenantId: r.tenant_id, name: r.name, version: r.version, description: r.description, kind: r.kind, body: r.body, plan: JSON.parse(r.plan_json), contentHash: r.content_hash, builtin: !!r.builtin, createdBy: r.created_by, updatedBy: r.updated_by, createdAt: r.created_at, updatedAt: r.updated_at });
 
 export const NAME = /^[a-z][a-z0-9-]{0,62}$/;
-export const MASTER = "workflow";
 
 /** sha256 of the skill's own content (canonical JSON of description, kind, body and plan). */
 export const ownHash = (s: Pick<Skill, "description" | "kind" | "body" | "plan">) =>
@@ -32,7 +31,7 @@ export function audit(db: DB, u: Pick<Actor, "id" | "email" | "tenantId"> | null
     .run(tenantId ?? u?.tenantId ?? null, u?.id ?? null, u?.email ?? "system", action, skillId, detail.slice(0, 1000), now);
 }
 
-/** The built-in master skill: a skill like any other (declared inputs, structured output) whose plan composes skills. */
+/** The starting plan for a new master skill a user creates: declared inputs, structured output, composes skills. Nothing is seeded. */
 export function masterPlan(): Plan {
   return {
     inputs: { goal: { type: "string", required: true, description: "What the composition should achieve" } },
@@ -43,25 +42,13 @@ export function masterPlan(): Plan {
     outputs: { goal: "steps.start.outputs.goal", status: "steps.verify.status" },
   } as Plan;
 }
-const MASTER_BODY = "# Workflow (master skill)\n\nComposes other team skills with `call_skill` steps. Copy it, add one `call_skill` step per skill, map inputs with handoffs, guard steps with `when` conditions and keep the final verification step.\n";
-
-/** Creates the per-team master skill 'workflow' if missing (idempotent). */
-export function ensureMaster(db: DB, tenantId: number, now = Date.now()): void {
-  if (db.prepare("SELECT 1 FROM skills WHERE tenant_id = ? AND name = ?").get(tenantId, MASTER)) return;
-  const plan = validatePlan(masterPlan());
-  if (!plan.ok) throw new Error(`master plan invalid: ${plan.errors.join("; ")}`);
-  const s = { description: "Master skill: composes other skills via call_skill steps (input mapping, conditions, cycle detection, depth cap).", kind: "master" as const, body: MASTER_BODY, plan: plan.plan };
-  const r = db.prepare("INSERT OR IGNORE INTO skills (tenant_id, name, version, description, kind, body, plan_json, content_hash, builtin, created_at, updated_at) VALUES (?, ?, 1, ?, 'master', ?, ?, ?, 1, ?, ?)")
-    .run(tenantId, MASTER, s.description, s.body, JSON.stringify(s.plan), ownHash(s), now, now);
-  if (r.changes) db.prepare("INSERT INTO skill_versions (skill_id, version, description, body, plan_json, content_hash, saved_at, note) VALUES (?, 1, ?, ?, ?, ?, ?, 'built-in')")
-    .run(Number(r.lastInsertRowid), s.description, s.body, JSON.stringify(s.plan), ownHash(s), now);
-}
+/** Starter text for the "Master skill" option in the new-skill dropdown (users create their own master skills; none is seeded). */
+export const MASTER_STARTER_BODY = "# Workflow (master skill)\n\nComposes other team skills with `call_skill` steps. Add one `call_skill` step per skill, map inputs with handoffs, guard steps with `when` conditions and keep the final verification step.\n";
 
 /** Team filter for queries: always the caller's own team (system admins included; skills never cross teams). */
 const scope = (u: Pick<Actor, "role" | "tenantId">): number | null => u.tenantId;
 
 export function listSkills(db: DB, u: Actor): Skill[] {
-  ensureMaster(db, u.tenantId);
   const t = scope(u);
   const rows = (t === null ? db.prepare("SELECT * FROM skills ORDER BY tenant_id, name").all() : db.prepare("SELECT * FROM skills WHERE tenant_id = ? ORDER BY name").all(t)) as Row[];
   return rows.map(fromRow);
@@ -205,7 +192,6 @@ function prepare(db: DB, tenantId: number, b: SaveInput, current?: Skill, check 
 export function checkSkill(db: DB, tenantId: number, b: SaveInput): { ok: true; steps: string[] } | { ok: false; errors: string[] } {
   try {
     const p = prepare(db, tenantId, b, undefined, true);
-    if (p.name === MASTER) return { ok: false, errors: ["'workflow' is the built-in master skill; pick another name."] };
     if (p.name && skillByName(db, tenantId, p.name)) return { ok: false, errors: [`A skill named '${p.name}' already exists in your team; pick another name.`] };
     return { ok: true, steps: p.plan.steps.map((s) => s.name ?? s.id) };
   } catch (e) {
@@ -217,7 +203,6 @@ export function checkSkill(db: DB, tenantId: number, b: SaveInput): { ok: true; 
 /** Creates a skill in the actor's team. Any member or team lead can create. Returns the new skill. */
 export function createSkill(db: DB, u: Actor, b: SaveInput, now = Date.now()): Skill {
   const p = prepare(db, u.tenantId, b);
-  if (p.name === MASTER) throw new SkillError(409, ["'workflow' is the built-in master skill; pick another name"]);
   if (skillByName(db, u.tenantId, p.name)) throw new SkillError(409, [`a skill named '${p.name}' already exists in your team`]);
   const hash = ownHash(p);
   const r = db.prepare("INSERT INTO skills (tenant_id, name, version, description, kind, body, plan_json, content_hash, created_by, updated_by, created_at, updated_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)")

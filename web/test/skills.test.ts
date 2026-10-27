@@ -5,7 +5,7 @@ import { createUser } from "../lib/auth/users";
 import { builtinHandlers } from "../lib/workflows/handlers";
 import { validatePlan, MAX_STEPS } from "../lib/skills/plan";
 import { sections, sectionText } from "../lib/skills/sections";
-import { canEdit, createSkill, effectiveHash, getSkill, listSkills, MASTER, skillByName, updateSkill, type Actor } from "../lib/skills/store";
+import { canEdit, createSkill, effectiveHash, getSkill, listSkills, skillByName, updateSkill, type Actor } from "../lib/skills/store";
 import { startSkillRun, type SkillDeps } from "../lib/skills/executor";
 import * as svc from "../lib/skills/service";
 
@@ -73,12 +73,24 @@ test("executor (simulate): when conditions, handoffs, on_failure continue/goto/s
   assert.ok((db.prepare("SELECT COUNT(*) n FROM run_step_events WHERE run_id = ?").get(r.id) as { n: number }).n > 6);
 });
 
-test("master skill: seeded per team, composition with input mapping, own runs per child, cycles and depth cap", async () => {
-  const { db, member, bMember, lead } = setup();
-  listSkills(db, member); listSkills(db, bMember);
-  const m = skillByName(db, member.tenantId, MASTER)!;
+test("listing skills on an empty team creates nothing (no seeded master or built-in skill)", () => {
+  const { db, member, bMember } = setup();
+  const count = () => (db.prepare("SELECT COUNT(*) n FROM skills").get() as { n: number }).n;
+  assert.equal(count(), 0);
+  assert.deepEqual(listSkills(db, member), []);
+  assert.deepEqual(listSkills(db, bMember), []);
+  listSkills(db, member);
+  assert.equal(count(), 0);
+  assert.equal((db.prepare("SELECT COUNT(*) n FROM skills WHERE kind = 'master' OR builtin = 1 OR name = 'workflow'").get() as { n: number }).n, 0);
+  assert.equal((db.prepare("SELECT COUNT(*) n FROM skill_versions").get() as { n: number }).n, 0);
+});
+
+test("master skill: user-created, composition with input mapping, own runs per child, cycles and depth cap", async () => {
+  const { db, member, lead } = setup();
+  const m = createSkill(db, member, { name: "workflow", description: "my master", kind: "master", body: "# Workflow" });
   assert.equal(m.kind, "master");
-  assert.ok(skillByName(db, bMember.tenantId, MASTER));
+  assert.equal(m.builtin, false);
+  assert.equal(m.plan.steps.length, 2, "starts from the master plan");
   createSkill(db, member, { name: "child", description: "c", plan: { inputs: { topic: { type: "string", required: true } }, steps: [step("work", { with: { v: "did {{t}}" }, handoffs: [{ from: "inputs.topic", to: "t" }] })], outputs: { result: "steps.work.outputs.v" } } });
   const plan = { inputs: { goal: { type: "string", required: true } }, steps: [
     { id: "call", action: "call_skill", skill: "child", with: { topic: "{{g}}" }, handoffs: [{ from: "inputs.goal", to: "g" }], on_failure: "stop", outputs: { r: "result.result" } },
@@ -91,7 +103,7 @@ test("master skill: seeded per team, composition with input mapping, own runs pe
   const childRun = r.steps.call.childRun!;
   assert.equal((db.prepare("SELECT workflow FROM runs WHERE id = ?").get(childRun) as { workflow: string }).workflow, "skill:child");
   // cycle: child calls workflow → rejected at save
-  assert.throws(() => updateSkill(db, member, skillByName(db, member.tenantId, "child")!.id, { plan: { steps: [{ id: "c", action: "call_skill", skill: MASTER, on_failure: "stop" }] } }), /cycle/);
+  assert.throws(() => updateSkill(db, member, skillByName(db, member.tenantId, "child")!.id, { plan: { steps: [{ id: "c", action: "call_skill", skill: "workflow", on_failure: "stop" }] } }), /cycle/);
   // depth cap: a chain of 6
   createSkill(db, member, { name: "d0", description: "x", plan: { steps: [step("a")] } });
   for (let i = 1; i <= 5; i++) {
