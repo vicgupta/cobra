@@ -12,7 +12,7 @@ import { LOG_CAP, redact as redactText, type Handlers, type StepContext } from "
 import type { WorkflowStep } from "../workflows/schema";
 import { MAX_DEPTH, type Plan, type PlanStep } from "./plan";
 import { sectionText } from "./sections";
-import { approvalState, audit, effectiveHash, skillByName, SkillError, type Skill } from "./store";
+import { audit, effectiveHash, skillByName, SkillError, type Skill } from "./store";
 
 export type SkillDeps = { handlers: Handlers; resolveSecret: (name: string) => string | undefined; redact: () => string[] };
 export type Mode = "simulated" | "real";
@@ -46,8 +46,8 @@ const fill = (v: unknown, vars: Record<string, unknown>) => typeof v === "string
 export type ExecOptions = { mode?: Mode; repo?: string; now?: number; depth?: number; parent?: string; path?: string[]; idPrefix?: string };
 
 /**
- * Starts a skill run. Real-mode runs need the effective hash approved; simulated runs are dry runs
- * (agents and GitHub simulated, shell and approval steps not executed) and need no approval.
+ * Starts a skill run (any team member, no approval). Simulated runs are dry runs (agents and GitHub
+ * simulated, shell and approval steps not executed).
  */
 export function startSkillRun(db: DB, who: Who, skill: Skill, rawInputs: Record<string, unknown>, deps: SkillDeps, o: ExecOptions = {}): { id: string; done: Promise<SkillRunResult> } {
   const mode: Mode = o.mode === "real" ? "real" : "simulated";
@@ -56,7 +56,6 @@ export function startSkillRun(db: DB, who: Who, skill: Skill, rawInputs: Record<
   if (depth > MAX_DEPTH) throw new SkillError(400, [`composition deeper than ${MAX_DEPTH} levels`]);
   const eff = effectiveHash(db, skill);
   if (eff.errors.length) throw new SkillError(400, eff.errors);
-  if (mode === "real" && depth === 0 && approvalState(db, skill).status !== "approved") throw new SkillError(409, [`skill '${skill.name}' @${eff.hash.slice(0, 12)} isn't approved for real runs (simulated runs are allowed)`]);
   const inputs = resolveInputs(skill.plan, rawInputs);
   const startedAt = o.now ?? Date.now();
   const id = `${o.idPrefix ?? "skr_"}${startedAt.toString(36)}${Math.random().toString(36).slice(2, 6)}`;

@@ -1,5 +1,5 @@
 "use client";
-// Client pieces for SOP skills: editor with live validation, run/approve actions.
+// Client pieces for SOP skills: editor with live validation, run action.
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -69,8 +69,8 @@ export function SkillEditor({ id, initial, starters = [] }: { id?: number; initi
 
 export type InputDef = { type: "string" | "number" | "boolean"; required?: boolean; default?: string | number | boolean; description?: string };
 
-/** Run form: simulated (dry run, allowed before approval) or real (needs the current hash approved). */
-export function RunSkill({ id, inputs, approved }: { id: number; inputs: Record<string, InputDef>; approved: boolean }) {
+/** Run form: test run (dry run) or real run. Any team member, no approval. */
+export function RunSkill({ id, inputs }: { id: number; inputs: Record<string, InputDef> }) {
   const router = useRouter();
   const [vals, setVals] = useState<Record<string, string>>(Object.fromEntries(Object.entries(inputs).map(([k, d]) => [k, d.default === undefined ? "" : String(d.default)])));
   const [repo, setRepo] = useState("");
@@ -89,19 +89,12 @@ export function RunSkill({ id, inputs, approved }: { id: number; inputs: Record<
       <label className="block text-sm">Repo <span className="text-xs text-subtle">optional, owner/name</span><input className={input} value={repo} onChange={(e) => setRepo(e.target.value)} /></label>
       <div className="flex items-center gap-3 text-sm">
         <label><input type="radio" checked={mode === "simulated"} onChange={() => setMode("simulated")} /> Test run</label>
-        <label className={approved ? "" : "text-subtle"}><input type="radio" disabled={!approved} checked={mode === "real"} onChange={() => setMode("real")} /> Real run{!approved && " (needs approval)"}</label>
+        <label><input type="radio" checked={mode === "real"} onChange={() => setMode("real")} /> Real run</label>
         <button className={primary} onClick={go}>{mode === "real" ? "Start real run" : "Start test run"}</button>
       </div>
       <Errors e={err} />
     </div>
   );
-}
-
-export function Approve({ id }: { id: number }) {
-  const router = useRouter();
-  const [c, setC] = useState(""); const [err, setErr] = useState<string[]>([]);
-  const d = async (decision: string) => { const r = await post(`/api/skills/${id}/approval`, { decision, comment: c }); if (!r.ok) setErr([String(r.j.error)]); else router.refresh(); };
-  return <div className="space-y-2"><input className={input} placeholder="Comment (optional)" value={c} onChange={(e) => setC(e.target.value)} /><div className="flex gap-2"><button className={primary} onClick={() => d("approve")}>Approve</button><button className={btn} onClick={() => d("reject")}>Reject</button></div><Errors e={err} /></div>;
 }
 
 /** POST to an action endpoint, then refresh (request review, admin re-review). */

@@ -3,7 +3,7 @@ import { apiGuard } from "@/lib/auth/server";
 import { actor, getDb, runDeps } from "@/lib/workflows/server";
 import { runTask } from "@/lib/task-run";
 
-/** "Run now": any team member; uses the task's mode unless body { mode } overrides. Real skill runs still need the skill approved. */
+/** "Run now": any team member; uses the task's mode unless body { mode } overrides. */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const g = await apiGuard(req);
   if (g.error) return g.error;

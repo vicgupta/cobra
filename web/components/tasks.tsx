@@ -9,15 +9,14 @@ import { button, call, ConfirmDialog, danger, EmptyState, Field, ghost, input, n
 import { DAYS, describeCron, fromCron, PRESETS, scheduleProblem, toCron, type Preset, type Schedule } from "@/lib/schedule";
 import { relativeTime } from "@/lib/runs-table";
 
-/** A skill a task can run, shown by name with its approval label. */
-export type TaskSkillOption = { ref: string; name: string; status: string };
+/** A skill a task can run, shown by name. */
+export type TaskSkillOption = { ref: string; name: string };
 export type TaskAgentOption = { name: string; skillRef: string | null };
 export type TaskView = { id: number; name: string; agent: string; skillRef: string | null; cron: string | null; enabled: boolean; mode: "simulated" | "real";
   repo: string | null; instructions: string | null; createdByEmail: string | null; canEdit: boolean; lastRun?: { id: string; status: string; startedAt: number } | null };
 
 const RUN_TYPES: Array<["simulated" | "real", string]> = [["simulated", "Test run"], ["real", "Real run"]];
 export const runTypeLabel = (m: string) => (m === "real" ? "Real run" : "Test run");
-const skillLabel = (o: TaskSkillOption) => (o.status && o.status !== "approved" ? `${o.name} (${o.status})` : o.name);
 
 function TaskForm({ initial, agents, skills, repos, onDone }: { initial?: TaskView; agents: TaskAgentOption[]; skills: TaskSkillOption[]; repos: string[]; onDone: () => void }) {
   const [name, setName] = useState(initial?.name ?? "");
@@ -38,7 +37,6 @@ function TaskForm({ initial, agents, skills, repos, onDone }: { initial?: TaskVi
   const agentErr = tried && !agent ? "Pick an agent" : null;
   const schedErr = scheduleProblem(sched);
   const set = (p: Partial<Schedule>) => setSched((s) => ({ ...s, ...p }));
-  const status = skills.find((o) => o.ref === skillRef)?.status;
   return (
     <form className="space-y-5" data-task-form noValidate onSubmit={async (e) => {
       e.preventDefault(); setTried(true);
@@ -62,11 +60,11 @@ function TaskForm({ initial, agents, skills, repos, onDone }: { initial?: TaskVi
           </select>
         </Field>
       </div>
-      <Field id={`${idp}-skill`} label="Skill" optional hint={status && status !== "approved" && status !== "" ? "This skill isn't approved yet, so it can only do test runs." : "Leave blank to run the agent as it's set up."}>
+      <Field id={`${idp}-skill`} label="Skill" optional hint="Leave blank to run the agent as it's set up.">
         <select id={`${idp}-skill`} name="skillRef" className={input} value={skillRef} onChange={(e) => setSkillRef(e.target.value)}>
           <option value="">Use the agent&apos;s own setup</option>
           {skillRef && !skills.some((o) => o.ref === skillRef) && <option value={skillRef}>missing skill</option>}
-          {skills.map((o) => <option key={o.ref} value={o.ref}>{skillLabel(o)}</option>)}
+          {skills.map((o) => <option key={o.ref} value={o.ref}>{o.name}</option>)}
         </select>
       </Field>
       <fieldset className="space-y-3 rounded-lg border border-border p-4" data-task-schedule>

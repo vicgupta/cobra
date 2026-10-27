@@ -1,9 +1,8 @@
 // API-facing operations for SOP skills: {status, body} results; every read is team-scoped (404 across teams).
 import type { DB } from "../db";
-import { isSystemAdmin } from "../collab";
 import { planJsonSchema, MAX_BODY_BYTES, MAX_PLAN_BYTES, MAX_STEPS, MAX_DEPTH, type Plan } from "./plan";
 import { sections } from "./sections";
-import { approvalState, canApprove, canEdit, composed, createSkill, decide, effectiveHash, getSkill, listSkills, SkillError, updateSkill, versions, type Actor, type SaveInput, type Skill } from "./store";
+import { canEdit, composed, createSkill, effectiveHash, getSkill, listSkills, SkillError, updateSkill, versions, type Actor, type SaveInput, type Skill } from "./store";
 import { startSkillRun, type SkillDeps } from "./executor";
 
 export type Res = { status: number; body: unknown };
@@ -16,19 +15,13 @@ export const wrap = (f: () => Res): Res => {
 };
 const find = (db: DB, u: Actor, id: unknown) => { const s = getSkill(db, u, Number(id)); if (!s) throw new SkillError(404, ["skill not found"]); return s; };
 
-export const STATUSES = ["all", "approved", "pending", "rejected"] as const;
-export const parseStatus = (v: unknown) => (STATUSES as readonly string[]).includes(String(v)) ? (v as (typeof STATUSES)[number]) : "all";
 
 export function summaryOf(db: DB, s: Skill) {
-  const a = approvalState(db, s);
   const team = db.prepare("SELECT name FROM tenants WHERE id = ?").get(s.tenantId) as { name: string } | undefined;
-  return { id: s.id, name: s.name, kind: s.kind, version: s.version, description: s.description, builtin: s.builtin, tenantId: s.tenantId, team: team?.name ?? "", steps: s.plan.steps.length, status: a.status, updatedAt: s.updatedAt };
+  return { id: s.id, name: s.name, kind: s.kind, version: s.version, description: s.description, builtin: s.builtin, tenantId: s.tenantId, team: team?.name ?? "", steps: s.plan.steps.length, updatedAt: s.updatedAt };
 }
 
-export const list = (db: DB, u: Actor, status: unknown = "all") => wrap(() => {
-  const f = parseStatus(status);
-  return ok({ skills: listSkills(db, u).map((s) => summaryOf(db, s)).filter((s) => f === "all" || s.status === f) });
-});
+export const list = (db: DB, u: Actor) => wrap(() => ok({ skills: listSkills(db, u).map((s) => summaryOf(db, s)) }));
 
 export function detail(db: DB, u: Actor, id: unknown) {
   return wrap(() => {
@@ -39,9 +32,9 @@ export function detail(db: DB, u: Actor, id: unknown) {
     const audit = db.prepare("SELECT actor_email AS actor, action, detail, at FROM skill_audit WHERE skill_id = ? ORDER BY id DESC LIMIT 50").all(s.id);
     return ok({
       skill: s, summary: summaryOf(db, s), sections: sections(s.body).map(({ anchor, title, level }) => ({ anchor, title, level })),
-      effective: effectiveHash(db, s), composed: kids, composeError, approval: approvalState(db, s),
-      versions: versions(db, s.id), runs, audit: canEdit(db, u, s) || canApprove(u, s) ? audit : [],
-      can: { edit: canEdit(db, u, s), approve: canApprove(u, s), run: u.tenantId === s.tenantId || isSystemAdmin(u) },
+      effective: effectiveHash(db, s), composed: kids, composeError,
+      versions: versions(db, s.id), runs, audit: canEdit(db, u, s) ? audit : [],
+      can: { edit: canEdit(db, u, s), run: u.tenantId === s.tenantId },
     });
   });
 }
@@ -54,7 +47,6 @@ export const update = (db: DB, u: Actor, id: unknown, b: SaveInput | null) => wr
   const r = updateSkill(db, u, Number(id), b ?? {});
   return ok({ skill: r.skill, changed: r.changed });
 });
-export const approve = (db: DB, u: Actor, id: unknown, b: { decision?: unknown; comment?: unknown } | null) => wrap(() => ok(decide(db, u, find(db, u, id), b?.decision, b?.comment)));
 
 /** Starts a run; returns its id at once (the run continues in the background). */
 export const run = (db: DB, u: Actor, id: unknown, b: { inputs?: unknown; mode?: unknown; repo?: unknown } | null, deps: SkillDeps) => wrap(() => {

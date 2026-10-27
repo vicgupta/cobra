@@ -57,8 +57,8 @@ export function ensureMaster(db: DB, tenantId: number, now = Date.now()): void {
     .run(Number(r.lastInsertRowid), s.description, s.body, JSON.stringify(s.plan), ownHash(s), now);
 }
 
-/** Team filter for queries: null for system admins (all teams). */
-const scope = (u: Pick<Actor, "role" | "tenantId">) => (isSystemAdmin(u) ? null : u.tenantId);
+/** Team filter for queries: always the caller's own team (system admins included; skills never cross teams). */
+const scope = (u: Pick<Actor, "role" | "tenantId">): number | null => u.tenantId;
 
 export function listSkills(db: DB, u: Actor): Skill[] {
   ensureMaster(db, u.tenantId);
@@ -67,7 +67,7 @@ export function listSkills(db: DB, u: Actor): Skill[] {
   return rows.map(fromRow);
 }
 
-/** A skill by id, visible to u (own team; admins any team). null otherwise (404, never 403, so ids can't be probed). */
+/** A skill by id, visible to u (own team only). null otherwise (404, never 403, so ids can't be probed). */
 export function getSkill(db: DB, u: Pick<Actor, "role" | "tenantId">, id: number): Skill | null {
   if (!Number.isInteger(id) || id <= 0) return null;
   const t = scope(u);
@@ -81,8 +81,8 @@ export function skillByName(db: DB, tenantId: number, name: string): Skill | nul
 
 /** Edit: the creator, the team's team leads (designated lead included) and system admins. Built-ins: leads and admins. */
 export function canEdit(db: DB, u: Actor, s: Skill): boolean {
-  if (isSystemAdmin(u)) return true;
   if (u.tenantId !== s.tenantId) return false;
+  if (isSystemAdmin(u)) return true;
   if (u.role === "team_lead" || designatedLead(db, s.tenantId)?.id === u.id) return true;
   return !s.builtin && s.createdBy === u.id;
 }
@@ -194,29 +194,5 @@ export function versions(db: DB, skillId: number) {
   return db.prepare("SELECT v.version, v.content_hash AS hash, v.saved_at AS savedAt, v.note, u.email AS savedBy FROM skill_versions v LEFT JOIN users u ON u.id = v.saved_by WHERE v.skill_id = ? ORDER BY v.version DESC LIMIT 50").all(skillId) as Array<{ version: number; hash: string; savedAt: number; note: string | null; savedBy: string | null }>;
 }
 
-// ---- Approvals (same rules as workflows: system admins and the team's leads approve; the author's own
-// approval counts only for a system admin; one approval; any reject blocks; tied to the effective hash).
-export type ApprovalState = { status: "approved" | "pending" | "rejected"; hash: string; reason: string; decisions: Array<{ email: string; role: string; decision: string; comment: string; createdAt: number }> };
-
-export const canApprove = (u: Actor, s: Skill) => isSystemAdmin(u) || (u.tenantId === s.tenantId && u.role === "team_lead");
-
-export function approvalState(db: DB, s: Skill): ApprovalState {
-  const { hash, errors } = effectiveHash(db, s);
-  const rows = db.prepare(`SELECT a.approver_id AS id, u.email, u.role, u.tenant_id AS tenantId, a.decision, a.comment, a.created_at AS createdAt FROM skill_approvals a JOIN users u ON u.id = a.approver_id
-    WHERE a.skill_id = ? AND a.content_hash = ? AND a.id = (SELECT MAX(b.id) FROM skill_approvals b WHERE b.skill_id = a.skill_id AND b.content_hash = a.content_hash AND b.approver_id = a.approver_id) ORDER BY a.created_at`).all(s.id, hash) as Array<{ id: number; email: string; role: Actor["role"]; tenantId: number; decision: string; comment: string; createdAt: number }>;
-  const valid = rows.filter((r) => canApprove({ id: r.id, email: r.email, role: r.role, tenantId: r.tenantId }, s));
-  const decisions = valid.map(({ email, role, decision, comment, createdAt }) => ({ email, role, decision, comment, createdAt }));
-  if (errors.length) return { status: "pending", hash, reason: errors[0], decisions };
-  if (valid.some((r) => r.decision === "reject")) return { status: "rejected", hash, reason: "rejected by an approver", decisions };
-  const counted = valid.filter((r) => r.decision === "approve" && (r.id !== s.updatedBy || r.role === "admin"));
-  return counted.length >= 1 ? { status: "approved", hash, reason: `${counted.length}/1 approvals`, decisions } : { status: "pending", hash, reason: "needs 1 approval from a team lead or system admin (not the author)", decisions };
-}
-
-export function decide(db: DB, u: Actor, s: Skill, decision: unknown, comment: unknown, now = Date.now()): ApprovalState {
-  if (decision !== "approve" && decision !== "reject") throw new SkillError(400, ["decision must be approve or reject"]);
-  if (!canApprove(u, s)) throw new SkillError(403, ["only the team's leads and system admins can approve skills"]);
-  const { hash } = effectiveHash(db, s);
-  db.prepare("INSERT INTO skill_approvals (tenant_id, skill_id, content_hash, approver_id, decision, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(s.tenantId, s.id, hash, u.id, decision, typeof comment === "string" ? comment.slice(0, 2000) : "", now);
-  audit(db, u, `skill_${decision}`, s.id, `@${hash.slice(0, 12)}`, s.tenantId);
-  return approvalState(db, s);
-}
+// Approvals were removed (Oct 2026): every team member can run every team skill. The skill_approvals
+// table and its rows are kept untouched but no longer read or written.

@@ -1,6 +1,6 @@
 // Runs a team agent, manually or from its cron schedule. Prompt agents use the existing direct-run path
 // (service.runAgent / runDirect). Skill agents run their one skill: SOP skills through the skill executor
-// (skr_ runs, real runs need the skill approved), text skills through runDirect with the skill text.
+// (skr_ runs), text skills through runDirect with the skill text.
 // Optional extra instructions are passed as the skill's inputs (prompt / instructions / task).
 import type { DB } from "./db";
 import { finalPrompt, getAgent, skillAgentRefs, textSkillsDir, type TeamAgent } from "./agents";

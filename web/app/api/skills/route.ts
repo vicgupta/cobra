@@ -6,7 +6,7 @@ import { create, list } from "@/lib/skills/service";
 export async function GET(req: Request) {
   const g = await apiGuard(req);
   if (g.error) return g.error;
-  const r = list(getDb(), actor(g.user), new URL(req.url).searchParams.get("status"));
+  const r = list(getDb(), actor(g.user));
   return NextResponse.json(r.body, { status: r.status });
 }
 

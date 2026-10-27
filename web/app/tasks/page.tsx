@@ -17,10 +17,10 @@ export const metadata = { title: "Tasks · Cobra" };
 function Tasks({ user }: { user: SessionUser }) {
   const u = actor(user), db = getDb();
   const tasks = listTasks(db, u.tenantId).map((t) => ({ ...t, canEdit: canEditTask(u, t, db) }));
-  const sop = ((list(db, u).body as { skills?: Array<{ id: number; name: string; status: string; tenantId: number }> }).skills ?? []).filter((s) => s.tenantId === u.tenantId);
+  const sop = ((list(db, u).body as { skills?: Array<{ id: number; name: string; tenantId: number }> }).skills ?? []).filter((s) => s.tenantId === u.tenantId);
   let text: TaskSkillOption[] = [];
-  try { text = loadTextSkills().map((t) => ({ ref: `text:${t.id}`, name: t.id, status: "" })); } catch { text = []; }
-  const skills: TaskSkillOption[] = [...sop.map((s) => ({ ref: `sop:${s.id}`, name: s.name, status: s.status })), ...text];
+  try { text = loadTextSkills().map((t) => ({ ref: `text:${t.id}`, name: t.id })); } catch { text = []; }
+  const skills: TaskSkillOption[] = [...sop.map((s) => ({ ref: `sop:${s.id}`, name: s.name })), ...text];
   return (
     <TaskManager tasks={tasks} agents={listAgents(db, u.tenantId).map((a) => ({ name: a.name, skillRef: a.skillRef ?? null }))} skills={skills}
       repos={listTeamRepos(db, u.tenantId).map((r) => r.repo)} now={requestTime()} />

@@ -16,11 +16,11 @@ export const metadata = { title: "Agents · Cobra" };
 function Agents({ user }: { user: SessionUser }) {
   const u = actor(user), db = getDb();
   const agents = listAgents(db, u.tenantId).map((a) => ({ ...a, canEdit: canEditAgent(u, a, db) }));
-  // Skills an agent may run: the team's SOP skills (with approval status) and the text skills (by file name).
-  const sop = ((list(db, u).body as { skills?: Array<{ id: number; name: string; status: string; tenantId: number }> }).skills ?? []).filter((s) => s.tenantId === u.tenantId);
+  // Skills an agent may run: the team's own SOP skills and the built-in text skills (by file name).
+  const sop = ((list(db, u).body as { skills?: Array<{ id: number; name: string; tenantId: number }> }).skills ?? []).filter((s) => s.tenantId === u.tenantId);
   let text: SkillOption[] = [];
-  try { text = loadTextSkills().map((t) => ({ ref: `text:${t.id}`, label: t.id, kind: "text", status: "no approval needed" })); } catch { text = []; }
-  const skills: SkillOption[] = [...sop.map((s) => ({ ref: `sop:${s.id}`, label: s.name, kind: "sop" as const, status: s.status, href: `/agents/skills/${s.id}` })), ...text];
+  try { text = loadTextSkills().map((t) => ({ ref: `text:${t.id}`, label: t.id, kind: "text" })); } catch { text = []; }
+  const skills: SkillOption[] = [...sop.map((s) => ({ ref: `sop:${s.id}`, label: s.name, kind: "sop" as const, href: `/agents/skills/${s.id}` })), ...text];
   return (
     <AgentManager agents={agents} repos={listTeamRepos(db, u.tenantId).map((r) => r.repo)} models={allModels(process.env)} skills={skills} />
   );

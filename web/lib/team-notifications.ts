@@ -95,7 +95,6 @@ export function buildTeamReport(db: DB, tenantId: number, now: number): TeamRepo
   const tokens = usage.reduce((a, u) => a + (u.tin ?? 0) + (u.tout ?? 0), 0);
   const costed = usage.filter((u) => u.costed > 0), cost = costed.length ? costed.reduce((a, u) => a + (u.cost ?? 0), 0) : null;
   const skillsChanged = q<{ name: string }>("SELECT name FROM skills WHERE tenant_id = ? AND builtin = 0 AND updated_at >= ? ORDER BY updated_at DESC LIMIT 10", t, since);
-  const skillsPending = q<{ name: string }>("SELECT s.name FROM skills s WHERE s.tenant_id = ? AND s.builtin = 0 AND NOT EXISTS (SELECT 1 FROM skill_approvals a WHERE a.skill_id = s.id AND a.content_hash = s.content_hash AND a.decision = 'approve') ORDER BY s.name LIMIT 20", t);
   const wfChanged = q<{ name: string }>("SELECT name FROM tenant_workflows WHERE tenant_id = ? AND updated_at >= ? ORDER BY updated_at DESC LIMIT 10", t, since);
   const wfPending = q<{ name: string }>("SELECT w.name FROM tenant_workflows w WHERE w.tenant_id = ? AND NOT EXISTS (SELECT 1 FROM workflow_approvals a WHERE a.tenant_id = w.tenant_id AND a.workflow = w.name AND a.content_hash = w.content_hash AND a.decision = 'approve') ORDER BY w.name LIMIT 20", t);
   const collabCounts = q<{ action: string; n: number }>("SELECT action, COUNT(*) n FROM collab_audit WHERE tenant_id = ? AND at >= ? GROUP BY action ORDER BY n DESC", t, since);
@@ -123,7 +122,6 @@ export function buildTeamReport(db: DB, tenantId: number, now: number): TeamRepo
     "",
     "SKILLS AND WORKFLOWS",
     `  Skills changed (24h): ${names(skillsChanged)}`,
-    `  Skills awaiting approval: ${names(skillsPending)}`,
     `  Workflows changed (24h): ${names(wfChanged)}`,
     `  Workflows awaiting approval: ${names(wfPending)}`,
     "",

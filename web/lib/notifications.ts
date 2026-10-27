@@ -87,7 +87,6 @@ export function buildDailyReport(db: DB, now: number, health: Health): DailyRepo
   const tokens = usage.reduce((a, u) => a + (u.tin ?? 0) + (u.tout ?? 0), 0);
   const costed = usage.filter((u) => u.cost != null);
   const cost = costed.length ? costed.reduce((a, u) => a + (u.cost ?? 0), 0) : null;
-  const pendingSkills = one<{ n: number }>(db, "SELECT COUNT(*) n FROM skills s WHERE s.builtin = 0 AND NOT EXISTS (SELECT 1 FROM skill_approvals a WHERE a.skill_id = s.id AND a.content_hash = s.content_hash AND a.decision = 'approve')").n;
   const pendingWf = one<{ n: number }>(db, "SELECT COUNT(*) n FROM tenant_workflows w WHERE NOT EXISTS (SELECT 1 FROM workflow_approvals a WHERE a.tenant_id = w.tenant_id AND a.workflow = w.name AND a.content_hash = w.content_hash AND a.decision = 'approve')").n;
   const skillsChanged = one<{ n: number }>(db, "SELECT COUNT(*) n FROM skills WHERE updated_at >= ?", since).n;
   const wfChanged = one<{ n: number }>(db, "SELECT COUNT(*) n FROM tenant_workflows WHERE updated_at >= ?", since).n;
@@ -120,7 +119,7 @@ export function buildDailyReport(db: DB, now: number, health: Health): DailyRepo
     table(usage.map((u) => [`${u.provider}${u.model ? ` / ${u.model}` : ""}`, `${((u.tin ?? 0) + (u.tout ?? 0)).toLocaleString("en-US")} tokens, ${u.costed ? `$${(u.cost ?? 0).toFixed(2)}` : "cost n/a"} (${u.n} steps)`])),
     "",
     "SKILLS AND WORKFLOWS",
-    `  Skills edited/created (24h): ${skillsChanged}; awaiting approval: ${pendingSkills}`,
+    `  Skills edited/created (24h): ${skillsChanged}`,
     `  Workflows edited/created (24h): ${wfChanged}; awaiting approval: ${pendingWf}`,
     "",
     "ISSUES, PRS AND MERGES (Cobra audit)",

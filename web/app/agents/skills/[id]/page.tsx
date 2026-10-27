@@ -3,19 +3,19 @@ import { notFound } from "next/navigation";
 import { CollabPage } from "@/components/collab-page";
 import { Badge, Card } from "@/components/ui";
 import { StatusBadge } from "@/components/workflows";
-import { Approve, RunSkill } from "@/components/skills";
+import { RunSkill } from "@/components/skills";
 import { getDb } from "@/lib/workflows/server";
 import { detail } from "@/lib/skills/service";
 import { sections } from "@/lib/skills/sections";
-import type { Actor, ApprovalState, Skill } from "@/lib/skills/store";
+import type { Actor, Skill } from "@/lib/skills/store";
 
 export const metadata = { title: "Skill · Cobra" };
 
 type D = {
   skill: Skill; summary: { team: string; status: string }; effective: { hash: string; parts: string[]; errors: string[] }; composed: Array<{ id: number; name: string; version: number }>; composeError: string | null;
-  approval: ApprovalState; versions: Array<{ version: number; hash: string; savedAt: number; note: string | null; savedBy: string | null }>;
+  versions: Array<{ version: number; hash: string; savedAt: number; note: string | null; savedBy: string | null }>;
   runs: Array<{ id: string; status: string | null; mode: string | null; startedAt: number; triggeredBy: string | null }>; audit: Array<{ actor: string; action: string; detail: string; at: number }>;
-  can: { edit: boolean; approve: boolean; run: boolean };
+  can: { edit: boolean; run: boolean };
 };
 const when = (t: number) => new Date(t).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + " ET";
 const runType = (m: string | null) => (m === "real" ? "Real run" : "Test run");
@@ -49,19 +49,14 @@ async function Body({ u, params }: { u: Actor; params: PageProps<"/agents/skills
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="text-xl font-semibold">{s.name}</h2>
-        {s.kind === "master" && <Badge tone="violet">master skill</Badge>}<StatusBadge status={d.approval.status} />
-        {u.role === "admin" && <Badge tone="blue">{d.summary.team}</Badge>}
+        {s.kind === "master" && <Badge tone="violet">master skill</Badge>}
+        
         {d.can.edit && <Link href={`/agents/skills/${s.id}/edit`} className="ml-auto rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-soft hover:bg-surface-2">Edit</Link>}
       </div>
       {s.description ? <p className="text-sm text-fg-soft">{s.description}</p> : null}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card title="Run" subtitle="A test run goes through the steps without changing anything. Real runs need approval.">
-          {d.effective.errors.length ? <p className="text-sm text-danger">{d.effective.errors[0]}</p> : <RunSkill id={s.id} inputs={s.plan.inputs as never} approved={d.approval.status === "approved"} />}
-        </Card>
-        <Card title="Approval" subtitle="Any edit needs a fresh approval before real runs.">
-          <p className="text-sm"><StatusBadge status={d.approval.status} /> <span className="text-muted">{d.approval.reason}</span></p>
-          {d.approval.decisions.length > 0 && <ul className="mt-2 text-xs text-fg-soft">{d.approval.decisions.map((x, i) => <li key={i}>{x.decision === "approve" ? "Approved" : x.decision === "reject" ? "Rejected" : x.decision} by {x.email} {x.comment && `“${x.comment}”`} · {when(x.createdAt)}</li>)}</ul>}
-          {d.can.approve && d.approval.status !== "approved" && <div className="mt-3"><Approve id={s.id} /></div>}
+      <div>
+        <Card title="Run" subtitle="A test run goes through the steps without changing anything.">
+          {d.effective.errors.length ? <p className="text-sm text-danger">{d.effective.errors[0]}</p> : <RunSkill id={s.id} inputs={s.plan.inputs as never} />}
         </Card>
       </div>
       {(d.composed.length > 0 || d.composeError) && <Card title="Uses these skills">

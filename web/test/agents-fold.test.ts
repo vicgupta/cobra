@@ -66,11 +66,13 @@ test("agents: one skill per agent; SOP by id (team-scoped), text by file name; s
   assert.equal(checkSkillRef(db, member.tenantId, "text:ship", ["x"], d), "text:ship");
   assert.throws(() => checkSkillRef(db, member.tenantId, "text:../etc", ["x"], d), is400(/not found/));
   assert.throws(() => checkSkillRef(db, member.tenantId, "text:nope", ["x"], d), is400(/not found/));
-  // unapproved SOP skill can be saved on an agent (approval is checked when running for real)
+  // a never-approved SOP skill can be saved on an agent and runs for real (no approval gate); the agent step is stubbed
   const a = createAgent(db, member, { name: "y", engine: "codex", skillRef: `sop:${s.id}` });
   assert.equal(a.skillRef, `sop:${s.id}`);
-  const r = runTeamAgent(db, member, "y", { mode: "real" }, deps(db, member.tenantId));
-  assert.ok(r.status >= 400, "real run of an unapproved skill is refused");
+  const d0 = deps(db, member.tenantId);
+  const stub: RunDeps = { ...d0, handlers: { ...d0.handlers, agent: async () => ({ status: "succeeded", summary: "stub" }) } };
+  const r = runTeamAgent(db, member, "y", { mode: "real" }, stub);
+  assert.ok(r.status < 400, `unapproved skill runs: ${JSON.stringify(r.body)}`);
 });
 
 test("agents: loop guard refuses a skill whose agent steps (direct or via call_skill) call the same agent", async () => {

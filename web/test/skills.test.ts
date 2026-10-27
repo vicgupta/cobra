@@ -5,7 +5,7 @@ import { createUser } from "../lib/auth/users";
 import { builtinHandlers } from "../lib/workflows/handlers";
 import { validatePlan, MAX_STEPS } from "../lib/skills/plan";
 import { sections, sectionText } from "../lib/skills/sections";
-import { approvalState, canEdit, createSkill, decide, effectiveHash, getSkill, listSkills, MASTER, SkillError, skillByName, updateSkill, type Actor } from "../lib/skills/store";
+import { canEdit, createSkill, effectiveHash, getSkill, listSkills, MASTER, skillByName, updateSkill, type Actor } from "../lib/skills/store";
 import { startSkillRun, type SkillDeps } from "../lib/skills/executor";
 import * as svc from "../lib/skills/service";
 
@@ -23,6 +23,8 @@ const deps: SkillDeps = {
   handlers: { ...base, simulate: async (ctx) => { if (ctx.with.fail === "yes") throw new Error("boom"); return { ...ctx.with }; } },
   resolveSecret: () => undefined, redact: () => [],
 };
+// real-mode tests: the agent step is stubbed so nothing real ever runs
+const stubDeps: SkillDeps = { ...deps, handlers: { ...deps.handlers, agent: async () => ({ status: "succeeded", summary: "stub" }) } };
 const who = (u: Actor) => ({ tenantId: u.tenantId, userId: u.id, email: u.email });
 const step = (id: string, extra: Record<string, unknown> = {}) => ({ id, action: "simulate", with: { v: id }, on_failure: "stop", outputs: { v: "result.v" }, ...extra });
 
@@ -98,24 +100,18 @@ test("master skill: seeded per team, composition with input mapping, own runs pe
   }
 });
 
-test("approval hash covers body, plan, composed skills (recursive) and agents; any change needs re-approval", () => {
-  const { db, member, lead, admin } = setup();
+test("effective hash covers body, plan, composed skills (recursive) and agents", () => {
+  const { db, member } = setup();
   const leaf = createSkill(db, member, { name: "leaf", description: "l", plan: { steps: [step("a")] } });
   createSkill(db, member, { name: "mid", description: "m", plan: { steps: [{ id: "c", action: "call_skill", skill: "leaf", on_failure: "stop" }] } });
   const top = createSkill(db, member, { name: "top", description: "t", body: "# Top", plan: { steps: [{ id: "c", action: "call_skill", skill: "mid", on_failure: "stop" }] } });
-  assert.equal(approvalState(db, top).status, "pending");
-  assert.throws(() => decide(db, member, top, "approve", ""), SkillError, "members can't approve");
-  decide(db, lead, top, "approve", "ok");
-  assert.equal(approvalState(db, top).status, "approved");
   const h1 = effectiveHash(db, top).hash;
   updateSkill(db, member, leaf.id, { plan: { steps: [step("a"), step("b")] } });
   const top2 = getSkill(db, member, top.id)!;
   assert.notEqual(effectiveHash(db, top2).hash, h1, "grandchild change changes the hash");
-  assert.equal(approvalState(db, top2).status, "pending");
-  decide(db, admin, top2, "approve", "");
   updateSkill(db, member, top.id, { body: "# Top v2" });
-  assert.equal(approvalState(db, getSkill(db, member, top.id)!).status, "pending", "body change");
-  // agents: unknown agent blocks approval; hash includes agent
+  assert.notEqual(effectiveHash(db, getSkill(db, member, top.id)!).hash, effectiveHash(db, top2).hash, "body change");
+  // hash includes agent
   db.prepare("INSERT INTO team_agents (tenant_id, name, engine, prompt, content_hash, created_at, updated_at) VALUES (?, 'rev', 'claude-code', 'p', 'h1', 0, 0)").run(member.tenantId);
   const ag = createSkill(db, member, { name: "ag", description: "a", plan: { steps: [{ id: "a", action: "agent", with: { agent: "rev", prompt: "x" }, on_failure: "stop" }] } });
   const ha = effectiveHash(db, ag).hash;
@@ -123,7 +119,7 @@ test("approval hash covers body, plan, composed skills (recursive) and agents; a
   assert.notEqual(effectiveHash(db, ag).hash, ha);
 });
 
-test("team scoping: create/view/edit within team, 404 across teams, admin sees all", () => {
+test("team scoping: create/view/edit within team, 404 across teams, system admins included", () => {
   const { db, member, member2, lead, admin, bMember, bLead } = setup();
   const s = createSkill(db, member, { name: "mine", description: "d", body: "one line" });
   const b = createSkill(db, bMember, { name: "theirs", description: "d", body: "x" });
@@ -131,10 +127,15 @@ test("team scoping: create/view/edit within team, 404 across teams, admin sees a
   assert.equal(getSkill(db, bMember, s.id), null);
   assert.equal(svc.detail(db, bLead, s.id).status, 404);
   assert.equal(svc.update(db, bLead, s.id, { body: "hack" }).status, 404);
-  assert.equal(svc.approve(db, bLead, s.id, { decision: "approve" }).status, 404);
   assert.equal(svc.run(db, bMember, s.id, {}, deps).status, 404);
   assert.ok(!listSkills(db, member).some((x) => x.name === "theirs"));
-  assert.ok(listSkills(db, admin).some((x) => x.id === b.id) && listSkills(db, admin).some((x) => x.id === s.id));
+  // the system admin lives in this test's team "x"; team "other"'s skill stays invisible to them
+  assert.ok(!listSkills(db, admin).some((x) => x.id === b.id) && listSkills(db, admin).some((x) => x.id === s.id));
+  assert.equal(getSkill(db, admin, b.id), null);
+  assert.equal(svc.detail(db, admin, b.id).status, 404);
+  assert.equal(svc.run(db, admin, b.id, {}, deps).status, 404);
+  assert.equal(svc.update(db, admin, b.id, { body: "x" }).status, 404);
+  assert.equal(canEdit(db, admin, b), false, "no cross-team edits, even for system admins");
   assert.equal(canEdit(db, member, s), true); assert.equal(canEdit(db, member2, s), false); assert.equal(canEdit(db, lead, s), true); assert.equal(canEdit(db, admin, s), true);
   assert.equal(svc.update(db, member2, s.id, { body: "edit" }).status, 403);
   assert.equal(svc.update(db, lead, s.id, { body: "lead edit" }).status, 200);
@@ -154,7 +155,9 @@ test("one-line skill: derived plan, validates, runs in simulate", async () => {
   assert.equal(r.status, "succeeded", r.error);
   assert.equal(r.outputs.status, "succeeded");
   assert.match(String(r.outputs.summary), /Simulated .*Fix|SOP/);
-  await assert.rejects(async () => startSkillRun(db, who(member), s, {}, deps, { mode: "real" }), /isn't approved/);
+  // no approval gate: a freshly saved (never approved) skill runs, real mode included, by a plain member
+  const real = startSkillRun(db, who(member), s, { prompt: "go" }, stubDeps, { mode: "real" });
+  assert.ok(real.id); await real.done;
 });
 
 test("huge skill: 1000+ line body, 200+ steps, section extraction, handoffs and conditions intact", async () => {
@@ -245,8 +248,8 @@ test("any length, explicit: huge skill with sections, when, handoffs and goto; p
   }
 });
 
-test("no rulebook: create, list, detail and approve work without a review score, also with old skill_reviews rows", () => {
-  const { db, member, lead } = setup();
+test("no rulebook: create, list and detail work without a review score, also with old skill_reviews rows", () => {
+  const { db, member } = setup();
   const r = svc.create(db, member, { name: "plain", description: "d", body: "one line" });
   assert.equal(r.status, 201);
   const s = (r.body as { skill: { id: number; contentHash: string; tenantId: number } }).skill;
@@ -258,6 +261,17 @@ test("no rulebook: create, list, detail and approve work without a review score,
   const d = svc.detail(db, member, s.id);
   assert.equal(d.status, 200);
   assert.ok(!("review" in (d.body as object)));
-  assert.equal(svc.approve(db, lead, s.id, { decision: "approve" }).status, 200);
-  assert.equal(((svc.detail(db, member, s.id).body as { approval: { status: string } }).approval.status), "approved");
+  assert.ok(!("approval" in (d.body as object)) && !("status" in row), "no approval state anywhere");
+});
+
+test("no approvals: any member runs any team skill (manual, real) with no approval rows; old approval rows are kept", async () => {
+  const { db, member, member2, lead } = setup();
+  const s = createSkill(db, lead, { name: "fresh", description: "d", body: "Do it." });
+  db.prepare("INSERT INTO skill_approvals (tenant_id, skill_id, content_hash, approver_id, decision, comment, created_at) VALUES (?, ?, 'old', ?, 'reject', '', 1)").run(s.tenantId, s.id, lead.id);
+  for (const u of [member, member2]) {
+    const r = svc.run(db, u, s.id, { mode: "real", inputs: { prompt: "x" } }, stubDeps);
+    assert.equal(r.status, 202, JSON.stringify(r.body));
+  }
+  assert.equal((db.prepare("SELECT COUNT(*) n FROM skill_approvals").get() as { n: number }).n, 1, "approval data untouched");
+  await new Promise((res) => setTimeout(res, 100));
 });

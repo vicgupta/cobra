@@ -3,7 +3,7 @@ import { apiGuard } from "@/lib/auth/server";
 import { actor, getDb, runDeps } from "@/lib/workflows/server";
 import { runTeamAgent } from "@/lib/agent-run";
 
-/** Direct run of a team agent (prompt or skill); body { repo?, mode: simulated|real, instructions? }. Skill agents need the skill approved for real runs. */
+/** Direct run of a team agent (prompt or skill); body { repo?, mode: simulated|real, instructions? }. */
 export async function POST(req: Request, ctx: { params: Promise<{ name: string }> }) {
   const g = await apiGuard(req);
   if (g.error) return g.error;

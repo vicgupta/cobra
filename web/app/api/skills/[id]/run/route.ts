@@ -4,7 +4,7 @@ import { actor, getDb, runDeps } from "@/lib/workflows/server";
 import { getSkill } from "@/lib/skills/store";
 import { run } from "@/lib/skills/service";
 
-/** Start a run: simulated by default (dry run, no approval needed); mode "real" needs the current hash approved. */
+/** Start a run: simulated by default (dry run); mode "real" runs for real. Any team member; other teams get 404. */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const g = await apiGuard(req);
   if (g.error) return g.error;

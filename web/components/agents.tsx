@@ -15,15 +15,9 @@ const ENGINE: Record<string, string> = ENGINE_LABEL;
 
 export type AgentView = { name: string; engine: string; model: string | null; description: string | null; prompt: string; defaultRepo: string | null; skillRef?: string | null;
   cron?: string | null; cronMode?: "simulated" | "real"; contentHash: string; createdByEmail: string | null; createdAt?: number; canEdit: boolean };
-/** A skill an agent can run: "sop:<id>" (with approval status) or "text:<file>". */
-export type SkillOption = { ref: string; label: string; kind: "sop" | "text"; status: string; href?: string };
+/** A skill an agent can run: "sop:<id>" (team skill) or "text:<file>" (built-in). */
+export type SkillOption = { ref: string; label: string; kind: "sop" | "text"; href?: string };
 
-/** Approval label for a skill: approved / pending / rejected (text skills need none). */
-function SkillStatus({ status }: { status: string }) {
-  if (!status || status === "no approval needed") return null;
-  return <Badge tone={status === "approved" ? "green" : status === "rejected" ? "red" : "amber"}>{status}</Badge>;
-}
-const optionText = (o: SkillOption) => (o.kind === "sop" && o.status !== "approved" ? `${o.label} (${o.status})` : o.label);
 
 /** The engine's models (MVP build: Claude Code and Codex only). */
 export function ModelPicker({ id, engine, models, value, onChange }: { id?: string; engine: string; models: string[]; value: string; onChange: (v: string) => void }) {
@@ -79,11 +73,11 @@ function AgentForm({ initial, repos, models, skills, onDone }: { initial?: Agent
           <textarea id={`${idp}-prompt`} name="prompt" maxLength={PROMPT_MAX} className={`${input} h-48 resize-y`} placeholder={PROMPT_EXAMPLE} value={prompt} aria-invalid={!!promptErr} onChange={(e) => setPrompt(e.target.value)} />
         </Field>
       ) : (
-        <Field id={`${idp}-skill`} label="Skill" error={skillErr} hint={picked?.kind === "sop" && picked.status !== "approved" ? "Not approved yet: it can do test runs until a lead approves it." : <>Manage skills in the <Link href="/agents/skills" className="underline">Skills library</Link>.</>}>
+        <Field id={`${idp}-skill`} label="Skill" error={skillErr} hint={<>Manage skills in the <Link href="/agents/skills" className="underline">Skills library</Link>.</>}>
           <select id={`${idp}-skill`} name="skillRef" className={input} value={skillRef} aria-invalid={!!skillErr} onChange={(e) => setSkillRef(e.target.value)}>
             <option value="">Pick a skill…</option>
             {skillRef && !picked && <option value={skillRef}>missing skill</option>}
-            {skills.map((o) => <option key={o.ref} value={o.ref}>{optionText(o)}</option>)}
+            {skills.map((o) => <option key={o.ref} value={o.ref}>{o.label}</option>)}
           </select>
         </Field>
       )}
@@ -164,7 +158,7 @@ export function AgentManager({ agents, repos, models, skills = [] }: { agents: A
               return [
                 <tr key={a.name} data-agent={a.name}>
                   <td className={td}><div className="font-medium text-fg">{a.name}</div>{a.description && <div className="max-w-md text-xs text-subtle" data-description>{a.description}</div>}</td>
-                  <td className={td}>{a.skillRef ? <span data-agent-skill className="inline-flex items-center gap-2"><span className="text-fg-soft">{s?.label ?? "missing skill"}</span>{s && <SkillStatus status={s.status} />}</span>
+                  <td className={td}>{a.skillRef ? <span data-agent-skill className="inline-flex items-center gap-2"><span className="text-fg-soft">{s?.label ?? "missing skill"}</span></span>
                     : <span data-agent-prompt className="text-fg-soft" title={a.prompt.slice(0, 400)}>Prompt</span>}</td>
                   <td className={td}>{isEngine(a.engine) ? <span className="text-fg-soft">{ENGINE[a.engine]}{a.model ? <span className="text-subtle"> · {a.model}</span> : null}</span> : <span data-unsupported-engine><Badge tone="gray">{a.engine}: {UNSUPPORTED_ENGINE}</Badge></span>}</td>
                   <td className={`${td} text-right`}><span className="inline-flex gap-1">
