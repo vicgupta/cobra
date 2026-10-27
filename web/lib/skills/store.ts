@@ -236,3 +236,34 @@ export function versions(db: DB, skillId: number) {
 
 // Approvals were removed (Oct 2026): every team member can run every team skill. The skill_approvals
 // table and its rows are kept untouched but no longer read or written.
+
+/** What still points at a skill in its team: live agents and tasks (skill_ref "sop:<id>") and other skills' call_skill steps. */
+export function skillUsers(db: DB, s: Skill): string[] {
+  const ref = `sop:${s.id}`;
+  const agents = (db.prepare("SELECT name FROM team_agents WHERE tenant_id = ? AND skill_ref = ? AND deleted_at IS NULL ORDER BY name").all(s.tenantId, ref) as Array<{ name: string }>).map((r) => `agent '${r.name}'`);
+  const tasks = (db.prepare("SELECT name FROM tasks WHERE tenant_id = ? AND skill_ref = ? AND deleted_at IS NULL ORDER BY name").all(s.tenantId, ref) as Array<{ name: string }>).map((r) => `task '${r.name}'`);
+  const skills = (db.prepare("SELECT name, plan_json FROM skills WHERE tenant_id = ? AND id <> ? ORDER BY name").all(s.tenantId, s.id) as Array<{ name: string; plan_json: string }>)
+    .filter((r) => { try { return (JSON.parse(r.plan_json) as Plan).steps.some((st) => st.action === "call_skill" && st.skill === s.name); } catch { return false; } })
+    .map((r) => `skill '${r.name}'`);
+  return [...agents, ...tasks, ...skills];
+}
+
+/**
+ * Delete: same people as edit (creator, team leads, designated lead, system admins), own team only (404 otherwise).
+ * Blocked (409) while an agent, task or other skill still uses it. Removes the skill with its versions, approvals,
+ * reviews, review cycles and audit rows in one transaction; past runs are kept. One 'delete' audit row (skill_id NULL) records it.
+ */
+export function deleteSkill(db: DB, u: Actor, id: number, now = Date.now()): void {
+  const s = getSkill(db, u, id);
+  if (!s) throw new SkillError(404, ["skill not found"]);
+  if (!canEdit(db, u, s)) throw new SkillError(403, ["only the skill's creator, team leads, the designated lead and admins can delete it"]);
+  const used = skillUsers(db, s);
+  if (used.length) throw new SkillError(409, [`'${s.name}' is still used by ${used.join(", ")}. Remove it from ${used.length === 1 ? "that" : "those"} first.`]);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const t of ["skill_versions", "skill_approvals", "skill_reviews", "skill_review_cycles", "skill_audit"]) db.prepare(`DELETE FROM ${t} WHERE skill_id = ?`).run(s.id);
+    db.prepare("DELETE FROM skills WHERE id = ? AND tenant_id = ?").run(s.id, s.tenantId);
+    audit(db, u, "delete", null, `deleted skill '${s.name}' (v${s.version})`, s.tenantId, now);
+    db.exec("COMMIT");
+  } catch (e) { db.exec("ROLLBACK"); throw e; }
+}

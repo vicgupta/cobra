@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiGuard } from "@/lib/auth/server";
 import { actor, getDb } from "@/lib/workflows/server";
-import { detail, update } from "@/lib/skills/service";
+import { detail, remove, update } from "@/lib/skills/service";
 
 type Ctx = { params: Promise<{ id: string }> };
 export async function GET(req: Request, ctx: Ctx) {
@@ -16,5 +16,13 @@ export async function PUT(req: Request, ctx: Ctx) {
   const g = await apiGuard(req);
   if (g.error) return g.error;
   const r = update(getDb(), actor(g.user), (await ctx.params).id, await req.json().catch(() => null));
+  return NextResponse.json(r.body, { status: r.status });
+}
+
+/** Delete (creator, team leads, designated lead, admins; own team only). 409 while an agent, task or skill uses it. */
+export async function DELETE(req: Request, ctx: Ctx) {
+  const g = await apiGuard(req);
+  if (g.error) return g.error;
+  const r = remove(getDb(), actor(g.user), (await ctx.params).id);
   return NextResponse.json(r.body, { status: r.status });
 }

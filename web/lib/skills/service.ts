@@ -2,7 +2,7 @@
 import type { DB } from "../db";
 import { planJsonSchema, MAX_BODY_BYTES, MAX_PLAN_BYTES, MAX_STEPS, MAX_DEPTH, type Plan } from "./plan";
 import { sections } from "./sections";
-import { canEdit, composed, createSkill, effectiveHash, getSkill, listSkills, SkillError, updateSkill, versions, type Actor, type SaveInput, type Skill } from "./store";
+import { canEdit, composed, createSkill, deleteSkill, effectiveHash, getSkill, listSkills, SkillError, updateSkill, versions, type Actor, type SaveInput, type Skill } from "./store";
 import { startSkillRun, type SkillDeps } from "./executor";
 
 export type Res = { status: number; body: unknown };
@@ -47,6 +47,8 @@ export const update = (db: DB, u: Actor, id: unknown, b: SaveInput | null) => wr
   const r = updateSkill(db, u, Number(id), b ?? {});
   return ok({ skill: r.skill, changed: r.changed });
 });
+
+export const remove = (db: DB, u: Actor, id: unknown) => wrap(() => { deleteSkill(db, u, Number(id)); return ok({ ok: true }); });
 
 /** Starts a run; returns its id at once (the run continues in the background). */
 export const run = (db: DB, u: Actor, id: unknown, b: { inputs?: unknown; mode?: unknown; repo?: unknown } | null, deps: SkillDeps) => wrap(() => {

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge } from "./ui";
-import { button, EmptyState, ghost, td, th } from "./form-ui";
+import { button, call, ConfirmDialog, danger, EmptyState, ghost, sentence, td, th } from "./form-ui";
 
 const btn = "rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-soft hover:bg-surface-2 disabled:opacity-50";
 const primary = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:opacity-50";
@@ -127,6 +127,10 @@ export type SkillRow = { id: number; name: string; kind: string; version: number
 
 /** Agents / Skills list: same count row, primary button, table and empty state as Agents / Agents. */
 export function SkillsList({ rows }: { rows: SkillRow[] }) {
+  const router = useRouter();
+  const [confirm, setConfirm] = useState<SkillRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
   if (rows.length === 0) return <EmptyState title="No skills yet" body="A skill is step-by-step instructions an agent can follow. Write a routine once and your whole team can run it." action={<Link className={button} href="/agents/skills/new">Create your first skill</Link>} />;
   return (
     <div className="space-y-4">
@@ -142,10 +146,17 @@ export function SkillsList({ rows }: { rows: SkillRow[] }) {
               <td className={`${td} text-right`}><span className="inline-flex gap-1">
                 <Link className={button} href={`/agents/skills/${r.id}`}>Run</Link>
                 {r.canEdit ? <Link className={ghost} href={`/agents/skills/${r.id}/edit`}>Edit</Link> : <span className="px-2 py-1.5 text-xs text-subtle" data-run-only>View only</span>}
+                {r.canEdit && <button className={danger} aria-label={`Delete ${r.name}`} onClick={() => { setMsg(null); setConfirm(r); }}>Delete</button>}
               </span></td>
             </tr>))}</tbody>
         </table>
       </div>
+      {msg && <p role="alert" className="text-sm text-danger">{msg}</p>}
+      {confirm && <ConfirmDialog title={<>Delete {confirm.name}?</>} body="It disappears from this list along with its versions and history. Its past runs are kept." confirm="Delete skill" busy={deleting}
+        onCancel={() => setConfirm(null)} onConfirm={async () => {
+          setDeleting(true); const r = await call(`/api/skills/${confirm.id}`, "DELETE"); setDeleting(false); setConfirm(null);
+          if (!r.ok) setMsg(sentence(r.data.error ?? "Couldn't delete the skill")); else router.refresh();
+        }} />}
     </div>
   );
 }
