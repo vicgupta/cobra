@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 const root = path.join(__dirname, "..");
@@ -26,4 +26,14 @@ test("Skills view mirrors the Agents view: same header, toggle, count row + prim
   assert.match(list, /rows\.length === 1 \? "skill" : "skills"/);
   assert.match(list, /href="\/agents\/skills\/new">New skill<\/Link>/);
   assert.match(list, /className=\{th\}>Skill<\/th>/);
+});
+
+test("no built-in skills: none listed on Agents / Skills, none selectable in the agent or task pickers, loader and files gone", () => {
+  for (const gone of ["skills", "lib/text-skills", "components/text-skills.tsx", "app/api/text-skills"]) assert.ok(!existsSync(path.join(root, gone)), gone);
+  for (const f of [...walk("app"), ...walk("components"), ...walk("lib")]) {
+    const s = read(f);
+    assert.doesNotMatch(s, /text-skills|loadTextSkills|Built-in skills|TextSkillRun/, f);
+  }
+  for (const f of ["app/agents/page.tsx", "app/tasks/page.tsx"]) assert.doesNotMatch(read(f), /`text:/, f);
+  assert.match(read("components/agents.tsx"), /kind: "sop";/);
 });

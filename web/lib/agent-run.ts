@@ -1,13 +1,11 @@
 // Runs a team agent, manually or from its cron schedule. Prompt agents use the existing direct-run path
-// (service.runAgent / runDirect). Skill agents run their one skill: SOP skills through the skill executor
-// (skr_ runs), text skills through runDirect with the skill text.
+// (service.runAgent / runDirect). Skill agents run their one skill: team skills through the skill executor
+// (skr_ runs). Built-in text skills were removed; agents still pointing at one get a plain 400.
 // Optional extra instructions are passed as the skill's inputs (prompt / instructions / task).
 import type { DB } from "./db";
-import { finalPrompt, getAgent, skillAgentRefs, textSkillsDir, type TeamAgent } from "./agents";
-import { canMerge } from "./collab";
+import { finalPrompt, getAgent, skillAgentRefs, type TeamAgent } from "./agents";
 import { runAgent, runDirect, type Res, type RunDeps } from "./workflows/service";
 import type { Actor } from "./workflows/store";
-import { buildPrompt, loadTextSkills } from "./text-skills";
 import { startSkillRun } from "./skills/executor";
 import { getSkill, SkillError } from "./skills/store";
 
@@ -18,8 +16,8 @@ const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : unde
 /** A stand-in actor for cron runs (no user; runs record triggered_by 'schedule'). */
 export const scheduleActor = (tenantId: number): Actor => ({ id: 0, email: "schedule", role: "member", tenantId });
 
-/** Options: scheduled (no user; triggered_by = triggeredBy ?? 'schedule'), skillRef (a task's skill override), textDir (tests). */
-export type RunOpts = { scheduled?: boolean; textDir?: string; skillRef?: string | null; triggeredBy?: string; task?: string };
+/** Options: scheduled (no user; triggered_by = triggeredBy ?? 'schedule'), skillRef (a task's skill override). */
+export type RunOpts = { scheduled?: boolean; skillRef?: string | null; triggeredBy?: string; task?: string };
 
 export function runTeamAgent(db: DB, user: Actor, name: string, body: TeamAgentRunBody | null, deps: RunDeps, o: RunOpts = {}): Res {
   const a = getAgent(db, user.tenantId, name);
@@ -44,12 +42,7 @@ function runSkillAgent(db: DB, user: Actor, a: TeamAgent, b: TeamAgentRunBody, d
   if (mode !== "simulated" && mode !== "real") return err(400, "mode must be simulated or real");
   const repo = str(b.repo) ?? a.defaultRepo ?? undefined;
   const [kind, ref] = [a.skillRef!.slice(0, a.skillRef!.indexOf(":")), a.skillRef!.slice(a.skillRef!.indexOf(":") + 1)];
-  if (kind === "text") {
-    const skill = loadTextSkills(o.textDir ?? textSkillsDir()).find((s) => s.id === ref);
-    if (!skill) return err(404, `text skill '${ref}' not found`);
-    const r = runDirect(db, user, { agent: a.name, engine: a.engine, model: a.model, prompt: buildPrompt(skill, extra || "Follow the skill.", o.scheduled ? false : canMerge(db, user)), hash: a.contentHash, repo, mode, purpose: `${o.task ? `Task ${o.task} · ` : ""}Agent ${a.name} · text skill ${skill.id}`, scheduled: o.scheduled, triggeredBy: o.triggeredBy }, deps);
-    return { ...r, body: { ...(r.body as object), skill: `text:${skill.id}` } };
-  }
+  if (kind === "text") return err(400, `agent '${a.name}' uses a built-in skill, and built-in skills were removed; edit it and pick a team skill`);
   const s = getSkill(db, { role: "member", tenantId: user.tenantId }, Number(ref));
   if (!s) return err(404, `the skill for agent '${a.name}' no longer exists; edit the agent and pick another skill`);
   // Loop guard at run time too (the skill may have changed since the agent was saved).

@@ -2,8 +2,7 @@
 // skill-agent runs on the dashboard's Recent runs.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { openDb } from "../lib/db";
 import { createUser } from "../lib/auth/users";
@@ -34,7 +33,6 @@ const deps = (db: ReturnType<typeof openDb>, t: number): RunDeps => {
 };
 const is400 = (re: RegExp) => (e: unknown) => e instanceof AgentError && e.status === 400 && re.test(e.message);
 const sim = (id: string) => ({ id, action: "simulate", with: { v: id }, on_failure: "stop" });
-const textDir = () => { const d = mkdtempSync(path.join(tmpdir(), "cobra-ts-")); writeFileSync(path.join(d, "ship.md"), "# Ship\n\nTrigger: ship\n\nGoal: Ship it.\n\nSteps:\n1. Do the thing.\n\nOutput: a summary.\n"); return d; };
 
 test("agents: prompt XOR skill validation (and skill agents store no prompt)", () => {
   const { db, member } = setup();
@@ -54,18 +52,16 @@ test("agents: prompt XOR skill validation (and skill agents store no prompt)", (
   assert.equal(back.skillRef, null); assert.equal(back.prompt, "Again");
 });
 
-test("agents: one skill per agent; SOP by id (team-scoped), text by file name; saving needs no approval", () => {
+test("agents: one skill per agent; team skill by id (team-scoped), built-in text skills refused; saving needs no approval", () => {
   const { db, member, other } = setup();
   const s = createSkill(db, member, { name: "flow", description: "d", plan: { steps: [sim("a")] } });
   const theirs = createSkill(db, other, { name: "theirs", description: "d", plan: { steps: [sim("a")] } });
   assert.throws(() => createAgent(db, member, { name: "x", engine: "codex", skillRef: [`sop:${s.id}`, "text:ship"] as unknown as string }), is400(/skillRef must be a string/));
   assert.throws(() => createAgent(db, member, { name: "x", engine: "codex", skillRef: `sop:${s.id},text:ship` }), is400(/not found/));
   assert.throws(() => createAgent(db, member, { name: "x", engine: "codex", skillRef: `sop:${theirs.id}` }), is400(/not found in this team/));
-  assert.throws(() => createAgent(db, member, { name: "x", engine: "codex", skillRef: "ship" }), is400(/sop:<id> or text/));
-  const d = textDir();
-  assert.equal(checkSkillRef(db, member.tenantId, "text:ship", ["x"], d), "text:ship");
-  assert.throws(() => checkSkillRef(db, member.tenantId, "text:../etc", ["x"], d), is400(/not found/));
-  assert.throws(() => checkSkillRef(db, member.tenantId, "text:nope", ["x"], d), is400(/not found/));
+  assert.throws(() => createAgent(db, member, { name: "x", engine: "codex", skillRef: "ship" }), is400(/pick one of your team's skills/));
+  assert.throws(() => checkSkillRef(db, member.tenantId, "text:ship", ["x"]), is400(/^built-in skills were removed; edit the agent and pick a team skill$/));
+  assert.throws(() => createAgent(db, member, { name: "x", engine: "codex", skillRef: "text:ship" }), is400(/built-in skills were removed/));
   // a never-approved SOP skill can be saved on an agent and runs for real (no approval gate); the agent step is stubbed
   const a = createAgent(db, member, { name: "y", engine: "codex", skillRef: `sop:${s.id}` });
   assert.equal(a.skillRef, `sop:${s.id}`);
@@ -138,25 +134,25 @@ test("scheduler: fires due agents once per minute (no double fire on restart or 
   assert.equal(row.created_by, null); assert.equal(row.triggered_by, "schedule");
 });
 
-test("skill-agent runs (SOP and text) and prompt-agent runs are listed in the dashboard's Recent runs", async () => {
+test("skill-agent and prompt-agent runs are listed (a legacy built-in skill agent gets a plain 400, no crash) in the dashboard's Recent runs", async () => {
   const { db, member } = setup();
   const s = createSkill(db, member, { name: "flow", description: "d", plan: { inputs: { instructions: { type: "string" } }, steps: [sim("a")] } });
   createAgent(db, member, { name: "sop-agent", engine: "codex", skillRef: `sop:${s.id}` });
   createAgent(db, member, { name: "pr-agent", engine: "codex", prompt: "Review" });
-  const d = textDir();
   db.prepare("UPDATE team_agents SET skill_ref = 'text:ship', prompt = '' WHERE name = 'pr-agent'").run(); // as if saved with text:ship
   createAgent(db, member, { name: "plain", engine: "codex", prompt: "Hello" });
   const r1 = runTeamAgent(db, member, "sop-agent", { instructions: "focus on tests" }, deps(db, member.tenantId));
   assert.equal(r1.status, 201, JSON.stringify(r1.body));
   assert.match((r1.body as { id: string }).id, /^skr_/);
-  const r2 = runTeamAgent(db, member, "pr-agent", {}, deps(db, member.tenantId), { textDir: d });
-  assert.equal(r2.status, 201, JSON.stringify(r2.body));
+  const r2 = runTeamAgent(db, member, "pr-agent", {}, deps(db, member.tenantId), {});
+  assert.equal(r2.status, 400);
+  assert.equal((r2.body as { error: string }).error, "agent 'pr-agent' uses a built-in skill, and built-in skills were removed; edit it and pick a team skill");
   const r3 = runTeamAgent(db, member, "plain", {}, deps(db, member.tenantId));
   assert.equal(r3.status, 201, JSON.stringify(r3.body));
   await new Promise((res) => setTimeout(res, 100));
   const rows = recentRunRows(db, member.tenantId);
   const ids = rows.map((r) => r.id);
-  for (const r of [r1, r2, r3]) assert.ok(ids.includes((r.body as { id: string }).id));
+  for (const r of [r1, r3]) assert.ok(ids.includes((r.body as { id: string }).id));
   const sop = rows.find((r) => r.id === (r1.body as { id: string }).id)!;
   assert.equal(sop.kind, "skill"); assert.equal(sop.name, "flow"); assert.equal(sop.triggeredBy, "member");
   assert.equal(rows.find((r) => r.id === (r3.body as { id: string }).id)!.kind, "agent");

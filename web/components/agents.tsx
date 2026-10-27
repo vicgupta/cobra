@@ -15,8 +15,8 @@ const ENGINE: Record<string, string> = ENGINE_LABEL;
 
 export type AgentView = { name: string; engine: string; model: string | null; description: string | null; prompt: string; defaultRepo: string | null; skillRef?: string | null;
   cron?: string | null; cronMode?: "simulated" | "real"; contentHash: string; createdByEmail: string | null; createdAt?: number; canEdit: boolean };
-/** A skill an agent can run: "sop:<id>" (team skill) or "text:<file>" (built-in). */
-export type SkillOption = { ref: string; label: string; kind: "sop" | "text"; href?: string };
+/** A skill an agent can run: "sop:<id>" (a team skill). */
+export type SkillOption = { ref: string; label: string; kind: "sop"; href?: string };
 
 
 /** The engine's models (MVP build: Claude Code and Codex only). */

@@ -9,8 +9,6 @@ import type { DB } from "./db";
 import { checkTeamRepo } from "./repos";
 import { checkModel } from "./agent-models";
 
-import { existsSync } from "node:fs";
-import path from "node:path";
 import { ENGINES, type Engine } from "./engines";
 import { parseCron } from "./cron";
 
@@ -20,7 +18,7 @@ export const AGENT_NAME_RE = /^[a-z][a-z0-9-]{0,62}$/;
 
 export type TeamAgent = {
   id: number; name: string; engine: AgentEngine; model: string | null; description: string | null; prompt: string; defaultRepo: string | null;
-  /** Prompt XOR skill: null = prompt agent; "sop:<skill id>" or "text:<file name>" = runs that one skill. */
+  /** Prompt XOR skill: null = prompt agent; "sop:<skill id>" = runs that one team skill. */
   skillRef: string | null;
   /** Optional 5-field cron (America/New_York); runs only while cronEnabled. cronMode: simulated (default) or real. */
   cron: string | null; cronEnabled: boolean; cronMode: "simulated" | "real"; cronLastFire: number | null;
@@ -66,8 +64,6 @@ const DENY = "only the agent's creator, team leads, the designated lead and admi
 type Input = { name?: unknown; engine?: unknown; model?: unknown; description?: unknown; prompt?: unknown; defaultRepo?: unknown;
   kind?: unknown; skillRef?: unknown; cron?: unknown; cronEnabled?: unknown; cronMode?: unknown };
 
-export const TEXT_SKILL_RE = /^[a-z0-9][a-z0-9_-]{0,62}$/;
-export const textSkillsDir = () => path.join(process.cwd(), "skills");
 type SkillRow = { id: number; name: string; plan_json: string };
 const planOf = (r: SkillRow) => { try { return JSON.parse(r.plan_json) as { steps?: Array<{ action?: string; skill?: string; with?: Record<string, unknown> }> }; } catch { return { steps: [] }; } };
 
@@ -89,15 +85,12 @@ export function skillAgentRefs(db: DB, tenantId: number, skillId: number): Set<s
   return out;
 }
 
-/** "sop:<id>" (a team SOP skill) or "text:<file>" (web/skills/<file>.md); errors are AgentError 400. */
-export function checkSkillRef(db: DB, tenantId: number, ref: string, agentNames: string[], textDir = textSkillsDir()): string {
-  const m = /^(sop|text):(.+)$/.exec(ref);
-  if (!m) throw new AgentError(400, "skill must be sop:<id> or text:<file name>");
-  if (m[1] === "text") {
-    if (!TEXT_SKILL_RE.test(m[2]) || !existsSync(path.join(textDir, `${m[2]}.md`))) throw new AgentError(400, `text skill '${m[2]}' not found`);
-    return `text:${m[2]}`;
-  }
-  const id = Number(m[2]);
+/** "sop:<id>" (a team skill). Built-in "text:" skills were removed; errors are AgentError 400. */
+export function checkSkillRef(db: DB, tenantId: number, ref: string, agentNames: string[]): string {
+  if (ref.startsWith("text:")) throw new AgentError(400, "built-in skills were removed; edit the agent and pick a team skill");
+  const m = /^sop:(.+)$/.exec(ref);
+  if (!m) throw new AgentError(400, "pick one of your team's skills");
+  const id = Number(m[1]);
   const row = Number.isInteger(id) && id > 0 ? db.prepare("SELECT id, name FROM skills WHERE tenant_id = ? AND id = ?").get(tenantId, id) as { id: number; name: string } | undefined : undefined;
   if (!row) throw new AgentError(400, "skill not found in this team");
   const refs = skillAgentRefs(db, tenantId, id);

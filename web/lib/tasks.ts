@@ -2,7 +2,7 @@
 // (America/New_York) or on demand. Team-scoped; other teams get 404. Edit/delete: the creator, team leads,
 // the designated lead and admins (same rule as agents). Disabled by default. Names are lowercase slugs.
 import type { DB } from "./db";
-import { AgentError, canEditAgent, checkSkillRef, getAgent, textSkillsDir, type AgentUser } from "./agents";
+import { AgentError, canEditAgent, checkSkillRef, getAgent, type AgentUser } from "./agents";
 import { checkTeamRepo } from "./repos";
 import { parseCron } from "./cron";
 
@@ -44,7 +44,7 @@ export function getTask(db: DB, tenantId: number, id: number): Task | null {
 export const canEditTask = (u: AgentUser, t: Pick<Task, "createdBy">, db?: DB) => canEditAgent(u, t, db);
 const DENY = "only the task's creator, team leads, the designated lead and admins can";
 
-function validate(db: DB, tenantId: number, b: Input, cur: Task | null, textDir = textSkillsDir()) {
+function validate(db: DB, tenantId: number, b: Input, cur: Task | null) {
   const pick = <T,>(v: unknown, old: T) => (v === undefined && cur ? old : v);
   const rawName = pick(b.name, cur?.name);
   const name = typeof rawName === "string" ? rawName.trim().toLowerCase() : "";
@@ -56,7 +56,7 @@ function validate(db: DB, tenantId: number, b: Input, cur: Task | null, textDir 
   if (!agent) throw new TaskError(400, `agent '${agentName}' not found in this team`);
   const rawSkill = pick(b.skillRef, cur?.skillRef);
   if (rawSkill !== undefined && rawSkill !== null && typeof rawSkill !== "string") throw new TaskError(400, "skill must be one skill (text) or empty");
-  const skillRef = typeof rawSkill === "string" && rawSkill.trim() ? checkSkillRef(db, tenantId, rawSkill.trim(), [agentName], textDir) : null;
+  const skillRef = typeof rawSkill === "string" && rawSkill.trim() ? checkSkillRef(db, tenantId, rawSkill.trim(), [agentName]) : null;
   const rawCron = pick(b.cron, cur?.cron);
   if (rawCron !== undefined && rawCron !== null && typeof rawCron !== "string") throw new TaskError(400, "cron must be text or empty");
   const cron = typeof rawCron === "string" && rawCron.trim() ? rawCron.trim().replace(/\s+/g, " ") : null;
@@ -79,20 +79,20 @@ function validate(db: DB, tenantId: number, b: Input, cur: Task | null, textDir 
 
 const byName = (db: DB, tenantId: number, name: string) => db.prepare("SELECT id FROM tasks WHERE tenant_id = ? AND name = ? AND deleted_at IS NULL").get(tenantId, name) as { id: number } | undefined;
 
-export function createTask(db: DB, u: AgentUser, b: Input | null, o: { now?: number; textDir?: string } = {}): Task {
+export function createTask(db: DB, u: AgentUser, b: Input | null, o: { now?: number } = {}): Task {
   const now = o.now ?? Date.now();
-  const v = validate(db, u.tenantId, b ?? {}, null, o.textDir);
+  const v = validate(db, u.tenantId, b ?? {}, null);
   if (byName(db, u.tenantId, v.name)) throw new TaskError(409, `a task named '${v.name}' already exists in this team`);
   const r = db.prepare("INSERT INTO tasks (tenant_id, name, agent, skill_ref, cron, enabled, mode, repo, instructions, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
     .run(u.tenantId, v.name, v.agent, v.skillRef, v.cron, v.enabled ? 1 : 0, v.mode, v.repo, v.instructions, u.id, now, now);
   return getTask(db, u.tenantId, Number(r.lastInsertRowid))!;
 }
 
-export function updateTask(db: DB, u: AgentUser, id: number, b: Input | null, o: { now?: number; textDir?: string } = {}): Task {
+export function updateTask(db: DB, u: AgentUser, id: number, b: Input | null, o: { now?: number } = {}): Task {
   const t = getTask(db, u.tenantId, id);
   if (!t) throw new TaskError(404, "task not found");
   if (!canEditTask(u, t, db)) throw new TaskError(403, `${DENY} edit it`);
-  const v = validate(db, u.tenantId, b ?? {}, t, o.textDir);
+  const v = validate(db, u.tenantId, b ?? {}, t);
   const other = byName(db, u.tenantId, v.name);
   if (other && other.id !== t.id) throw new TaskError(409, `a task named '${v.name}' already exists in this team`);
   db.prepare("UPDATE tasks SET name = ?, agent = ?, skill_ref = ?, cron = ?, enabled = ?, mode = ?, repo = ?, instructions = ?, updated_at = ? WHERE id = ?")

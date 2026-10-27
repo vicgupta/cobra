@@ -1,9 +1,7 @@
 // Oct 2026: Tasks (agent + optional skill on a cron schedule), no JSON in skill views, lowercase names.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { readFileSync } from "node:fs";
 import { openDb } from "../lib/db";
 import { createUser } from "../lib/auth/users";
 import { checkTeamRepo } from "../lib/repos";
@@ -32,7 +30,6 @@ const deps = (db: ReturnType<typeof openDb>, t: number): RunDeps => {
   return { handlers: { ...base, simulate: async (ctx) => ({ ...ctx.with }) }, resolveSecret: () => undefined, redact: () => [] };
 };
 const sim = (id: string) => ({ id, action: "simulate", with: { v: id }, on_failure: "stop" });
-const textDir = () => { const d = mkdtempSync(path.join(tmpdir(), "cobra-ts-")); writeFileSync(path.join(d, "ship.md"), "# Ship\n\nTrigger: ship\n\nGoal: Ship it.\n\nSteps:\n1. Do the thing.\n\nOutput: a summary.\n"); return d; };
 const err = (status: number, re?: RegExp) => (e: unknown) => e instanceof TaskError && e.status === status && (!re || re.test(e.message));
 
 test("migration 31: tasks table, disabled by default", () => {
@@ -103,27 +100,25 @@ test("scheduler: fires a due enabled task exactly once (restart / second instanc
   assert.equal(tickTaskSchedules(db, nine + 86_400_000, () => {}).length, 1); // next day
 });
 
-test("task runs (prompt agent, SOP skill override, text skill override) show in the dashboard's Recent runs", async () => {
+test("task runs (prompt agent, SOP skill override; built-in text skill refused) show in the dashboard's Recent runs", async () => {
   const { db, member } = setup();
   createAgent(db, member, { name: "rev", engine: "codex", prompt: "Review" });
   const s = createSkill(db, member, { name: "flow", description: "d", plan: { inputs: { instructions: { type: "string" } }, steps: [sim("a")] } });
-  const d = textDir();
   const a = createTask(db, member, { name: "plain", agent: "rev", instructions: "be brief" });
   const b = createTask(db, member, { name: "sop", agent: "rev", skillRef: `sop:${s.id}` });
-  const c = createTask(db, member, { name: "text", agent: "rev", skillRef: "text:ship" }, { textDir: d });
+  assert.throws(() => createTask(db, member, { name: "text", agent: "rev", skillRef: "text:ship" }), (e: unknown) => /built-in skills were removed/.test((e as Error).message));
   const r1 = runTask(db, member, member.tenantId, a.id, deps(db, member.tenantId));
   const r2 = runTask(db, member, member.tenantId, b.id, deps(db, member.tenantId));
-  const r3 = runTask(db, member, member.tenantId, c.id, deps(db, member.tenantId), { textDir: d });
-  for (const r of [r1, r2, r3]) assert.equal(r.status, 201, JSON.stringify(r.body));
+  for (const r of [r1, r2]) assert.equal(r.status, 201, JSON.stringify(r.body));
   await new Promise((res) => setTimeout(res, 150));
   const rows = recentRunRows(db, member.tenantId), ids = rows.map((r) => r.id);
-  for (const r of [r1, r2, r3]) assert.ok(ids.includes((r.body as { id: string }).id));
+  for (const r of [r1, r2]) assert.ok(ids.includes((r.body as { id: string }).id));
   assert.equal(rows.find((r) => r.id === (r2.body as { id: string }).id)!.name, "flow");
   assert.equal(rows.find((r) => r.id === (r1.body as { id: string }).id)!.triggeredBy, "member");
   const sims = db.prepare("SELECT simulated FROM runs").all() as Array<{ simulated: number }>;
   assert.ok(sims.every((x) => x.simulated === 1), "task runs default to simulated");
   assert.ok(getAgent(db, member.tenantId, "rev")!.skillRef === null, "the agent itself is unchanged");
-  for (const [t, r] of [[a, r1], [b, r2], [c, r3]] as const) assert.equal(getTask(db, member.tenantId, t.id)!.lastRun?.id, (r.body as { id: string }).id, "last run is linked to the task");
+  for (const [t, r] of [[a, r1], [b, r2]] as const) assert.equal(getTask(db, member.tenantId, t.id)!.lastRun?.id, (r.body as { id: string }).id, "last run is linked to the task");
   assert.equal(getTask(db, member.tenantId, a.id)!.lastRun!.id.length > 0, true);
 });
 
@@ -156,5 +151,7 @@ test("lowercase names: agents and skills are normalized; no title-casing in the 
   assert.equal(createSkill(db, member, { name: "Release-Checklist", description: "d", body: "Do it." }).name, "release-checklist");
   assert.throws(() => createSkill(db, member, { name: "RELEASE-checklist", description: "d", body: "x" }), (e: unknown) => e instanceof SkillError && e.status === 409);
   const lib = readFileSync("app/agents/skills/page.tsx", "utf8");
-  assert.doesNotMatch(lib, /toUpperCase/); assert.match(lib, /\{t\.id\}/);
+  assert.doesNotMatch(lib, /toUpperCase/);
+  const list = readFileSync("components/skills.tsx", "utf8");
+  assert.doesNotMatch(list, /toUpperCase/); assert.match(list, /\{r\.name\}/);
 });
