@@ -11,11 +11,12 @@ test("displayName: name, else email local part", () => {
   assert.equal(displayName({ name: null, email: "sam@example.com" }), "sam");
 });
 
-test("header user menu renders neither the email nor the name (Job 7d); team stays", () => {
+test("header user menu renders neither the email nor the name (Job 7d) nor the team name; admin badge stays", () => {
   const s = readFileSync(path.join(__dirname, "../components/user-menu.tsx"), "utf8");
   assert.doesNotMatch(s, /\{u\.email\}/);
   assert.doesNotMatch(s, /displayName|u\.name|data-user-name/);
-  assert.match(s, /\{u\.tenantName\}/);
+  assert.doesNotMatch(s, /tenantName|data-user-team/);
+  assert.match(s, /System admin/);
 });
 
 test("header has no 'software factory' tagline (Job 7d); Cobra brand stays", () => {
