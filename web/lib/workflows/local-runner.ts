@@ -6,7 +6,8 @@
 // Pure Node (no Next imports) so tests can drive it with fake binaries.
 import { spawn } from "node:child_process";
 import { assertTeamWorkspace, legacyWorkspacesDir, teamWorkspacesDir } from "../workspaces";
-import { mkdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
+import { buildAuthJson, refreshedLogin } from "../codex-login";
 import path from "node:path";
 import type { AgentRunner, RepoCheck } from "./handlers";
 import { modelArgs } from "../agent-models";
@@ -32,6 +33,8 @@ export type LocalRunnerOptions = {
   /** Stored (Settings > Providers) credential for an engine slot, e.g. ("claude-code", "ANTHROPIC_API_KEY").
    *  Falls back to resolveSecret(name) (the server env file) when it returns undefined, for team 1 only. */
   credential?: (engine: string, name: string) => string | undefined;
+  /** The codex CLI refreshed the team's stored ChatGPT login during a run: save this auth.json (encrypted). */
+  onCodexLoginRefresh?: (authJson: string) => void;
   /** Chosen auth method per engine (Settings > Providers); default "auto". */
   authMode?: (engine: Engine) => AuthMode;
   /** Whether the server has a Codex ChatGPT login (~/.codex/auth.json); default: checks $HOME. */
@@ -124,6 +127,7 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     const model = own ?? pd.model;
     const effort = pd.effort;
     let cmd: string, args: string[];
+    let codexHome: { dir: string; file: string; login: string } | null = null;
     // Team isolation (Job 11): the server env file and the cobra user's CLI logins (~/.codex, ~/.claude) are a
     // fallback for team 1 only (and runners without a team, i.e. tests). Other teams use only their own rows.
     const fallback = opts.tenantId === undefined || opts.tenantId === ENV_FALLBACK_TEAM;
@@ -140,6 +144,17 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
         const ra = runAuth("codex", opts.authMode?.("codex") ?? "auto", (n) => cred("codex", n), fallback && (opts.codexServerLogin ? opts.codexServerLogin() : codexServerLogin()), fallback);
         for (const k of ra.unset) delete env[k];
         Object.assign(env, ra.env);
+        if (ra.codexLogin) {
+          // The CLI only accepts a ChatGPT login as CODEX_HOME/auth.json. It lives under .git (never committed)
+          // for this run only, mode 600, and is removed in the finally below.
+          const home = path.join(dir, ".git", "cobra-codex-home");
+          mkdirSync(home, { recursive: true, mode: 0o700 });
+          const file = path.join(home, "auth.json");
+          writeFileSync(file, buildAuthJson(ra.codexLogin), { mode: 0o600 });
+          chmodSync(file, 0o600);
+          codexHome = { dir: home, file, login: ra.codexLogin };
+          env.CODEX_HOME = home;
+        }
         note(ra.note);
       }
       args = ["exec", "--skip-git-repo-check", ...modelArgs("codex", model), ...effortArgs("codex", effort), ...mode, "--json", "--output-last-message", lastFile, prompt + ghNote];
@@ -157,7 +172,15 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     const limit = timeoutMs ?? opts.defaultTimeoutMs ?? 10 * 60_000;
     const uc = usageCollector(driver, model, log);
     let r: { code: number; out: string };
-    try { r = await run(cmd, args, { cwd: dir, env, signal, log: (s) => uc.write(s), timeoutMs: limit }); } finally { /* nothing to clean up */ }
+    try { r = await run(cmd, args, { cwd: dir, env, signal, log: (s) => uc.write(s), timeoutMs: limit }); } finally {
+      if (codexHome) {
+        try {
+          const fresh = refreshedLogin(codexHome.login, existsSync(codexHome.file) ? readFileSync(codexHome.file, "utf8") : null);
+          if (fresh) { opts.onCodexLoginRefresh?.(fresh); note("codex refreshed the ChatGPT login; saved the new one (encrypted)"); }
+        } catch (e) { note(`the refreshed ChatGPT login wasn't saved: ${(e as Error).message}`); }
+        rmSync(codexHome.dir, { recursive: true, force: true });
+      }
+    }
     const parsed = uc.finish();
     { try { opts.onUsage?.(runId, parsed.usage ?? uc.orNull()); } catch (e) { note(`usage not recorded: ${(e as Error).message}`); } }
     if (r.code !== 0) throw new Error(`${driver} exited with code ${r.code}`);

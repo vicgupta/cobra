@@ -4,6 +4,7 @@ import { ProviderDefaultsForm } from "@/components/provider-form";
 import { AuthModeForm, CredentialForm } from "@/components/provider-credentials-form";
 import { canManageProviders, codexServerLogin, credentialViews, ENV_FALLBACK_TEAM, getAuthMode, PROVIDER_AUTH, type CredentialView } from "@/lib/provider-credentials";
 import { isSystemAdmin } from "@/lib/collab";
+import { CODEX_LOGIN_SLOT } from "@/lib/codex-login";
 import { listProviders } from "@/lib/providers";
 import { getDb, secretValue } from "@/lib/workflows/server";
 
@@ -30,6 +31,34 @@ function Meta({ c, show }: { c: CredentialView; show: boolean }) {
   const bits = show && c.source === "stored" ? [c.last4 ? <>ends <span className="font-mono text-fg-soft">…{c.last4}</span></> : null, c.setBy ? `by ${c.setBy}` : null, c.setAt ? when(c.setAt) : null].filter(Boolean) : [];
   if (!bits.length) return null;
   return <p className="text-xs text-subtle" data-cred-meta>{bits.map((b, i) => <span key={i}>{i ? " · " : ""}{b}</span>)}</p>;
+}
+
+const day = (ms: number) => new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+
+/** Codex ChatGPT login: masked status (plan, expiry, auto-refresh) and a warning for a bare token. Never the token. */
+function CodexLoginInfo({ c, show }: { c: CredentialView; show: boolean }) {
+  const s = c.codexLogin;
+  return (
+    <div className="space-y-2" data-codex-chatgpt-login>
+      {show && c.source === "stored" && (s ? (
+        <p className="text-xs text-subtle" data-codex-chatgpt-login-status={s.canRefresh ? "refresh" : "token"}>
+          ChatGPT {s.plan ? <span className="font-medium capitalize text-fg-soft">{s.plan}</span> : "plan unknown"}
+          {" · "}{s.expired ? <span className="text-danger">{s.canRefresh ? "access token expired (renews on the next run)" : `expired ${s.expiresAt ? day(s.expiresAt) : ""}`}</span> : s.expiresAt ? `access token valid until ${day(s.expiresAt)}` : "no expiry"}
+          {" · "}{s.canRefresh ? "auto-refreshes" : "no auto-refresh"}
+        </p>
+      ) : <p className="text-xs text-danger" role="alert">The stored login can&apos;t be read. Paste ~/.codex/auth.json again.</p>)}
+      {show && c.source === "stored" && s && !s.canRefresh && (
+        <p role="note" data-codex-chatgpt-login-warning className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-800 ring-1 ring-inset ring-amber-500/30 dark:text-amber-300">
+          Only an access token is stored, so it can&apos;t renew itself{s.expiresAt ? <> and Codex runs stop working {s.expired ? "now" : <>after <strong>{day(s.expiresAt)}</strong></>}</> : null}. Replace it with the full <span className="font-mono">~/.codex/auth.json</span> to keep it refreshed.
+        </p>
+      )}
+      {show && (
+        <p className="text-xs text-muted">
+          On your computer, run <code className="rounded bg-surface-2 px-1 font-mono">codex login</code> and sign in with ChatGPT, then paste the contents of <code className="rounded bg-surface-2 px-1 font-mono">~/.codex/auth.json</code>. Cobra stores it encrypted and saves the renewed login after each run.
+        </p>
+      )}
+    </div>
+  );
 }
 
 /** Is the provider usable with its selected auth method? (display only; mirrors which slot the method uses) */
@@ -90,7 +119,8 @@ export function ProvidersView() {
                                 </div>
                                 <StatusPill c={c} />
                               </div>
-                              {mgr && <CredentialForm engine={e} name={c.name} label={c.label} stored={c.source === "stored"} open={main && !c.set} />}
+                              {e === "codex" && c.name === CODEX_LOGIN_SLOT && <CodexLoginInfo c={c} show={mgr} />}
+                              {mgr && <CredentialForm engine={e} name={c.name} label={c.label} stored={c.source === "stored"} open={main && !c.set} multiline={e === "codex" && c.name === CODEX_LOGIN_SLOT} />}
                             </li>
                           );
                         })}

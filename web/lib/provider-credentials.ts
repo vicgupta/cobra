@@ -12,8 +12,10 @@
 //   Claude Code 2.1.310: API key ANTHROPIC_API_KEY; subscription CLAUDE_CODE_OAUTH_TOKEN from
 //     `claude setup-token` ("Set up a long-lived authentication token (requires Claude subscription)").
 //   Codex 0.164.0: API key CODEX_API_KEY (exec; takes precedence over any login); subscription is the
-//     server's ChatGPT login (~/.codex/auth.json, `codex login`) or a pasted CODEX_ACCESS_TOKEN
-//     (ChatGPT/Codex access token for trusted automation; `codex login --with-access-token`).
+//     server's ChatGPT login (~/.codex/auth.json, `codex login`) or a pasted ChatGPT login stored in the
+//     CODEX_ACCESS_TOKEN slot (auth.json contents or a bare access token; see lib/codex-login.ts). It reaches
+//     the CLI as auth.json in a per-run CODEX_HOME, never as the CODEX_ACCESS_TOKEN env var (0.164.0 reads
+//     that variable as an agent-identity JWT, so a ChatGPT token there fails with "401 Missing bearer").
 //   OpenCode 1.19.4: API key OPENCODE_API_KEY (OpenCode Zen). No subscription mode of its own (openai/*
 //     models reuse the Codex ChatGPT login). Custom OpenAI-compatible providers: see custom providers below.
 //   Cursor 2026.10.22: API key CURSOR_API_KEY. `cursor-agent login` is an interactive browser login that
@@ -25,6 +27,7 @@ import type { DB } from "./db";
 import { CollabError, isSystemAdmin } from "./collab";
 import { decryptSecret, encryptSecret } from "./secret-box";
 import type { AgentEngine } from "./agents";
+import { CODEX_LOGIN_SLOT, codexLoginSecrets, codexLoginStatus, parseCodexLogin, type CodexLoginStatus } from "./codex-login";
 
 export type AuthType = "api_key" | "subscription";
 export type AuthMode = "auto" | AuthType;
@@ -44,7 +47,7 @@ export const PROVIDER_AUTH: Record<AgentEngine, ProviderAuthSpec> = {
     serverLogin: "ChatGPT login on the server (~/.codex/auth.json via `codex login`)",
     slots: [
       { name: "CODEX_API_KEY", type: "api_key", label: "OpenAI API key", help: "From platform.openai.com > API keys. Passed to codex exec as CODEX_API_KEY (overrides any login for that run)." },
-      { name: "CODEX_ACCESS_TOKEN", type: "subscription", label: "ChatGPT / Codex access token", help: "Optional: a ChatGPT/Codex access token for automation (see `codex login --with-access-token`). Without it, subscription runs use the server's ChatGPT login." },
+      { name: "CODEX_ACCESS_TOKEN", type: "subscription", label: "ChatGPT login", help: "Run `codex login` on your computer and sign in with ChatGPT, then paste the contents of ~/.codex/auth.json here (on Windows: %USERPROFILE%\\.codex\\auth.json). Cobra stores it encrypted and keeps it refreshed. A bare ChatGPT access token also works, but only until it expires." },
     ],
   },
 };
@@ -58,12 +61,13 @@ export const canManageProviders = (u: { role: string }) => !isSystemAdmin(u);
 /** Env lookup for a team: the real env file for team 1, nothing for everyone else. */
 export const teamEnv = (tenantId: number, env: (n: string) => string | undefined) => (n: string) => (tenantId === ENV_FALLBACK_TEAM ? env(n) : undefined);
 export const noCredential = (what: string) => `no credential set for this team: ${what} (a team member adds it in Settings > Providers)`;
-export type CredentialView = CredentialSlot & { set: boolean; source: "stored" | "env" | null; last4: string | null; setAt: number | null; setBy: string | null };
+export type CredentialView = CredentialSlot & { set: boolean; source: "stored" | "env" | null; last4: string | null; setAt: number | null; setBy: string | null; codexLogin?: CodexLoginStatus | null };
 
 const row = (db: DB, t: number, engine: string, name: string) =>
   db.prepare("SELECT value_enc, set_at, set_by FROM team_provider_secrets WHERE tenant_id = ? AND engine = ? AND name = ?").get(t, engine, name) as { value_enc: string; set_at: number; set_by: string | null } | undefined;
 const tail = (v: string) => (v.length >= 12 ? v.slice(-4) : null);
 const envName = (_engine: string, name: string) => name;
+const isCodexLogin = (engine: string, name: string) => engine === "codex" && name === CODEX_LOGIN_SLOT;
 
 /** Stored value (decrypted) for a run; undefined when unset/undecryptable. Never log the result. */
 export function storedCredential(db: DB, t: number, engine: string, name: string, secretKey: string | undefined): string | undefined {
@@ -80,10 +84,11 @@ export function resolveCredential(db: DB, t: number, engine: string, name: strin
 export function credentialViews(db: DB, t: number, engine: keyof typeof PROVIDER_AUTH, secretKey: string | undefined, env: (n: string) => string | undefined, withDetail: boolean): CredentialView[] {
   return PROVIDER_AUTH[engine].slots.map((s) => {
     const r = row(db, t, engine, s.name);
-    let last4: string | null = null;
-    if (r && withDetail) { const v = storedCredential(db, t, engine, s.name, secretKey); last4 = v ? tail(v) : null; }
+    const login = isCodexLogin(engine, s.name);
+    let last4: string | null = null, codexLogin: CodexLoginStatus | null | undefined;
+    if (r && withDetail) { const v = storedCredential(db, t, engine, s.name, secretKey); if (login) codexLogin = codexLoginStatus(v); else last4 = v ? tail(v) : null; }
     const envSet = !r && !!teamEnv(t, env)(envName(engine, s.name))?.trim();
-    return { ...s, set: !!r || envSet, source: r ? "stored" : envSet ? "env" : null, last4, setAt: withDetail ? r?.set_at ?? null : null, setBy: withDetail ? r?.set_by ?? null : null };
+    return { ...s, set: !!r || envSet, source: r ? "stored" : envSet ? "env" : null, last4, setAt: withDetail ? r?.set_at ?? null : null, setBy: withDetail ? r?.set_by ?? null : null, ...(login ? { codexLogin: codexLogin ?? null } : {}) };
   });
 }
 
@@ -119,7 +124,8 @@ export function setCredential(db: DB, u: Admin, engine: unknown, name: unknown, 
     db.prepare("DELETE FROM team_provider_secrets WHERE tenant_id = ? AND engine = ? AND name = ?").run(t, engine, slot.name);
     audit(db, u, engine, `${slot.name} deleted`, now);
   } else {
-    writeSecret(db, t, engine, slot.name, checkSecretValue(value, slot.label), secretKey, u.email, now);
+    const v = isCodexLogin(engine, slot.name) ? parseCodexLogin(value, now) : checkSecretValue(value, slot.label);
+    writeSecret(db, t, engine, slot.name, v, secretKey, u.email, now);
     audit(db, u, engine, `${slot.name} ${existed ? "replaced" : "set"}`, now);
   }
   return credentialViews(db, t, engine as keyof typeof PROVIDER_AUTH, secretKey, env, true).find((c) => c.name === slot.name)!;
@@ -143,10 +149,17 @@ export function setAuthMode(db: DB, u: Admin, engine: unknown, mode: unknown, no
   return getAuthMode(db, u.tenantId, engine);
 }
 
+/** Save the auth.json the codex CLI rewrote during a run (it refreshed the tokens). Audited as the CLI, not a user. */
+export function saveRefreshedCodexLogin(db: DB, t: number, value: string, secretKey: string | undefined, now = Date.now()) {
+  writeSecret(db, t, "codex", CODEX_LOGIN_SLOT, parseCodexLogin(value, now), secretKey, "codex (auto-refresh)", now);
+  db.prepare("INSERT INTO provider_audit (tenant_id, actor_id, actor_email, engine, at, detail) VALUES (?, NULL, ?, 'codex', ?, ?)").run(t, "codex (auto-refresh)", now, `${CODEX_LOGIN_SLOT} refreshed by the codex CLI during a run`);
+}
+
 /** True when the server has a Codex ChatGPT login file (read-only check; the file is never read here). */
 export const codexServerLogin = (home = process.env.HOME ?? "") => !!home && existsSync(path.join(home, ".codex", "auth.json"));
 
-export type RunAuth = { env: Record<string, string>; unset: string[]; note: string };
+/** codexLogin: the stored ChatGPT login; the runner writes it as auth.json into a per-run CODEX_HOME. */
+export type RunAuth = { env: Record<string, string>; unset: string[]; note: string; codexLogin?: string };
 
 /** Per-run auth env for Claude Code and Codex from the chosen method (throws a clear error when missing). */
 export function runAuth(engine: "claude-code" | "codex", mode: AuthMode, cred: (name: string) => string | undefined, serverLogin: boolean, cliLogin = true): RunAuth {
@@ -167,9 +180,9 @@ export function runAuth(engine: "claude-code" | "codex", mode: AuthMode, cred: (
     if (!key) throw new Error("Codex is set to API key but no CODEX_API_KEY is stored: a team member sets it in Settings > Providers");
     return { env: { CODEX_API_KEY: key }, unset: ["OPENAI_API_KEY", "CODEX_ACCESS_TOKEN"], note: "codex: using the API key" };
   }
-  if (token) return { env: { CODEX_ACCESS_TOKEN: token }, unset: ["CODEX_API_KEY", "OPENAI_API_KEY"], note: "codex: using the stored ChatGPT/Codex access token" };
-  if (!serverLogin && mode === "subscription") throw new Error("Codex is set to Subscription but there's no ChatGPT login on the server and no CODEX_ACCESS_TOKEN is stored");
-  if (!cliLogin) throw new Error(noCredential("Codex needs a CODEX_API_KEY or a CODEX_ACCESS_TOKEN"));
+  if (token) return { env: {}, unset: ["CODEX_ACCESS_TOKEN", "CODEX_API_KEY", "OPENAI_API_KEY"], codexLogin: token, note: "codex: using the team's stored ChatGPT login (auth.json in a per-run CODEX_HOME)" };
+  if (!serverLogin && mode === "subscription") throw new Error("Codex is set to Subscription but no ChatGPT login is stored: a team member pastes ~/.codex/auth.json (from `codex login`) in Settings > Providers");
+  if (!cliLogin) throw new Error(noCredential("Codex needs an OpenAI API key or a ChatGPT login"));
   return { env: {}, unset: ["CODEX_API_KEY", "OPENAI_API_KEY"], note: "codex: using the server's ChatGPT login" };
 }
 
@@ -200,4 +213,4 @@ export const customProviderSecrets = (db: DB, t: number, secretKey: string | und
 
 /** The team's stored built-in credentials (for run-log redaction). */
 export const builtinCredentialSecrets = (db: DB, t: number, secretKey: string | undefined) =>
-  (Object.keys(PROVIDER_AUTH) as Array<keyof typeof PROVIDER_AUTH>).flatMap((e) => PROVIDER_AUTH[e].slots.map((s) => storedCredential(db, t, e, s.name, secretKey))).filter((v): v is string => !!v);
+  (Object.keys(PROVIDER_AUTH) as Array<keyof typeof PROVIDER_AUTH>).flatMap((e) => PROVIDER_AUTH[e].slots.flatMap((s) => { const v = storedCredential(db, t, e, s.name, secretKey); return isCodexLogin(e, s.name) ? codexLoginSecrets(v) : v ? [v] : []; }));

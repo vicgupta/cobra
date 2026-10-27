@@ -100,7 +100,7 @@ test("runAuth: Claude Code and Codex use only the chosen credential", () => {
   assert.throws(() => runAuth("claude-code", "api_key", c({ CLAUDE_CODE_OAUTH_TOKEN: "o" }), false), /API key/);
   const cx = c({ CODEX_API_KEY: "ck", CODEX_ACCESS_TOKEN: "tok" });
   assert.deepEqual(runAuth("codex", "api_key", cx, true).env, { CODEX_API_KEY: "ck" });
-  assert.deepEqual(runAuth("codex", "subscription", cx, true).env, { CODEX_ACCESS_TOKEN: "tok" });
+  { const ra = runAuth("codex", "subscription", cx, true); assert.deepEqual(ra.env, {}, "never via CODEX_ACCESS_TOKEN"); assert.equal(ra.codexLogin, "tok"); assert.ok(ra.unset.includes("CODEX_ACCESS_TOKEN")); }
   const sub = runAuth("codex", "subscription", c({ CODEX_API_KEY: "ck" }), true);
   assert.deepEqual(sub.env, {}); assert.ok(sub.unset.includes("CODEX_API_KEY") && sub.unset.includes("OPENAI_API_KEY"));
   assert.throws(() => runAuth("codex", "subscription", c({}), false), /ChatGPT login/);

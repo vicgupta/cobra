@@ -33,7 +33,7 @@ function ConfirmDelete({ what, busy, onConfirm }: { what: string; busy: boolean;
 
 /** Actions for one masked credential slot: add (or override env), inline Replace, Delete. The value is write-only.
  *  Team members only, own team (server-enforced). `open` = show the input straight away (the slot the auth method uses). */
-export function CredentialForm({ engine, name, label, stored, open = false }: { engine: string; name: string; label: string; stored: boolean; open?: boolean }) {
+export function CredentialForm({ engine, name, label, stored, open = false, multiline = false }: { engine: string; name: string; label: string; stored: boolean; open?: boolean; multiline?: boolean }) {
   const router = useRouter();
   const id = useId();
   const [value, setValue] = useState("");
@@ -61,7 +61,10 @@ export function CredentialForm({ engine, name, label, stored, open = false }: { 
     <form id={id} className="space-y-2" data-credential={name} data-expanded onSubmit={(e) => { e.preventDefault(); if (value.trim()) void send(value.trim()); }}>
       <label htmlFor={`${id}-v`} className="sr-only">{label}</label>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <input id={`${id}-v`} aria-label={`${engine} ${name}`} type="password" autoComplete="off" spellCheck={false} className={input} value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape" && (stored || !open)) { setValue(""); setExpanded(false); } }} placeholder={stored ? `New ${label}` : label} autoFocus={stored || !open} />
+        {multiline ? (
+          // Masked multi-line paste (auth.json); the value is never echoed back from the server.
+          <textarea id={`${id}-v`} aria-label={`${engine} ${name}`} autoComplete="off" spellCheck={false} rows={4} className={`${input} min-h-[5.5rem] resize-y [-webkit-text-security:disc]`} value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape" && (stored || !open)) { setValue(""); setExpanded(false); } }} placeholder={'Paste the contents of ~/.codex/auth.json'} autoFocus={stored || !open} data-masked />
+        ) : <input id={`${id}-v`} aria-label={`${engine} ${name}`} type="password" autoComplete="off" spellCheck={false} className={input} value={value} onChange={(e) => setValue(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape" && (stored || !open)) { setValue(""); setExpanded(false); } }} placeholder={stored ? `New ${label}` : label} autoFocus={stored || !open} />}
         <div className="flex shrink-0 items-center gap-2">
           <button className={primary} disabled={busy || !value.trim()}>{stored ? "Replace" : "Save"}</button>
           {(stored || !open) && <button type="button" className={ghost} disabled={busy} onClick={() => { setValue(""); setExpanded(false); }}>Cancel</button>}
