@@ -185,7 +185,7 @@ test("huge skill: 1000+ line body, 200+ steps, section extraction, handoffs and 
   assert.match(String(r.steps.s3.outputs.summary), /SOP section #part-3/);
   assert.doesNotMatch(String(r.steps.s3.outputs.summary), /Do part 4 /);
   assert.ok(MAX_STEPS >= 2000);
-  assert.throws(() => createSkill(db, member, { name: "badsec", body: "# A", plan: { steps: [{ id: "a", action: "agent", section: "nope", with: { prompt: "x" }, on_failure: "stop" }] } }), /anchor/);
+  assert.throws(() => createSkill(db, member, { name: "badsec", body: "# A", plan: { steps: [{ id: "a", action: "agent", section: "nope", with: { prompt: "x" }, on_failure: "stop" }] } }), /no heading 'Nope'/);
   // no length rejection between tiny and huge
   for (const n of [1, 30000, 300000]) assert.equal(svc.create(db, member, { name: `len-${n}`, body: "x".repeat(n) }).status, 201);
 });

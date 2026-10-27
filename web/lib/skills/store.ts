@@ -135,28 +135,83 @@ export function derivePlan(): Plan {
   };
 }
 
+/** "release-notes" -> "Release notes" (how a section anchor reads in an error). */
+const pretty = (a: string) => { const t = a.replace(/-\d+$/, "").replace(/-/g, " "); return t.charAt(0).toUpperCase() + t.slice(1); };
+
+/**
+ * The steps of a body-only skill, derived from the plain-text SOP every time it is saved, so the
+ * steps can never drift from the headings. Headings at the outermost level become one agent step
+ * each, in order (a lone top title with sub-headings is skipped and its sub-headings are used).
+ * Fewer than two such headings: one step that follows the whole SOP (derivePlan).
+ */
+export function planFromBody(body: string): Plan {
+  const all = sections(body);
+  if (!all.length) return derivePlan();
+  let level = Math.min(...all.map((h) => h.level));
+  if (all.filter((h) => h.level === level).length === 1) {
+    const deeper = all.filter((h) => h.level > level);
+    if (deeper.length) level = Math.min(...deeper.map((h) => h.level));
+  }
+  const picked = all.filter((h) => h.level === level);
+  if (picked.length < 2) return derivePlan();
+  const used = new Set<string>();
+  const steps = picked.map((h, i) => {
+    let id = /^[a-z][a-z0-9_-]{0,62}$/.test(h.anchor) ? h.anchor : `step-${i + 1}`;
+    if (used.has(id)) id = `step-${i + 1}`;
+    used.add(id);
+    const title = h.title.replace(/[{}]/g, "").trim() || `Step ${i + 1}`;
+    const prev = i > 0 ? [...used][i - 1] : null;
+    const handoffs = [{ from: "inputs.prompt", to: "prompt" }, { from: "run.repo", to: "repo" }, { from: "run.mode", to: "mode" }, ...(prev ? [{ from: `steps.${prev}.outputs.summary`, to: "prev" }] : [])];
+    const prompt = `Do the "${title}" section of the SOP in .cobra/SOP.md.${prev ? "\nWhat the previous step did: {{prev}}" : ""}\n{{prompt}}`;
+    return { id, name: title.slice(0, 500), action: "agent" as const, ...(/^[a-z0-9][a-z0-9-]*$/.test(h.anchor) ? { section: h.anchor } : {}),
+      with: { prompt, repo: "{{repo}}", mode: "{{mode}}" }, handoffs, on_failure: "stop" as const, outputs: { summary: "result.summary" }, secrets: [], retries: 0 };
+  });
+  const last = steps[steps.length - 1].id;
+  return { inputs: derivePlan().inputs, steps, outputs: { status: `steps.${last}.status`, summary: `steps.${last}.outputs.summary` } } as Plan;
+}
+
+/** True when a stored plan is exactly what the body would produce (so edits re-derive it). */
+const isDerived = (s: Skill) => s.kind !== "master" && [planFromBody(s.body), derivePlan()].some((p) => { const v = validatePlan(p); return v.ok && JSON.stringify(v.plan) === JSON.stringify(s.plan); });
+
 export type SaveInput = { name?: unknown; description?: unknown; body?: unknown; plan?: unknown; kind?: unknown };
 
-function prepare(db: DB, tenantId: number, b: SaveInput, current?: Skill) {
+function prepare(db: DB, tenantId: number, b: SaveInput, current?: Skill, check = false) {
   const errors: string[] = [];
   const name = typeof b.name === "string" ? b.name.trim().toLowerCase() : current?.name ?? "";
-  if (!NAME.test(name)) errors.push("name: lowercase letters, digits and '-', starting with a letter (max 63)");
+  if (!(check && !name) && !NAME.test(name)) errors.push("Name: use lowercase letters, numbers and dashes, starting with a letter (63 characters at most).");
   const description = typeof b.description === "string" ? b.description.trim() : current?.description ?? "";
   const body = typeof b.body === "string" ? b.body.replace(/\r\n/g, "\n") : current?.body ?? "";
-  if (Buffer.byteLength(body) > MAX_BODY_BYTES) errors.push("body: larger than the 4 MB technical limit");
+  if (Buffer.byteLength(body) > MAX_BODY_BYTES) errors.push("Steps: the text is larger than the 4 MB limit.");
   const kind = b.kind === "master" ? "master" : b.kind === "sop" || b.kind === undefined ? (current?.kind ?? "sop") : null;
   if (!kind) errors.push("kind must be sop or master");
   const noPlan = b.plan === undefined || b.plan === null || (typeof b.plan === "string" && !b.plan.trim());
-  if (noPlan && !current && !body.trim()) errors.push("give an SOP body, a plan or both");
-  const v = noPlan ? (current ? { ok: true as const, plan: current.plan } : validatePlan(derivePlan())) : validatePlan(b.plan);
+  if (noPlan && !current && !body.trim()) errors.push("Steps: write at least one line saying what the skill should do.");
+  // No explicit plan: a new skill (or one whose steps were derived) takes its steps from the body's headings;
+  // a new master skill starts from the master plan; an edited custom plan is kept.
+  const v = !noPlan ? validatePlan(b.plan)
+    : current && !isDerived(current) ? { ok: true as const, plan: current.plan }
+      : validatePlan(kind === "master" && !current ? masterPlan() : planFromBody(body));
   if (!v.ok) errors.push(...v.errors);
   if (errors.length) throw new SkillError(400, errors);
   const plan = (v as { plan: Plan }).plan;
   const anchors = new Set(sections(body).map((s) => s.anchor));
-  plan.steps.forEach((s, i) => { if (s.section && !anchors.has(s.section)) errors.push(`steps[${i}].section: no heading with anchor '${s.section}' in the SOP body`); });
+  for (const s of plan.steps) if (s.section && !anchors.has(s.section)) errors.push(`Your steps mention a section called '${pretty(s.section)}', but there's no heading '${pretty(s.section)}' in the text. Add that heading back, or remove the step.`);
   if (errors.length) throw new SkillError(400, errors);
   composed(db, tenantId, plan, name);
   return { name, description, body, kind: kind!, plan };
+}
+
+/** Live check for the editor: the same rules as saving, nothing stored. Returns the step names it would save. */
+export function checkSkill(db: DB, tenantId: number, b: SaveInput): { ok: true; steps: string[] } | { ok: false; errors: string[] } {
+  try {
+    const p = prepare(db, tenantId, b, undefined, true);
+    if (p.name === MASTER) return { ok: false, errors: ["'workflow' is the built-in master skill; pick another name."] };
+    if (p.name && skillByName(db, tenantId, p.name)) return { ok: false, errors: [`A skill named '${p.name}' already exists in your team; pick another name.`] };
+    return { ok: true, steps: p.plan.steps.map((s) => s.name ?? s.id) };
+  } catch (e) {
+    if (e instanceof SkillError) return { ok: false, errors: e.errors };
+    throw e;
+  }
 }
 
 /** Creates a skill in the actor's team. Any member or team lead can create. Returns the new skill. */

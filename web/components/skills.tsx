@@ -14,33 +14,31 @@ async function post(url: string, body: unknown, method = "POST") {
 }
 const Errors = ({ e }: { e: string[] }) => e.length ? <ul className="mt-2 list-disc pl-5 text-sm text-danger" data-testid="errors">{e.map((x, i) => <li key={i}>{x}</li>)}</ul> : null;
 
-export type Starter = { key: string; label: string; description: string; body: string; plan: string };
+export type Starter = { key: string; label: string; description: string; body: string; kind?: "master" };
 
-/** New/edit form: name, description and the plain-text SOP body (no JSON anywhere). A starter may carry a hidden plan; edits keep the stored plan. */
+/** New/edit form: name, description and the plain-text SOP body (no JSON anywhere). The steps come from the headings
+ * in the text when it is saved; the live check runs the same rules as the save, so "Ready to save" means it will save. */
 export function SkillEditor({ id, initial, starters = [] }: { id?: number; initial?: { name: string; description: string; body: string }; starters?: Starter[] }) {
   const router = useRouter();
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [body, setBody] = useState(initial?.body ?? "");
-  const [plan, setPlan] = useState(""); // hidden: only a starter sets it (new skills); never shown
-  const [check, setCheck] = useState<{ ok: boolean; errors?: string[]; steps?: number; derived?: boolean } | null>(null);
+  const [kind, setKind] = useState<"master" | undefined>(undefined); // only the master starter sets it; shown in the check
+  const [check, setCheck] = useState<{ ok: boolean; errors?: string[]; steps?: string[] } | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     const t = setTimeout(async () => {
-      let parsed: unknown = null;
-      if (!id && plan.trim()) { try { parsed = JSON.parse(plan); } catch { parsed = null; } }
-      const r = await post("/api/skills/validate", { plan: parsed, body, description });
+      if (id) { setCheck({ ok: body.trim().length > 0, errors: body.trim() ? [] : ["Steps: write at least one line saying what the skill should do."] }); return; }
+      const r = await post("/api/skills/validate", { name, body, description, kind });
       setCheck(r.j as never);
     }, 400);
     return () => clearTimeout(t);
-  }, [id, plan, body, description]);
-  const start = (s: Starter) => { setBody(s.body); setPlan(s.plan); if (!description) setDescription(s.description); };
+  }, [id, name, kind, body, description]);
+  const start = (s: Starter) => { setBody(s.body); setKind(s.kind); if (!description) setDescription(s.description); };
   const save = async () => {
     setBusy(true); setErrors([]);
-    let p: unknown = null;
-    if (!id && plan.trim()) { try { p = JSON.parse(plan); } catch { p = null; } }
-    const r = id ? await post(`/api/skills/${id}`, { description, body }, "PUT") : await post("/api/skills", { name, description, body, plan: p });
+    const r = id ? await post(`/api/skills/${id}`, { description, body }, "PUT") : await post("/api/skills", { name, description, body, kind });
     setBusy(false);
     if (!r.ok) { setErrors((r.j.errors as string[]) ?? [String(r.j.error ?? `error ${r.status}`)]); return; }
     const sid = (r.j.skill as { id: number }).id;
@@ -53,16 +51,16 @@ export function SkillEditor({ id, initial, starters = [] }: { id?: number; initi
         <label className="text-sm">Name<input className={input} aria-describedby="skill-name-hint" value={name} disabled={!!id} onChange={(e) => setName(e.target.value.toLowerCase().replace(/[\s_]+/g, "-"))} placeholder="release-checklist" />{!id && <span id="skill-name-hint" className="mt-1 block text-xs text-subtle">Lowercase letters, numbers and dashes</span>}</label>
         <label className="text-sm">Description<input className={input} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="One line: what this skill does" /></label>
       </div>
-      <label className="block text-sm">Steps <span className="text-xs text-subtle">Plain text. Headings become sections.</span>
+      <label className="block text-sm">Steps <span className="text-xs text-subtle">Plain text. Each heading becomes a step, in order; with no headings the whole text is one step.</span>
         <textarea className={`${input} h-64 font-mono`} value={body} onChange={(e) => setBody(e.target.value)} placeholder={"# My SOP\n\nOne line is enough."} />
       </label>
       <div className="rounded-md border border-border p-3 text-sm" data-testid="live-validation">
         {!check ? <span className="text-subtle">Checking…</span> : check.ok
-          ? <span className="text-success">Ready to save</span>
+          ? <span className="text-success">Ready to save{check.steps?.length ? <span className="text-muted"> · {kind === "master" ? "master skill workflow: " : ""}{check.steps.length === 1 ? "1 step" : `${check.steps.length} steps`}: {check.steps.join(" → ")}</span> : null}</span>
           : <><span className="text-danger">Can&apos;t save yet</span><Errors e={check.errors ?? []} /></>}
       </div>
       <Errors e={errors} />
-      <div className="flex gap-2"><button className={primary} disabled={busy || (!id && !name)} onClick={save}>{id ? "Save changes" : "Create skill"}</button></div>
+      <div className="flex gap-2"><button className={primary} disabled={busy || (!id && !name) || (!!check && !check.ok)} onClick={save}>{id ? "Save changes" : "Create skill"}</button></div>
     </div>
   );
 }
