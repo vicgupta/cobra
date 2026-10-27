@@ -1,7 +1,10 @@
 "use client";
 // Client pieces for SOP skills: editor with live validation, run action.
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Badge } from "./ui";
+import { button, EmptyState, ghost, td, th } from "./form-ui";
 
 const btn = "rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-soft hover:bg-surface-2 disabled:opacity-50";
 const primary = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:opacity-50";
@@ -119,3 +122,30 @@ export function ActionButton({ url, label, body = {}, testid }: { url: string; l
   return <span><button className={btn} disabled={busy} data-testid={testid} onClick={async () => { setBusy(true); const r = await post(url, body); setBusy(false); if (!r.ok) setErr((r.j.errors as string[]) ?? [String(r.j.error)]); else router.refresh(); }}>{label}</button><Errors e={err} /></span>;
 }
 
+
+export type SkillRow = { id: number; name: string; kind: string; version: number; description: string; steps: number; canEdit: boolean };
+
+/** Agents / Skills list: same count row, primary button, table and empty state as Agents / Agents. */
+export function SkillsList({ rows }: { rows: SkillRow[] }) {
+  if (rows.length === 0) return <EmptyState title="No skills yet" body="A skill is step-by-step instructions an agent can follow. Write a routine once and your whole team can run it." action={<Link className={button} href="/agents/skills/new">Create your first skill</Link>} />;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between"><p className="text-sm text-subtle">{rows.length} {rows.length === 1 ? "skill" : "skills"}</p><Link className={button} href="/agents/skills/new">New skill</Link></div>
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface/60 shadow-sm">
+        <table className="w-full min-w-[720px] text-sm">
+          <thead className="border-b border-border"><tr><th scope="col" className={th}>Skill</th><th scope="col" className={th}>Steps</th><th scope="col" className={th}>Version</th><th scope="col" className={th}><span className="sr-only">Actions</span></th></tr></thead>
+          <tbody className="divide-y divide-border">{rows.map((r) => (
+            <tr key={r.id} data-skill={r.name}>
+              <td className={td}><div className="font-medium text-fg"><Link className="hover:underline" href={`/agents/skills/${r.id}`}>{r.name}</Link>{r.kind === "master" && <> <Badge tone="violet">master</Badge></>}</div>{r.description && <div className="max-w-md text-xs text-subtle">{r.description}</div>}</td>
+              <td className={`${td} text-fg-soft`}>{r.steps}</td>
+              <td className={`${td} text-fg-soft`}>v{r.version}</td>
+              <td className={`${td} text-right`}><span className="inline-flex gap-1">
+                <Link className={button} href={`/agents/skills/${r.id}`}>Run</Link>
+                {r.canEdit ? <Link className={ghost} href={`/agents/skills/${r.id}/edit`}>Edit</Link> : <span className="px-2 py-1.5 text-xs text-subtle" data-run-only>View only</span>}
+              </span></td>
+            </tr>))}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

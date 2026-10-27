@@ -21,7 +21,7 @@ const when = (t: number) => new Date(t).toLocaleString("en-US", { timeZone: "Ame
 const runType = (m: string | null) => (m === "real" ? "Real run" : "Test run");
 
 export default function SkillPage({ params }: PageProps<"/agents/skills/[id]">) {
-  return <CollabPage title="Skill" crumbs={<Link href="/agents/skills" className="hover:underline">← Skills library</Link>}>{(u) => <Body u={u} params={params} />}</CollabPage>;
+  return <CollabPage title="Skill" crumbs={<Link href="/agents/skills" className="hover:underline">← Skills</Link>}>{(u) => <Body u={u} params={params} />}</CollabPage>;
 }
 
 function SopView({ body }: { body: string }) {

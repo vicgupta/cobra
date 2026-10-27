@@ -171,5 +171,5 @@ test("nav and redirects: no Skills nav item; /skills → /agents/skills (permane
   const page = readFileSync(path.join(__dirname, "..", "app/page.tsx"), "utf8");
   assert.match(page, /\/skills/, "dashboard keeps its /skills links (served by the redirect)");
   const tabs = readFileSync(path.join(__dirname, "..", "components/agents-tabs.tsx"), "utf8");
-  assert.match(tabs, /"Skills library"/);
+  assert.match(tabs, /"Skills", active/);
 });

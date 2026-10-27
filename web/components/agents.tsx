@@ -73,7 +73,7 @@ function AgentForm({ initial, repos, models, skills, onDone }: { initial?: Agent
           <textarea id={`${idp}-prompt`} name="prompt" maxLength={PROMPT_MAX} className={`${input} h-48 resize-y`} placeholder={PROMPT_EXAMPLE} value={prompt} aria-invalid={!!promptErr} onChange={(e) => setPrompt(e.target.value)} />
         </Field>
       ) : (
-        <Field id={`${idp}-skill`} label="Skill" error={skillErr} hint={<>Manage skills in the <Link href="/agents/skills" className="underline">Skills library</Link>.</>}>
+        <Field id={`${idp}-skill`} label="Skill" error={skillErr} hint={<>Manage skills in the <Link href="/agents/skills" className="underline">Skills</Link>.</>}>
           <select id={`${idp}-skill`} name="skillRef" className={input} value={skillRef} aria-invalid={!!skillErr} onChange={(e) => setSkillRef(e.target.value)}>
             <option value="">Pick a skill…</option>
             {skillRef && !picked && <option value={skillRef}>missing skill</option>}

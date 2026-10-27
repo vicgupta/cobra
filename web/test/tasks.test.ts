@@ -150,7 +150,7 @@ test("skill views never show JSON (no JSON.stringify / <pre> dumps / plan textar
   assert.doesNotMatch(agents, /\{o\.label\} · \{o\.status\}/);
 });
 
-test("lowercase names: agents and skills are normalized; no title-casing in the skills library", () => {
+test("lowercase names: agents and skills are normalized; no title-casing in the skills list", () => {
   const { db, member } = setup();
   assert.equal(createAgent(db, member, { name: "Reviewer", engine: "codex", prompt: "p" }).name, "reviewer");
   assert.equal(createSkill(db, member, { name: "Release-Checklist", description: "d", body: "Do it." }).name, "release-checklist");

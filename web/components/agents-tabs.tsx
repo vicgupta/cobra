@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-/** The Agents section toggle: "Agents | Skills library" (one page each, no submenu). */
+/** The Agents section toggle: "Agents | Skills" (one page each, no submenu). */
 export function AgentsTabs({ active }: { active: "agents" | "skills" }) {
   const tab = (href: string, label: string, on: boolean) => (
     <Link href={href} aria-current={on ? "page" : undefined} data-tab={label}
@@ -9,7 +9,7 @@ export function AgentsTabs({ active }: { active: "agents" | "skills" }) {
   return (
     <nav aria-label="Agents section" className="inline-flex gap-1 rounded-lg border border-border p-1" data-testid="agents-tabs">
       {tab("/agents", "Agents", active === "agents")}
-      {tab("/agents/skills", "Skills library", active === "skills")}
+      {tab("/agents/skills", "Skills", active === "skills")}
     </nav>
   );
 }

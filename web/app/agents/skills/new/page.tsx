@@ -9,7 +9,7 @@ import { SKILL_TEMPLATES } from "@/lib/skills/templates";
 export const metadata = { title: "New skill · Cobra" };
 
 export default function NewSkillPage() {
-  return <CollabPage title="New skill" crumbs={<Link href="/agents/skills" className="hover:underline">Agents · Skills library</Link>}>{(u) => {
+  return <CollabPage title="New skill" crumbs={<Link href="/agents/skills" className="hover:underline">Agents · Skills</Link>}>{(u) => {
     const master = listSkills(getDb(), u).find((s) => s.name === MASTER && s.tenantId === u.tenantId);
     const starters: Starter[] = [
       ...SKILL_TEMPLATES,
