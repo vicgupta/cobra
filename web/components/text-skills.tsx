@@ -22,7 +22,7 @@ export function TextSkillRun({ skill, repos, engines }: { skill: string; repos: 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <select aria-label="Repo" className={input} value={repo} onChange={(e) => setRepo(e.target.value)}><option value="">No repo (scratch)</option>{repos.map((r) => <option key={r} value={r}>{r}</option>)}</select>
         <select aria-label="Engine" className={input} value={engine} onChange={(e) => setEngine(e.target.value)}>{engines.map((x) => <option key={x} value={x}>{x}</option>)}</select>
-        <select aria-label="Mode" className={input} value={mode} onChange={(e) => setMode(e.target.value)}><option value="simulated">Simulated (no GitHub writes)</option><option value="real">Real (runs the agent)</option></select>
+        <select aria-label="Run type" className={input} value={mode} onChange={(e) => setMode(e.target.value)}><option value="simulated">Test run</option><option value="real">Real run</option></select>
       </div>
       <button className={button} disabled={busy || !prompt.trim()}>{busy ? "Starting…" : "Run skill"}</button>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}

@@ -50,10 +50,10 @@ export function SkillEditor({ id, initial, starters = [] }: { id?: number; initi
     <div className="space-y-4">
       {!id && starters.length > 0 && <div className="flex flex-wrap items-center gap-2 text-sm"><span className="text-muted">Start from:</span>{starters.map((s) => <button key={s.key} type="button" className={btn} onClick={() => start(s)} title={s.description}>{s.label}</button>)}</div>}
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm">Name<input className={input} value={name} disabled={!!id} onChange={(e) => setName(e.target.value.toLowerCase())} placeholder="release-checklist" /></label>
-        <label className="text-sm">Description<input className={input} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="One line: what this SOP does" /></label>
+        <label className="text-sm">Name<input className={input} aria-describedby="skill-name-hint" value={name} disabled={!!id} onChange={(e) => setName(e.target.value.toLowerCase().replace(/[\s_]+/g, "-"))} placeholder="release-checklist" />{!id && <span id="skill-name-hint" className="mt-1 block text-xs text-subtle">Lowercase letters, numbers and dashes</span>}</label>
+        <label className="text-sm">Description<input className={input} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="One line: what this skill does" /></label>
       </div>
-      <label className="block text-sm">SOP (plain text; headings become sections)
+      <label className="block text-sm">Steps <span className="text-xs text-subtle">Plain text. Headings become sections.</span>
         <textarea className={`${input} h-64 font-mono`} value={body} onChange={(e) => setBody(e.target.value)} placeholder={"# My SOP\n\nOne line is enough."} />
       </label>
       <div className="rounded-md border border-border p-3 text-sm" data-testid="live-validation">
@@ -62,7 +62,7 @@ export function SkillEditor({ id, initial, starters = [] }: { id?: number; initi
           : <><span className="text-danger">Can&apos;t save yet</span><Errors e={check.errors ?? []} /></>}
       </div>
       <Errors e={errors} />
-      <div className="flex gap-2"><button className={primary} disabled={busy || (!id && !name)} onClick={save}>{id ? "Save new version" : "Create skill"}</button></div>
+      <div className="flex gap-2"><button className={primary} disabled={busy || (!id && !name)} onClick={save}>{id ? "Save changes" : "Create skill"}</button></div>
     </div>
   );
 }
@@ -86,11 +86,11 @@ export function RunSkill({ id, inputs, approved }: { id: number; inputs: Record<
     <div className="space-y-2" data-testid="run-form">
       {Object.entries(inputs).map(([k, d]) => <label key={k} className="block text-sm">{k}{d.required && " *"} <span className="text-xs text-subtle">{d.description}</span>
         <input className={input} value={vals[k] ?? ""} onChange={(e) => setVals({ ...vals, [k]: e.target.value })} /></label>)}
-      <label className="block text-sm">Repo (optional, owner/name)<input className={input} value={repo} onChange={(e) => setRepo(e.target.value)} /></label>
+      <label className="block text-sm">Repo <span className="text-xs text-subtle">optional, owner/name</span><input className={input} value={repo} onChange={(e) => setRepo(e.target.value)} /></label>
       <div className="flex items-center gap-3 text-sm">
-        <label><input type="radio" checked={mode === "simulated"} onChange={() => setMode("simulated")} /> Simulated</label>
-        <label className={approved ? "" : "text-subtle"}><input type="radio" disabled={!approved} checked={mode === "real"} onChange={() => setMode("real")} /> Real{!approved && " (needs approval)"}</label>
-        <button className={primary} onClick={go}>Run</button>
+        <label><input type="radio" checked={mode === "simulated"} onChange={() => setMode("simulated")} /> Test run</label>
+        <label className={approved ? "" : "text-subtle"}><input type="radio" disabled={!approved} checked={mode === "real"} onChange={() => setMode("real")} /> Real run{!approved && " (needs approval)"}</label>
+        <button className={primary} onClick={go}>{mode === "real" ? "Start real run" : "Start test run"}</button>
       </div>
       <Errors e={err} />
     </div>
@@ -101,7 +101,7 @@ export function Approve({ id }: { id: number }) {
   const router = useRouter();
   const [c, setC] = useState(""); const [err, setErr] = useState<string[]>([]);
   const d = async (decision: string) => { const r = await post(`/api/skills/${id}/approval`, { decision, comment: c }); if (!r.ok) setErr([String(r.j.error)]); else router.refresh(); };
-  return <div className="space-y-2"><input className={input} placeholder="Comment (optional)" value={c} onChange={(e) => setC(e.target.value)} /><div className="flex gap-2"><button className={primary} onClick={() => d("approve")}>Approve this hash</button><button className={btn} onClick={() => d("reject")}>Reject</button></div><Errors e={err} /></div>;
+  return <div className="space-y-2"><input className={input} placeholder="Comment (optional)" value={c} onChange={(e) => setC(e.target.value)} /><div className="flex gap-2"><button className={primary} onClick={() => d("approve")}>Approve</button><button className={btn} onClick={() => d("reject")}>Reject</button></div><Errors e={err} /></div>;
 }
 
 /** POST to an action endpoint, then refresh (request review, admin re-review). */

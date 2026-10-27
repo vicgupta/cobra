@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import { AuthGate } from "@/components/auth-gate";
-import { Card } from "@/components/ui";
 import { AgentsTabs } from "@/components/agents-tabs";
 import { list } from "@/lib/skills/service";
 import { loadTextSkills } from "@/lib/text-skills";
@@ -23,16 +22,15 @@ function Agents({ user }: { user: SessionUser }) {
   try { text = loadTextSkills().map((t) => ({ ref: `text:${t.id}`, label: t.id, kind: "text", status: "no approval needed" })); } catch { text = []; }
   const skills: SkillOption[] = [...sop.map((s) => ({ ref: `sop:${s.id}`, label: s.name, kind: "sop" as const, status: s.status, href: `/agents/skills/${s.id}` })), ...text];
   return (
-    <Card title="Team agents" subtitle="A named engine plus either a prompt or one skill, shared with your whole team. Run one now, or schedule it from Tasks.">
-      <AgentManager agents={agents} repos={listTeamRepos(db, u.tenantId).map((r) => r.repo)} models={allModels(process.env)} skills={skills} />
-    </Card>
+    <AgentManager agents={agents} repos={listTeamRepos(db, u.tenantId).map((r) => r.repo)} models={allModels(process.env)} skills={skills} />
   );
 }
 
 export default function AgentsPage() {
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
+      <header><h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
+        <p className="mt-1 text-sm text-muted">Coding agents your team can run. Schedule them from Tasks.</p></header>
       <AgentsTabs active="agents" />
       <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><AuthGate>{(u) => <Agents user={u} />}</AuthGate></Suspense>
     </div>

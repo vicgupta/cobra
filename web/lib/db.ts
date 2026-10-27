@@ -765,6 +765,8 @@ const MIGRATIONS: Array<(db: DB) => void> = [
       deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL
     );
     CREATE UNIQUE INDEX tasks_tenant_name ON tasks(tenant_id, name) WHERE deleted_at IS NULL;`),
+  // 32 (Tasks UX): additive only. The task's latest run (for the "Last run" status on the Tasks list).
+  (db) => db.exec("ALTER TABLE tasks ADD COLUMN last_run_id TEXT;"),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

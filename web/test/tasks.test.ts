@@ -37,7 +37,7 @@ const err = (status: number, re?: RegExp) => (e: unknown) => e instanceof TaskEr
 
 test("migration 31: tasks table, disabled by default", () => {
   const { db, member } = setup();
-  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 31);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 32);
   createAgent(db, member, { name: "rev", engine: "codex", prompt: "Review" });
   const t = createTask(db, member, { name: "nightly", agent: "rev", cron: "0 9 * * *" });
   assert.equal(t.enabled, false); assert.equal(t.mode, "simulated"); assert.equal(t.skillRef, null);
@@ -123,6 +123,8 @@ test("task runs (prompt agent, SOP skill override, text skill override) show in 
   const sims = db.prepare("SELECT simulated FROM runs").all() as Array<{ simulated: number }>;
   assert.ok(sims.every((x) => x.simulated === 1), "task runs default to simulated");
   assert.ok(getAgent(db, member.tenantId, "rev")!.skillRef === null, "the agent itself is unchanged");
+  for (const [t, r] of [[a, r1], [b, r2], [c, r3]] as const) assert.equal(getTask(db, member.tenantId, t.id)!.lastRun?.id, (r.body as { id: string }).id, "last run is linked to the task");
+  assert.equal(getTask(db, member.tenantId, a.id)!.lastRun!.id.length > 0, true);
 });
 
 test("nav: Dashboard, Agents, Tasks, Repos, Settings; Tasks page and API exist", () => {

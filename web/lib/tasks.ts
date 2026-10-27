@@ -12,20 +12,33 @@ export class TaskError extends AgentError {}
 
 export type Task = {
   id: number; tenantId: number; name: string; agent: string; skillRef: string | null; cron: string | null; enabled: boolean; mode: "simulated" | "real";
-  repo: string | null; instructions: string | null; lastFire: number | null; createdBy: number | null; createdByEmail: string | null; createdAt: number; updatedAt: number;
+  repo: string | null; instructions: string | null; lastFire: number | null;
+  lastRun: { id: string; status: string; startedAt: number } | null; createdBy: number | null; createdByEmail: string | null; createdAt: number; updatedAt: number;
 };
 type Input = { name?: unknown; agent?: unknown; skillRef?: unknown; cron?: unknown; enabled?: unknown; mode?: unknown; repo?: unknown; instructions?: unknown };
 
 const COLS = `t.id, t.tenant_id AS tenantId, t.name, t.agent, t.skill_ref AS skillRef, t.cron, t.enabled, t.mode, t.repo, t.instructions, t.last_fire AS lastFire,
-  t.created_by AS createdBy, u.email AS createdByEmail, t.created_at AS createdAt, t.updated_at AS updatedAt`;
-const plain = (r: unknown): Task => { const t = { ...(r as Task) }; t.enabled = !!t.enabled; t.mode = t.mode === "real" ? "real" : "simulated"; return t; };
+  t.created_by AS createdBy, u.email AS createdByEmail, t.created_at AS createdAt, t.updated_at AS updatedAt,
+  r.id AS lastRunId, r.status AS lastRunStatus, r.started_at AS lastRunAt`;
+const FROM = "FROM tasks t LEFT JOIN users u ON u.id = t.created_by LEFT JOIN runs r ON r.id = t.last_run_id AND r.tenant_id = t.tenant_id";
+type Row = Task & { lastRunId: string | null; lastRunStatus: string | null; lastRunAt: number | null };
+const plain = (r: unknown): Task => {
+  const { lastRunId, lastRunStatus, lastRunAt, ...t } = { ...(r as Row) };
+  t.enabled = !!t.enabled; t.mode = t.mode === "real" ? "real" : "simulated";
+  t.lastRun = lastRunId ? { id: lastRunId, status: lastRunStatus ?? "unknown", startedAt: lastRunAt ?? 0 } : null;
+  return t;
+};
+/** Remember a task's latest run (shown as "Last run" on the Tasks list). */
+export function setTaskLastRun(db: DB, tenantId: number, id: number, runId: string): void {
+  db.prepare("UPDATE tasks SET last_run_id = ? WHERE id = ? AND tenant_id = ?").run(runId, id, tenantId);
+}
 
 export function listTasks(db: DB, tenantId: number): Task[] {
-  return db.prepare(`SELECT ${COLS} FROM tasks t LEFT JOIN users u ON u.id = t.created_by WHERE t.tenant_id = ? AND t.deleted_at IS NULL ORDER BY t.name`).all(tenantId).map(plain);
+  return db.prepare(`SELECT ${COLS} ${FROM} WHERE t.tenant_id = ? AND t.deleted_at IS NULL ORDER BY t.name`).all(tenantId).map(plain);
 }
 /** Team-scoped: a task of another team is null (404). */
 export function getTask(db: DB, tenantId: number, id: number): Task | null {
-  const r = Number.isInteger(id) ? db.prepare(`SELECT ${COLS} FROM tasks t LEFT JOIN users u ON u.id = t.created_by WHERE t.tenant_id = ? AND t.id = ? AND t.deleted_at IS NULL`).get(tenantId, id) : undefined;
+  const r = Number.isInteger(id) ? db.prepare(`SELECT ${COLS} ${FROM} WHERE t.tenant_id = ? AND t.id = ? AND t.deleted_at IS NULL`).get(tenantId, id) : undefined;
   return r ? plain(r) : null;
 }
 export const canEditTask = (u: AgentUser, t: Pick<Task, "createdBy">, db?: DB) => canEditAgent(u, t, db);
