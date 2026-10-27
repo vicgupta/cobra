@@ -313,6 +313,14 @@ export function nextScheduled(db: DB, now = Date.now()): number {
   return now;
 }
 
+/** One line for the 7 AM admin digest: status and how many tools changed. */
+export function updateSummaryLine(db: DB, date: string): string {
+  const r = db.prepare("SELECT id FROM update_runs WHERE kind = 'scheduled' AND run_date = ?").get(date) as { id: number } | undefined;
+  if (!r) return "no scheduled update ran today";
+  const v = getUpdateRun(db, r.id)!, changed = v.items.filter((i) => i.result === "changed").length, bad = v.items.filter((i) => i.result === "failed" || i.result === "rolled_back").length;
+  return `${v.status}${v.reason ? ` (${v.reason})` : ""}; ${v.items.length} tools checked, ${changed} changed${bad ? `, ${bad} failed/rolled back` : ""}`;
+}
+
 /** Lines for the 7 AM admin email: the scheduled run for that ET date (last night's). */
 export function updateSummaryLines(db: DB, date: string): string[] {
   const r = db.prepare("SELECT id FROM update_runs WHERE kind = 'scheduled' AND run_date = ?").get(date) as { id: number } | undefined;

@@ -1,6 +1,6 @@
-// Job 6: team-facing daily email. 7 AM ET per team (DST-correct, one claim per team per day, catch-up
-// until noon), recipients 'Team leads' (default) or 'Entire team' minus opt-outs, lead/admin-only edits,
-// member self opt-out, test send to the clicking user only, team_audit, and strict tenant isolation.
+// Team daily digest: 7 AM ET per team (DST-correct, one claim per team per day, catch-up until noon),
+// recipient = designated lead else team leads, lead/designated/admin-only edits, test send to that
+// recipient, team_audit, and strict tenant isolation.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { openDb } from "../lib/db";
@@ -59,70 +59,59 @@ test("daily: 7 AM ET (DST-correct), one per team per day, defaults ON with Team 
   assert.equal(c[u.leadA.tenantId], "sent");
 });
 
-test("recipients: 'Entire team' choice, designated lead, opt-out; disabled and empty skip with a reason", async () => {
+test("recipients: designated lead if set, else team leads; disabled and empty skip with a reason", async () => {
   const { db, u, sent, send } = setup();
-  const A = { ...u.leadA };
-  assert.equal(T.teamNotifyStatus(db, A).modeLabel, "Team leads");
-  T.setTeamNotifyMode(db, A, "all");
-  assert.deepEqual(T.resolvedRecipients(db, A.tenantId).sort(), ["lead2@a.com", "lead@a.com", "mem@a.com", "vic@a.com"]);
-  T.setMyOptOut(db, u.memA, true);
-  assert.deepEqual(T.teamNotifyStatus(db, A).recipients.sort(), ["lead2@a.com", "lead@a.com"]); // display hides system admins
-  assert.deepEqual(T.resolvedRecipients(db, A.tenantId).sort(), ["lead2@a.com", "lead@a.com", "vic@a.com"]); // delivery unchanged
-  // designated lead is included in 'leads' mode (even if they were demoted later, the designation counts)
-  T.setTeamNotifyMode(db, A, "leads");
-  db.prepare("UPDATE tenants SET designated_lead_user_id = ? WHERE id = ?").run(u.lead2A.id, A.tenantId);
-  assert.deepEqual(T.resolvedRecipients(db, A.tenantId).sort(), ["lead2@a.com", "lead@a.com"]);
-  // team B: disabled -> skipped
+  assert.deepEqual(T.teamRecipients(db, u.leadA.tenantId), ["lead2@a.com", "lead@a.com"]);
+  db.prepare("UPDATE tenants SET designated_lead_user_id = ? WHERE id = ?").run(u.lead2A.id, u.leadA.tenantId);
+  assert.deepEqual(T.teamRecipients(db, u.leadA.tenantId), ["lead2@a.com"], "designated lead only");
+  assert.deepEqual(T.teamNotifyStatus(db, u.memA).recipients, ["lead2@a.com"]);
   T.setTeamNotifyEnabled(db, u.leadB, false);
-  T.setMyOptOut(db, u.leadA, true); T.setMyOptOut(db, u.lead2A, true);
+  db.prepare("UPDATE users SET role = 'member' WHERE tenant_id = ? AND role = 'team_lead'").run(u.leadA.tenantId);
+  db.prepare("UPDATE tenants SET designated_lead_user_id = NULL WHERE id = ?").run(u.leadA.tenantId);
   const r = await T.maybeSendTeamDaily(db, send, T7) as Record<number, string>;
-  assert.equal(r[u.leadB.tenantId], "disabled"); assert.equal(r[A.tenantId], "no-recipients");
+  assert.equal(r[u.leadB.tenantId], "disabled"); assert.equal(r[u.leadA.tenantId], "no-recipients");
   assert.equal(sent.length, 0);
-  const s = T.teamNotifyStatus(db, A).lastSend!;
-  assert.equal(s.status, "skipped"); assert.match(s.error ?? "", /no recipients \(Team leads/);
+  assert.match(T.teamNotifyStatus(db, u.leadA).lastSend!.error ?? "", /no recipient/);
   assert.equal(T.teamNotifyStatus(db, u.leadB).lastSend!.error, "disabled");
 });
 
-test("permissions: members see but only manage their own opt-out; leads/admins edit; everything audited", async () => {
+test("permissions: members view only; leads, designated lead and admins toggle and test; audited", async () => {
   const { db, u, sent, send } = setup();
   const forbid = (fn: () => unknown) => assert.throws(fn, (e) => e instanceof CollabError && e.status === 403);
   forbid(() => T.setTeamNotifyEnabled(db, u.memA, false));
-  forbid(() => T.setTeamNotifyMode(db, u.memA, "all"));
   await assert.rejects(T.sendTeamTestNow(db, u.memA, send), (e) => e instanceof CollabError && e.status === 403);
   assert.equal(T.teamNotifyStatus(db, u.memA).canEdit, false);
-  assert.throws(() => T.setTeamNotifyMode(db, u.leadA, "everyone"), (e) => e instanceof CollabError && e.status === 400);
-  T.setMyOptOut(db, u.memA, true); T.setMyOptOut(db, u.memA, false);
-  T.setTeamNotifyEnabled(db, u.admin, false); T.setTeamNotifyMode(db, u.leadA, "all");
+  assert.equal(T.teamNotifyStatus(db, u.leadA).canEdit, true);
+  assert.throws(() => T.setTeamNotifyEnabled(db, u.leadA, "yes"), (e) => e instanceof CollabError && e.status === 400);
+  // a designated lead who is (oddly) a member may still edit
+  db.prepare("UPDATE tenants SET designated_lead_user_id = ? WHERE id = ?").run(u.memA.id, u.memA.tenantId);
+  assert.equal(T.teamNotifyStatus(db, u.memA).canEdit, true);
+  T.setTeamNotifyEnabled(db, u.admin, false);
   await T.sendTeamTestNow(db, u.leadA, send);
-  assert.deepEqual(sent.map((s) => s[0]), ["lead@a.com"], "test goes only to the clicking user");
-  assert.match(sent[0][1], /^\[Test\]/);
-  const acts = (db.prepare("SELECT action, detail FROM team_audit WHERE tenant_id = ? ORDER BY id").all(u.leadA.tenantId) as Array<{ action: string; detail: string }>);
-  assert.deepEqual(acts.map((a) => a.action), ["notify_optout", "notify_optin", "notify_toggle", "notify_recipients", "notify_test"]);
-  assert.match(acts[3].detail, /Team leads -> Entire team/);
+  assert.deepEqual(sent.map((s) => s[0]), ["mem@a.com"], "test goes to the team recipient (designated lead)");
+  assert.match(sent[0][1], /^\[Test\] Cobra team digest/);
+  const acts = (db.prepare("SELECT action FROM team_audit WHERE tenant_id = ? ORDER BY id").all(u.leadA.tenantId) as Array<{ action: string }>).map((a) => a.action);
+  assert.deepEqual(acts, ["notify_toggle", "notify_test"]);
   assert.equal((db.prepare("SELECT COUNT(*) n FROM team_audit WHERE tenant_id = ?").get(u.leadB.tenantId) as { n: number }).n, 0);
+  assert.equal(await T.maybeSendTeamDaily(db, send, T7).then((r) => (r as Record<number, string>)[u.leadA.tenantId]), "disabled", "test send did not claim the day");
 });
 
 test("tenant isolation: team B's email and view never include team A's data", async () => {
-  const { db, u, sent, send, mk } = setup();
+  const { db, u, sent, send } = setup();
   seedTeamA(db, u.leadA.tenantId, u.leadA.id);
-  mk("new@a.com", "a", "member", T7 - 3_600_000);
   const a = T.buildTeamReport(db, u.leadA.tenantId, T7).text, b = T.buildTeamReport(db, u.leadB.tenantId, T7).text;
-  for (const s of ["SECRET-A-run", "SECRET-A-error", "SECRET-A-model", "SECRET-A-skill", "SECRET-A-repo", "SECRET-A-invitee", "new@a.com", "run-a1"]) {
+  for (const s of ["SECRET-A-error", "SECRET-A-model", "run-a1"]) {
     assert.ok(a.includes(s), `team A sees ${s}`);
     assert.ok(!b.includes(s), `team B must not see ${s}`);
   }
-  assert.match(a, /RUNS \(2\)/); assert.match(b, /RUNS \(0\)/);
-  assert.match(a, /Total tokens: 1,234; reported cost: \$0\.50/); assert.match(b, /Total tokens: 0; reported cost: n\/a/);
-  assert.match(a, /Join requests: 1 new, 1 pending/); assert.match(a, /Invites: 2 sent, 1 accepted, 1 pending/);
-  assert.match(b, /Join requests: 0 new, 0 pending/);
-  assert.match(a, /https:\/\/nova\.kantsy\.com\/runs\/run-a1/);
-  for (const t of [a, b]) assert.doesNotMatch(t, /SERVICE HEALTH|uptime|disk|all teams|Rate-limit|sign-ins/i, "no system-wide or admin metrics");
-  T.setTeamNotifyMode(db, u.leadB, "all");
+  assert.match(a, /USAGE \(2 runs, 1 failed\)/); assert.match(b, /USAGE \(0 runs, 0 failed\)/);
+  assert.match(a, /COSTS \(1,234 tokens, \$0\.50/); assert.match(b, /COSTS \(0 tokens, n\/a/);
+  for (const t of [a, b]) assert.doesNotMatch(t, /SERVICE|uptime|disk|all teams|By team/i, "no system-wide or admin metrics");
   await T.maybeSendTeamDaily(db, send, T7);
-  for (const [to, , body] of sent.filter((s) => s[0].endsWith("@b.com"))) { assert.ok(!body.includes("SECRET-A"), `${to} got team A data`); }
+  for (const [to, , body] of sent.filter((s) => s[0].endsWith("@b.com"))) assert.ok(!body.includes("SECRET-A"), `${to} got team A data`);
   assert.ok(!sent.some((s) => s[0].endsWith("@a.com") && /Bravo/.test(s[1])));
   const vb = T.teamNotifyStatus(db, u.leadB);
-  assert.ok(vb.candidates.every((c) => c.email.endsWith("@b.com")) && vb.recent.every((r) => !/@a\.com/.test(r.recipients)));
+  assert.ok(vb.recipients.every((e) => e.endsWith("@b.com")) && vb.recent.every((r) => !/@a\.com/.test(r.recipients)));
   assert.ok(T.listTeamNotifyAudit(db, u.leadB.tenantId).every((x) => x.actorEmail.endsWith("@b.com")));
 });
 
@@ -134,11 +123,11 @@ test("admin daily email is byte-identical with team notifications running alongs
     const send = async (to: string, s: string, b: string) => { sent.push([to, s, b]); };
     const teamSent: unknown[] = [];
     if (withTeams) await T.maybeSendTeamDaily(db, async (...x) => { teamSent.push(x); }, T7);
-    assert.equal(await maybeSendDaily(db, send, T7 + 1000, H), "sent");
+    assert.equal(await maybeSendDaily(db, send, T7 + 1000, H, ""), "sent");
     if (withTeams) assert.ok(teamSent.length > 0);
     return sent;
   };
   const before = await run(false), after = await run(true);
   assert.deepEqual(after, before);
-  assert.deepEqual(before.map((s) => s[0]), ["vic@a.com"], "admin email still goes to system admins only");
+  assert.deepEqual(before.map((s) => s[0]), ["vic@a.com"], "no COBRA_ADMIN_EMAIL: falls back to system admins");
 });

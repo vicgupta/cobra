@@ -26,10 +26,10 @@ test("nyClock is DST-correct: 7 AM ET is 11:00 UTC in summer and 12:00 UTC in wi
 test("daily send: not before 7, once per NY date to every admin, catch-up until noon, disabled skips", async () => {
   const { db, sent, send } = setup();
   const t7 = Date.UTC(2026, 9, 27, 11, 0); // Oct 27 2026 7:00 EDT
-  assert.equal(await maybeSendDaily(db, send, t7 - 60_000, H), "not-due");
-  assert.equal(await maybeSendDaily(db, send, t7, H), "sent");
-  assert.deepEqual(sent.map((s) => s[0]).sort(), ["ops@a.com", "vic@a.com"]);
-  assert.match(sent[0][1], /Cobra daily summary 2026-10-27/);
+  assert.equal(await maybeSendDaily(db, send, t7 - 60_000, H, ""), "not-due");
+  assert.equal(await maybeSendDaily(db, send, t7, H, ""), "sent");
+  assert.deepEqual(sent.map((s) => s[0]).sort(), ["ops@a.com", "vic@a.com"], "no COBRA_ADMIN_EMAIL: every admin");
+  assert.match(sent[0][1], /Cobra daily digest 2026-10-27 \(all teams\)/);
   assert.equal(await maybeSendDaily(db, send, t7 + 60_000, H), "already");
   const [a, b] = await Promise.all([maybeSendDaily(db, send, Date.UTC(2026, 9, 28, 11, 1), H), maybeSendDaily(db, send, Date.UTC(2026, 9, 28, 11, 1), H)]);
   assert.deepEqual([a, b].sort(), ["already", "sent"], "concurrent ticks: one send");
@@ -57,8 +57,8 @@ test("settings and test send: system admins only, test goes to the caller only, 
   await assert.rejects(sendTestNow(db, lead, send, Date.now(), H), (e) => e instanceof CollabError && e.status === 403);
   assert.throws(() => setDailyEnabled(db, admin, "no"), (e) => e instanceof CollabError && e.status === 400);
   assert.equal(notificationStatus(db).dailyEnabled, true, "default ON");
-  const v = await sendTestNow(db, admin, send, Date.now(), H);
-  assert.deepEqual(sent.map((s) => s[0]), ["vic@a.com"]); assert.match(sent[0][1], /^\[Test\]/);
+  const v = await sendTestNow(db, admin, send, Date.now(), H, "boss@kantsy.com");
+  assert.deepEqual(sent.map((s) => s[0]), ["boss@kantsy.com"], "test goes to the digest recipient (COBRA_ADMIN_EMAIL)"); assert.match(sent[0][1], /^\[Test\]/);
   assert.equal(v.lastSend!.kind, "test"); assert.equal(v.lastSend!.status, "sent");
   setDailyEnabled(db, admin, false);
   assert.deepEqual(listNotificationAudit(db).map((a) => a.action), ["daily_toggle", "test_send"]);
@@ -77,5 +77,6 @@ test("report: runs by status/team/engine, failure links, tokens and null cost, h
   const r = buildDailyReport(db, now, H());
   assert.equal(r.counts.runs, 2); assert.equal(r.counts.failed, 1); assert.equal(r.counts.tokens, 150); assert.equal(r.counts.costUsd, null);
   assert.match(r.text, /https:\/\/nova\.kantsy\.com\/runs\/r-bad/); assert.ok(!r.text.includes("r-old"));
-  assert.match(r.text, /cost n\/a/); assert.match(r.text, /disk free: 5\.0 GB/); assert.match(r.text, /DB size: 3\.0 MB/);
+  assert.match(r.text, /tokens, n\/a/); assert.match(r.text, /disk free 5\.0 GB/); assert.match(r.text, /DB 3\.0 MB/);
+  assert.doesNotMatch(r.text, /WORKFLOW|awaiting approval|AUDIT/i, "workflow section and dead audit sources dropped");
 });

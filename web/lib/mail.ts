@@ -3,7 +3,7 @@
 import "server-only";
 import { appendFileSync, readFileSync } from "node:fs";
 import { envFilePath, parseEnv } from "./env-file";
-import { mailFrom } from "./mail-from";
+import { senderFor } from "./mail-from";
 
 function secret(key: string): string | undefined {
   try {
@@ -15,17 +15,19 @@ function secret(key: string): string | undefined {
   return process.env[key] || undefined;
 }
 
-export async function sendEmail(to: string, subject: string, body: string): Promise<void> {
+/** opts.sender "digest" sends from the digest address (COBRA_DIGEST_FROM). */
+export async function sendEmail(to: string, subject: string, body: string, opts: { sender?: "digest" } = {}): Promise<void> {
+  const from = senderFor(secret, opts.sender);
   // Local/throwaway testing only: COBRA_MAIL_OUTBOX=<file> appends each message as a JSON line
   // instead of sending (never set on the production service).
   const outbox = process.env.COBRA_MAIL_OUTBOX;
-  if (outbox) { appendFileSync(outbox, JSON.stringify({ from: mailFrom(secret), to, subject, body, at: Date.now() }) + "\n", { mode: 0o600 }); return; }
+  if (outbox) { appendFileSync(outbox, JSON.stringify({ from, to, subject, body, at: Date.now() }) + "\n", { mode: 0o600 }); return; }
   const base = secret("KANTSY_API_BASE"), token = secret("KANTSY_API_TOKEN");
   if (!base || !token) throw new Error("Email is not configured (KANTSY_API_BASE / KANTSY_API_TOKEN)");
   const r = await fetch(`${base.replace(/\/$/, "")}/email`, {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify({ from: mailFrom(secret), to, subject, body }),
+    body: JSON.stringify({ from, to, subject, body }),
     signal: AbortSignal.timeout(15_000),
   });
   if (!r.ok) throw new Error(`Email send failed: HTTP ${r.status}`);

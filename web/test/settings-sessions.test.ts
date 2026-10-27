@@ -16,13 +16,15 @@ test("sessions redirects keep the query string (307)", async () => {
   }
 });
 
-test("MVP Settings tabs: Repos, Providers, Team (+ Updates for admins); removed tabs are gone", () => {
+test("MVP Settings tabs: Repos, Providers, Team, (Updates for admins), Notifications; removed tabs are gone", () => {
   const tabs = src("components/settings-tabs.tsx");
-  const base = tabs.slice(tabs.indexOf("const TABS"), tabs.indexOf("const ADMIN_TABS"));
-  assert.match(base, /\["\/settings\/repos", "Repos"\], \["\/settings\/providers", "Providers"\], \["\/settings\/team", "Team"\]\]/);
-  assert.doesNotMatch(tabs, /settings\/(sessions|usage|docs|notifications|team-notifications|skill-rules)/);
+  assert.match(tabs, /const BASE = \[\["\/settings\/repos", "Repos"\], \["\/settings\/providers", "Providers"\], \["\/settings\/team", "Team"\]\]/);
+  assert.match(tabs, /const TABS = \[\.\.\.BASE, NOTIFY\]/);
+  assert.match(tabs, /const ADMIN_TABS = \[\.\.\.BASE, \["\/settings\/updates", "Updates"\], NOTIFY\]/);
+  assert.match(tabs, /NOTIFY = \["\/settings\/notifications", "Notifications"\]/);
+  assert.doesNotMatch(tabs, /settings\/(sessions|usage|docs|team-notifications|skill-rules)/);
   assert.match(src("app/settings/page.tsx"), /redirect\("\/settings\/repos"\)/);
-  for (const p of ["sessions", "usage", "docs", "notifications", "team-notifications", "skill-rules"]) assert.ok(!existsSync(path.join(__dirname, `../app/settings/${p}`)), p);
+  for (const p of ["sessions", "usage", "docs", "team-notifications", "skill-rules"]) assert.ok(!existsSync(path.join(__dirname, `../app/settings/${p}`)), p);
   assert.doesNotMatch(src("components/user-menu.tsx"), /sessions/i);
 });
 

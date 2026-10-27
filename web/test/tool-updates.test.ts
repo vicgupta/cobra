@@ -147,7 +147,7 @@ test("active agent run: retry every 15 min until 6:30 AM ET, then skip and recor
   assert.equal(r.status, "skipped"); assert.match(r.reason ?? "", /agent run in progress/);
   assert.equal(checks, 10);
   assert.equal(world.calls.length, 0, "nothing installed while a run was active");
-  assert.match(buildDailyReport(db, ny("2026-10-27T07:00:00-04:00"), { uptimeSec: 1, diskFreeBytes: 1, diskTotalBytes: 1, dbBytes: 1 }).text, /AGENT TOOL UPDATES[\s\S]*skipped \(agent run in progress/);
+  assert.match(buildDailyReport(db, ny("2026-10-27T07:00:00-04:00"), { uptimeSec: 1, diskFreeBytes: 1, diskTotalBytes: 1, dbBytes: 1 }).text, /4 AM tool updates: skipped \(agent run in progress/);
 });
 
 test("admin: toggle (audited, default on), run now (admin only, refuses during agent runs), disabled skips", async () => {

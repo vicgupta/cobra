@@ -29,7 +29,7 @@ test("system admins hidden from displayed member lists in two tenants; data and 
   assert.equal(teamLeads(db, B).length, 2);
   assert.equal(currentAdminEmail(path.join(dir, "missing.env")), "");
   for (const f of ["../components/team.tsx", "../app/api/team/route.ts"]) assert.match(readFileSync(new URL(f, import.meta.url), "utf8"), /displayTeamMembers/, f);
-  assert.match(readFileSync(new URL("../lib/team-notifications.ts", import.meta.url), "utf8"), /candidates: visibleMembers\(c\)/);
+  assert.match(readFileSync(new URL("../lib/team-notifications.ts", import.meta.url), "utf8"), /recipients: visibleRecipients\(db, teamRecipients/);
 });
 
 test("admin metrics hide system admins (lists, counts, run emails); send-history recipients scrubbed for display", async () => {
