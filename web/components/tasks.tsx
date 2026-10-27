@@ -1,6 +1,6 @@
 "use client";
 
-// Tasks: an agent (+ optional one skill) on a friendly schedule; list, create, edit, delete, Run now.
+// Tasks: an agent (+ optional one skill) on a friendly schedule; list, create, edit, delete, Run.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -85,7 +85,7 @@ function TaskForm({ initial, agents, skills, repos, onDone }: { initial?: TaskVi
         </div>
         {schedErr ? <p className="text-xs text-danger" data-field-error>{schedErr}</p>
           : <p className="text-sm text-fg-soft" data-schedule-preview aria-live="polite">{describeCron(cron)}{sched.preset === "custom" && <span className="text-subtle"> · minute hour day month weekday, Eastern time</span>}</p>}
-        {sched.preset !== "none" && <label className="flex items-center gap-2 text-sm text-fg-soft"><Switch checked={enabled} onChange={setEnabled} label="Schedule on" /> {enabled ? "On — runs automatically" : "Off — only runs when you click Run now"}</label>}
+        {sched.preset !== "none" && <label className="flex items-center gap-2 text-sm text-fg-soft"><Switch checked={enabled} onChange={setEnabled} label="Schedule on" /> {enabled ? "On — runs automatically" : "Off — only runs when you click Run"}</label>}
       </fieldset>
       <Segmented name={`${idp}-mode`} label="Run type" value={mode} options={RUN_TYPES} onChange={setMode} />
       <p className="-mt-3 text-xs text-subtle">{mode === "real" ? "Real runs use the agent for real and can push branches and open pull requests." : "Test runs record what would happen without changing anything."}</p>
@@ -124,13 +124,13 @@ export function TaskManager({ tasks, agents, skills, repos, now }: { tasks: Task
     return <><span className="font-medium text-fg">{t.agent}</span>{s ? <span className="text-subtle"> · {s}</span> : <span className="text-subtle"> · prompt</span>}</>;
   };
   const props = { agents, skills, repos };
-  if (!agents.length) return <EmptyState title="Create an agent first" body="A task runs one of your agents on a schedule or when you click Run now." action={<Link href="/agents" className={button}>Go to Agents</Link>} />;
+  if (!agents.length) return <EmptyState title="Create an agent first" body="A task runs one of your agents on a schedule or when you click Run." action={<Link href="/agents" className={button}>Go to Agents</Link>} />;
   if (editing === "new") return <section className="rounded-xl border border-border bg-surface/60 p-5 shadow-sm" aria-labelledby="new-task-h"><h2 id="new-task-h" className="mb-4 text-base font-semibold">New task</h2><TaskForm {...props} onDone={() => setEditing(null)} /></section>;
   const editingTask = tasks.find((t) => t.id === editing);
   if (editingTask) return <section className="rounded-xl border border-border bg-surface/60 p-5 shadow-sm" aria-labelledby="edit-task-h" data-task={editingTask.name}><h2 id="edit-task-h" className="mb-4 text-base font-semibold">Edit {editingTask.name}</h2><TaskForm {...props} initial={editingTask} onDone={() => setEditing(null)} /></section>;
   return (
     <div className="space-y-4">
-      {tasks.length === 0 ? <EmptyState title="No tasks yet" body="A task runs an agent on a schedule, like every weekday morning, or whenever you click Run now." action={<button className={button} onClick={() => setEditing("new")}>Create your first task</button>} /> : <>
+      {tasks.length === 0 ? <EmptyState title="No tasks yet" body="A task runs an agent on a schedule, like every weekday morning, or whenever you click Run." action={<button className={button} onClick={() => setEditing("new")}>Create your first task</button>} /> : <>
         <div className="flex items-center justify-between"><p className="text-sm text-subtle">{tasks.length} {tasks.length === 1 ? "task" : "tasks"}</p><button className={button} onClick={() => setEditing("new")}>New task</button></div>
         <div className="overflow-x-auto rounded-xl border border-border bg-surface/60 shadow-sm">
           <table className="w-full min-w-[760px] text-sm">
