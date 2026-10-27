@@ -14,7 +14,7 @@ async function post(url: string, body: unknown, method = "POST") {
 }
 const Errors = ({ e }: { e: string[] }) => e.length ? <ul className="mt-2 list-disc pl-5 text-sm text-danger" data-testid="errors">{e.map((x, i) => <li key={i}>{x}</li>)}</ul> : null;
 
-export type Starter = { key: string; label: string; description: string; body: string; kind?: "master" };
+export type Starter = { key: string; label: string; name?: string; description: string; body: string; kind?: "master" };
 
 /** New/edit form: name, description and the plain-text SOP body (no JSON anywhere). The steps come from the headings
  * in the text when it is saved; the live check runs the same rules as the save, so "Ready to save" means it will save. */
@@ -35,7 +35,16 @@ export function SkillEditor({ id, initial, starters = [] }: { id?: number; initi
     }, 400);
     return () => clearTimeout(t);
   }, [id, name, kind, body, description]);
-  const start = (s: Starter) => { setBody(s.body); setKind(s.kind); if (!description) setDescription(s.description); };
+  const [picked, setPicked] = useState("");
+  const [filled, setFilled] = useState<{ name: string; description: string; body: string }>({ name: "", description: "", body: "" });
+  /** Fill name, description and steps from a template (plain text, all editable). Asks first if the user typed something. */
+  const start = (key: string) => {
+    const s = starters.find((x) => x.key === key);
+    const next = s ? { name: s.name ?? s.key, description: s.description, body: s.body } : { name: "", description: "", body: "" };
+    const typed = (name && name !== filled.name) || (description && description !== filled.description) || (body.trim() && body !== filled.body);
+    if (typed && !window.confirm("Replace what you've typed with this template?")) return;
+    setPicked(key); setName(next.name); setDescription(next.description); setBody(next.body); setKind(s?.kind); setFilled(next);
+  };
   const save = async () => {
     setBusy(true); setErrors([]);
     const r = id ? await post(`/api/skills/${id}`, { description, body }, "PUT") : await post("/api/skills", { name, description, body, kind });
@@ -46,7 +55,15 @@ export function SkillEditor({ id, initial, starters = [] }: { id?: number; initi
   };
   return (
     <div className="space-y-4">
-      {!id && starters.length > 0 && <div className="flex flex-wrap items-center gap-2 text-sm"><span className="text-muted">Start from:</span>{starters.map((s) => <button key={s.key} type="button" className={btn} onClick={() => start(s)} title={s.description}>{s.label}</button>)}</div>}
+      {!id && starters.length > 0 && <div className="text-sm">
+        <label className="flex flex-wrap items-center gap-2"><span className="text-muted">Start from a template</span>
+          <select className="rounded-md border border-border-strong bg-bg px-3 py-1.5 text-sm text-fg" data-testid="template" value={picked} onChange={(e) => start(e.target.value)}>
+            <option value="">Blank</option>
+            {starters.map((s) => <option key={s.key} value={s.key}>{s.label} · {s.description}</option>)}
+          </select>
+        </label>
+        <p className="mt-1 text-xs text-subtle">Templates just fill in text — edit anything. Each heading becomes a step.</p>
+      </div>}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm">Name<input className={input} aria-describedby="skill-name-hint" value={name} disabled={!!id} onChange={(e) => setName(e.target.value.toLowerCase().replace(/[\s_]+/g, "-"))} placeholder="release-checklist" />{!id && <span id="skill-name-hint" className="mt-1 block text-xs text-subtle">Lowercase letters, numbers and dashes</span>}</label>
         <label className="text-sm">Description<input className={input} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="One line: what this skill does" /></label>
