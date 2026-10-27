@@ -9,8 +9,8 @@ export async function UserMenu() {
   const admin = isSystemAdmin(u.email);
   return (
     <div className="flex items-center gap-3 text-sm">
-      {/* Job 7d: no name or email in the header, only the team (and admin badge). */}
-      <span data-user-team className="hidden max-w-[14rem] truncate text-right text-xs leading-tight text-subtle lg:block">{u.tenantName}{admin ? " · System admin" : ""}</span>
+      {/* No name, email or team name in the header (saves space); only the admin badge. */}
+      {admin && <span data-user-admin className="hidden max-w-[14rem] truncate text-right text-xs leading-tight text-subtle lg:block">System admin</span>}
       <LogoutButton />
     </div>
   );
