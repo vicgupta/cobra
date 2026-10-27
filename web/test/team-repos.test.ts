@@ -72,12 +72,12 @@ test("edit/remove: creator, team lead, designated lead, admin; not other members
   ]);
 });
 
-test("UI: add form shown to members, token field for everyone (required for members)", async () => {
+test("UI: add form shown to members, optional token field for everyone", async () => {
   const { readFileSync } = await import("node:fs");
   const s = readFileSync(new URL("../components/workflows.tsx", import.meta.url), "utf8");
   assert.match(s, /\{canAdd \? \(/);
-  assert.match(s, /aria-label=\{canManage \? "Personal access token \(optional\)" : "Personal access token"\}/);
-  assert.match(s, /disabled=\{!repo\.trim\(\) \|\| \(!canManage && !pat\.trim\(\)\)\}/);
+  assert.match(s, /aria-label="Personal access token \(optional\)"/);
+  assert.match(s, /disabled=\{!repo\.trim\(\)\}/);
   assert.match(readFileSync(new URL("../components/repos.tsx", import.meta.url), "utf8"), /canAdd=\{canAddRepo\(user\)\}/);
 });
 

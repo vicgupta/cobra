@@ -43,9 +43,8 @@ test("a member adds a repo with their own PAT: validated, encrypted, last-4 only
   assert.ok(!JSON.stringify(listRepoAudit(db, m1.tenantId)).includes(TOK));
 });
 
-test("member add: PAT required, bad token is a clear 400 and nothing is saved; leads may still omit it", async () => {
+test("member add: bad token is a clear 400 and nothing is saved; leads may omit it", async () => {
   const { db, m1, lead } = setup(); const g = gh();
-  assert.equal(await status(addRepoWithToken(db, m1, { repo: "m1/own" }, KEY, g.f)), 400);
   await assert.rejects(addRepoWithToken(db, m1, { repo: "m1/own", pat: "ghp_" + "z".repeat(36) }, KEY, g.f), /can't access m1\/own on GitHub \(HTTP 404\); not saved/);
   assert.deepEqual(listTeamRepos(db, m1.tenantId), []);
   assert.equal(await status(addRepoWithToken(db, m1, { repo: "m1/own", pat: TOK }, undefined, g.f)), 503, "no server key: refuse, don't store plaintext");
@@ -98,4 +97,51 @@ test("allow-list: team repos with their own PAT bypass COBRA_GITHUB_ALLOWED_REPO
     await changeRepoToken(db, m1, "m1/own", null, KEY, g.f);
     assert.match(checkTeamRepo(db, m1.tenantId, "m1/own")!, /not in COBRA_GITHUB_ALLOWED_REPOS/, "clearing the PAT re-applies the ceiling");
   } finally { if (prev === undefined) delete process.env.COBRA_GITHUB_ALLOWED_REPOS; else process.env.COBRA_GITHUB_ALLOWED_REPOS = prev; }
+});
+
+// 2026-10-26: any team member can add a repo (token optional), visible to the whole team only.
+test("member adds without a PAT: visible to teammates, not to another team, audited, uses the ceiling", async () => {
+  const { db, m1, m2, lead, bm, bLead } = setup(); const g = gh();
+  const r = await addRepoWithToken(db, m1, { repo: "acme/shared" }, KEY, g.f);
+  assert.deepEqual([r.patSet, r.createdBy], [false, m1.id]);
+  assert.equal(g.calls.length, 0, "no token, no GitHub call");
+  for (const u of [m1, m2, lead]) assert.deepEqual(listTeamRepos(db, u.tenantId).map((x) => x.repo), ["acme/shared"]);
+  for (const u of [bm, bLead]) assert.deepEqual(listTeamRepos(db, u.tenantId), []);
+  assert.match(String(checkTeamRepo(db, bm.tenantId, "acme/shared")), /not registered to this team/);
+  assert.deepEqual(listRepoAudit(db, m1.tenantId).map((a) => [a.actorEmail, a.action, a.repo]), [["m1@a.com", "add", "acme/shared"]]);
+  assert.deepEqual(listRepoAudit(db, bm.tenantId), []);
+});
+
+test("tampered tenantId in the body is ignored: the POST route takes the tenant from the session actor only", async () => {
+  const { readFileSync } = await import("node:fs");
+  const s = readFileSync(new URL("../app/api/repos/route.ts", import.meta.url), "utf8");
+  const post = s.slice(s.indexOf("export async function POST"), s.indexOf("export async function PATCH"));
+  assert.match(post, /addRepoWithToken\(getDb\(\), actor\(g\.user\), \{ repo: b\.repo, defaultBranch: [^}]*pat: [^}]*\}/);
+  assert.doesNotMatch(post, /tenant/i);
+  // lib level: extra fields on the body object never change the tenant
+  const { db, m1, bm } = setup(); const g = gh();
+  await addRepoWithToken(db, m1, { repo: "acme/x", tenantId: bm.tenantId } as unknown as { repo: string }, KEY, g.f);
+  assert.deepEqual(listTeamRepos(db, bm.tenantId), []);
+  assert.deepEqual(listTeamRepos(db, m1.tenantId).map((x) => x.repo), ["acme/x"]);
+});
+
+test("duplicates: 409 within a team (case-insensitive), allowed in another team", async () => {
+  const { db, m1, m2, bm } = setup(); const g = gh();
+  await addRepoWithToken(db, m1, { repo: "acme/dup" }, KEY, g.f);
+  assert.equal(await status(addRepoWithToken(db, m2, { repo: "ACME/Dup" }, KEY, g.f)), 409);
+  assert.equal(await status(addRepoWithToken(db, m2, { repo: "  acme/dup " }, KEY, g.f)), 409);
+  assert.equal((await addRepoWithToken(db, bm, { repo: "acme/dup" }, KEY, g.f)).createdBy, bm.id);
+  assert.equal(listTeamRepos(db, m1.tenantId).length, 1);
+});
+
+test("member edit/delete: creator, leads and admins only; other members 403; other team 404", async () => {
+  const { db, m1, m2, lead, bLead } = setup(); const g = gh();
+  await addRepoWithToken(db, m1, { repo: "acme/e" }, KEY, g.f);
+  assert.throws(() => updateTeamRepo(db, m2, "acme/e", "dev"), (e: unknown) => e instanceof RepoError && e.status === 403);
+  assert.throws(() => removeTeamRepo(db, m2, "acme/e"), (e: unknown) => e instanceof RepoError && e.status === 403);
+  assert.throws(() => removeTeamRepo(db, bLead, "acme/e"), (e: unknown) => e instanceof RepoError && e.status === 404);
+  assert.equal(updateTeamRepo(db, m1, "acme/e", "dev").defaultBranch, "dev");
+  assert.equal(updateTeamRepo(db, lead, "acme/e", null).defaultBranch, null);
+  removeTeamRepo(db, m1, "acme/e");
+  assert.deepEqual(listTeamRepos(db, m1.tenantId), []);
 });

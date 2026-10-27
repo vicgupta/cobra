@@ -170,12 +170,12 @@ function keyOrFail(secretKey: string | undefined) {
   try { parseKey(secretKey); } catch (e) { throw new RepoError(503, e instanceof SecretKeyError ? e.message : "COBRA_SECRET_KEY is invalid"); }
 }
 
-/** POST /api/repos. Any team member adds a repo to their own team with their own PAT (required for members;
- *  leads/admins may omit it and rely on GITHUB_TOKEN). The token is checked against GitHub before anything is saved. */
+/** POST /api/repos. Any team member (2026-10-26) adds a repo to their own team (tenant from the session), visible to the
+ *  whole team. The PAT is optional for everyone: without one the repo uses the server GITHUB_TOKEN and stays inside the
+ *  COBRA_GITHUB_ALLOWED_REPOS ceiling (checkTeamRepo). A given token is checked against GitHub before anything is saved. */
 export async function addRepoWithToken(db: DB, u: RepoUser, b: { repo: string; defaultBranch?: string; pat?: string | null }, secretKey: string | undefined, fetchImpl: typeof fetch = fetch): Promise<TeamRepo & { pushAccess?: boolean | null }> {
   if (!canAddRepo(u)) throw new RepoError(403, "only team members can add repos");
   const pat = b.pat && b.pat.trim() ? b.pat : null;
-  if (!pat && !canManageRepos(u)) throw new RepoError(400, "a GitHub personal access token with access to the repo is required");
   const repo = b.repo.trim();
   if (!REPO_RE.test(repo)) throw new RepoError(400, "repo must look like owner/name");
   if (teamRepo(db, u.tenantId, repo)) throw new RepoError(409, `${repo} is already registered`);

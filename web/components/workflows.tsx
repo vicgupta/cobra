@@ -307,7 +307,7 @@ type RepoRow = { repo: string; defaultBranch: string | null; patSet: boolean; pa
 const pushNote = (p: unknown) => (p === true ? "Token saved; it has push access." : p === false ? "Token saved, but it has no push access (read-only): agent runs can't push." : "Token saved.");
 
 /** Job 8: canAdd = any team member; row.canEdit = creator, team lead, designated lead or admin (branch, remove);
- *  canManage = admin/team lead (every repo). Any member adds with their own token and manages the repos they added (r.canEdit). */
+ *  canManage = admin/team lead (every repo). Any member adds (token optional) and manages the repos they added (r.canEdit). */
 export function RepoManager({ initial, canManage, canAdd = canManage }: { initial: RepoRow[]; canManage: boolean; canAdd?: boolean }) {
   const [repo, setRepo] = useState("");
   const [branch, setBranch] = useState("");
@@ -378,8 +378,8 @@ export function RepoManager({ initial, canManage, canAdd = canManage }: { initia
         }}>
           <input aria-label="Repo" className={input} placeholder="owner/name" value={repo} onChange={(e) => setRepo(e.target.value)} />
           <input aria-label="Default branch" className={input} placeholder="default branch (optional)" value={branch} onChange={(e) => setBranch(e.target.value)} />
-          <input aria-label={canManage ? "Personal access token (optional)" : "Personal access token"} type="password" autoComplete="off" className={input} placeholder={canManage ? "Personal access token (optional)" : "Your GitHub personal access token"} value={pat} onChange={(e) => setPat(e.target.value)} />
-          <button className={button} disabled={!repo.trim() || (!canManage && !pat.trim())}>Add repo</button>
+          <input aria-label="Personal access token (optional)" type="password" autoComplete="off" className={input} placeholder="Personal access token (optional)" value={pat} onChange={(e) => setPat(e.target.value)} />
+          <button className={button} disabled={!repo.trim()}>Add repo</button>
         </form>
       ) : <p className="text-xs text-subtle">Only team members can add repos.</p>}
       {notice && <p className="text-sm text-success">{notice}</p>}
