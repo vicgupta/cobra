@@ -145,13 +145,13 @@ export function TaskManager({ tasks, agents, skills, repos, now }: { tasks: Task
                   onChange={async (v) => { setBusy(t.id); setMsg(null); const r = await call(`/api/tasks/${t.id}`, "PATCH", { enabled: v }); setBusy(null); if (!r.ok) setMsg(sentence(r.data.error ?? "Couldn't update the task")); router.refresh(); }} /></td>
                 <td className={td}>{t.lastRun ? <Link href={`/runs/${encodeURIComponent(t.lastRun.id)}`} className="inline-flex items-center gap-2 hover:underline"><StatusPill status={t.lastRun.status} /><span className="text-xs text-subtle">{relativeTime(t.lastRun.startedAt, now)}</span></Link> : <span className="text-xs text-subtle">Never</span>}</td>
                 <td className={`${td} text-right`}><span className="inline-flex gap-1">
-                  <button className={button} disabled={busy === t.id} onClick={async () => {
+                  <button className={`${button} whitespace-nowrap`} disabled={busy === t.id} onClick={async () => {
                     setBusy(t.id); setMsg(null);
                     const r = await call(`/api/tasks/${t.id}/runs`, "POST", {});
                     setBusy(null);
                     if (!r.ok || !r.data.id) return setMsg(sentence(r.data.error ?? "Couldn't start the run"));
                     router.push(`/runs/${encodeURIComponent(r.data.id)}`);
-                  }}>{busy === t.id ? "Starting…" : "Run now"}</button>
+                  }}>{busy === t.id ? "Starting…" : "Run"}</button>
                   {t.canEdit && <button className={ghost} onClick={() => setEditing(t.id)}>Edit</button>}
                   {t.canEdit && <button className={danger} aria-label={`Delete ${t.name}`} onClick={() => setConfirm(t)}>Delete</button>}
                 </span></td>
