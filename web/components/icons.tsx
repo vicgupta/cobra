@@ -18,3 +18,23 @@ export function ExternalIcon({ className }: P) {
     </svg>
   );
 }
+
+/** Header role indicator: team lead (shield with star). */
+export function TeamLeadIcon({ className }: P) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden data-icon="team-lead">
+      <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3z" />
+      <path d="M12 8.5l1.1 2.2 2.4.3-1.75 1.7.4 2.4L12 14l-2.15 1.1.4-2.4-1.75-1.7 2.4-.3L12 8.5z" fill="currentColor" strokeWidth={1} />
+    </svg>
+  );
+}
+
+/** Header role indicator: team member (person). */
+export function TeamMemberIcon({ className }: P) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden data-icon="team-member">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21c0-4 3.6-7 8-7s8 3 8 7" />
+    </svg>
+  );
+}
