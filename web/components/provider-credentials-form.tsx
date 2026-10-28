@@ -93,7 +93,7 @@ export function AuthModeForm({ engine, modes, current, disabled = false }: { eng
     <div className="flex flex-col items-end gap-1" data-auth-mode={engine}>
       <fieldset role="radiogroup" aria-label={`${engine} auth method`} disabled={disabled || busy} className="inline-flex gap-1 rounded-lg bg-surface-2 p-1 text-sm">
         {modes.map((m) => (
-          <label key={m} className={`inline-flex min-h-8 cursor-pointer items-center rounded-md px-3 font-medium transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-emerald-500/60 ${mode === m ? "bg-bg text-fg shadow-sm ring-1 ring-border-strong" : "text-muted hover:text-fg"} ${disabled ? "cursor-default" : ""}`}>
+          <label key={m} className={`inline-flex min-h-8 cursor-pointer items-center whitespace-nowrap rounded-md px-3 font-medium transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-emerald-500/60 ${mode === m ? "bg-bg text-fg shadow-sm ring-1 ring-border-strong" : "text-muted hover:text-fg"} ${disabled ? "cursor-default" : ""}`}>
             <input type="radio" className="sr-only" name={`auth-${engine}`} value={m} checked={mode === m} onChange={() => void pick(m)} />
             {MODE_LABEL[m] ?? m}
           </label>

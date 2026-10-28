@@ -1,5 +1,10 @@
 import { Card } from "@/components/ui";
-import { CollabPage } from "@/components/collab-page";
+import { Suspense } from "react";
+import { AuthGate } from "@/components/auth-gate";
+import { PageHeader } from "@/components/page-header";
+import { InlineEdit } from "@/components/inline-edit";
+import { actor } from "@/lib/workflows/server";
+import type { SessionUser } from "@/lib/auth/sessions";
 import { ProviderDefaultsForm } from "@/components/provider-form";
 import { AuthModeForm, CredentialForm } from "@/components/provider-credentials-form";
 import { canManageProviders, codexServerLogin, credentialViews, ENV_FALLBACK_TEAM, getAuthMode, PROVIDER_AUTH, type CredentialView } from "@/lib/provider-credentials";
@@ -7,8 +12,8 @@ import { isSystemAdmin } from "@/lib/collab";
 import { CODEX_LOGIN_SLOT } from "@/lib/codex-login";
 import { listProviders } from "@/lib/providers";
 import { getDb, secretValue } from "@/lib/workflows/server";
-import { EmptyState } from "@/components/collab-view";
-import { sectionTitle, tableCls, tableWrap, td, th, theadCls } from "@/components/styles";
+import { EmptyState, ListSkeleton } from "@/components/collab-view";
+import { tableCls, td, th, theadCls } from "@/components/styles";
 
 const tier = (t: string | null) => t ?? "Default (no flag)";
 const when = (t: number | null) => (t ? new Date(t).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "");
@@ -71,91 +76,87 @@ function connected(mode: string, cs: CredentialView[], serverLogin: boolean) {
 const primaryFor = (mode: string, c: CredentialView) => mode === "auto" || mode === c.type;
 
 
-/** Settings > Providers: coding-agent CLIs, models and effort tiers (defaults: system admins), and the team's own
- *  credentials (any member of the team; system admins without a team role: read-only). */
+/** Settings > Providers, laid out like Settings > Repos: page header, then Cards holding Repos-style tables with
+ *  inline row actions. Credentials: any member of the team; system admins without a team role: read-only.
+ *  Defaults: system admins only (server-enforced). Secret values are never sent to the page. */
+function Providers({ su }: { su: SessionUser }) {
+  const u = actor(su);
+  const db = getDb(), admin = isSystemAdmin(u), mgr = canManageProviders(u), t = u.tenantId, team1 = t === ENV_FALLBACK_TEAM;
+  const providers = listProviders(db);
+  const sk = secretValue("COBRA_SECRET_KEY");
+  const creds = (e: keyof typeof PROVIDER_AUTH) => credentialViews(db, t, e, sk, secretValue, mgr);
+  const engines = Object.keys(PROVIDER_AUTH) as Array<keyof typeof PROVIDER_AUTH>;
+  const codexLogin = team1 && codexServerLogin();
+  const byEngine = new Map(providers.map((p) => [p.engine as string, p]));
+  return (
+    <>
+      <Card title="Team provider credentials" subtitle={mgr ? "Agent runs for this team use these credentials and the selected auth method." : "Read-only: only members of this team can change its credentials."}>
+        <div data-credentials-manager>
+          {engines.length === 0 ? <EmptyState title="No providers configured" /> : (
+            <div className="-mx-5 overflow-x-auto"><table className={tableCls}>
+              <thead className={theadCls}><tr><th scope="col" className={th}>Provider</th><th scope="col" className={th}>Status</th><th scope="col" className={th}>Auth method</th><th scope="col" className={th}>Default model</th><th scope="col" className={th}>Credentials</th></tr></thead>
+              <tbody className="divide-y divide-border">{engines.map((e) => {
+                const spec = PROVIDER_AUTH[e], mode = getAuthMode(db, t, e).mode, cs = creds(e), p = byEngine.get(e);
+                const ok = connected(mode, cs, e === "codex" && !!codexLogin);
+                const ordered = [...cs].sort((x, y) => Number(primaryFor(mode, y)) - Number(primaryFor(mode, x)));
+                return (
+                  <tr key={e} data-cred-provider={e} className="transition-colors hover:bg-surface-2/40">
+                    <td className={`${td} whitespace-nowrap`}><div className="font-medium text-fg" id={`cp-${e}`}>{spec.label}</div>{p && <div className="mt-0.5 font-mono text-xs text-subtle">{p.cli}</div>}</td>
+                    <td className={td}><span data-provider-connected={ok ? "yes" : "no"} className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${ok ? PILL.set.cls : PILL.unset.cls}`}><span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />{ok ? "Connected" : "Not connected"}</span></td>
+                    <td className={td}>{spec.modes.length > 1 ? <div className="inline-block [&>div]:items-start"><AuthModeForm engine={e} modes={spec.modes} current={mode} disabled={!mgr} /></div> : <span className="text-xs text-subtle">{TYPE.api_key}</span>}</td>
+                    <td className={`${td} whitespace-nowrap font-mono text-xs`}>{p?.defaults.model ?? "CLI default"}</td>
+                    <td className={`${td} min-w-[22rem]`}>
+                      <ul className="space-y-3">{ordered.map((c) => {
+                        const main = primaryFor(mode, c);
+                        return (
+                          <li key={c.name} data-cred-slot={c.name} data-primary={main ? "yes" : "no"} className="space-y-2">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className={`text-sm font-medium ${main ? "text-fg" : "text-fg-soft"}`}>{c.label}{!main && <span className="ml-2 text-xs font-normal text-subtle">not used by this method</span>}</div>
+                                <div className="font-mono text-xs text-subtle">{c.name}</div>
+                                <Meta c={c} show={mgr} />
+                              </div>
+                              <StatusPill c={c} />
+                            </div>
+                            {e === "codex" && c.name === CODEX_LOGIN_SLOT && <CodexLoginInfo c={c} show={mgr} />}
+                            {mgr && <CredentialForm engine={e} name={c.name} label={c.label} stored={c.source === "stored"} open={main && !c.set} multiline={e === "codex" && c.name === CODEX_LOGIN_SLOT} />}
+                          </li>
+                        );
+                      })}</ul>
+                    </td>
+                  </tr>
+                );
+              })}</tbody>
+            </table></div>
+          )}
+        </div>
+      </Card>
+      <Card title="Models and defaults" subtitle={admin ? "Default model and effort for runs that don't pick one. System admins only." : "Set by system admins."}>
+        {providers.length === 0 ? <EmptyState title="No providers configured" /> : (
+          <div className="-mx-5 overflow-x-auto"><table className={tableCls} data-providers>
+            <thead className={theadCls}><tr><th scope="col" className={th}>Provider</th><th scope="col" className={th}>Models</th><th scope="col" className={th}>Effort tiers</th><th scope="col" className={th}>Default model</th><th scope="col" className={th}>Default effort</th>{admin && <th scope="col" className={th}><span className="sr-only">Actions</span></th>}</tr></thead>
+            <tbody className="divide-y divide-border">{providers.map((p) => (
+              <tr key={p.engine} data-provider={p.engine} className="transition-colors hover:bg-surface-2/40">
+                <td className={`${td} whitespace-nowrap`}><div className="font-medium text-fg">{p.label}</div><div className="mt-0.5 font-mono text-xs text-subtle">{p.engine} · {p.cli}</div></td>
+                <td className={`${td} min-w-[16rem] max-w-md`} data-models><div className="flex flex-wrap gap-1">{p.models.map((m) => <span key={m} className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-fg-soft">{m}</span>)}</div><div className="mt-1.5 font-mono text-xs text-subtle">{p.modelFlag}</div></td>
+                <td className={`${td} text-xs`} data-tiers>{p.tiers.length ? p.tiers.join(" / ") : "Not supported"}<div className="mt-1.5 font-mono text-subtle">{p.effortFlag}</div></td>
+                <td className={`${td} whitespace-nowrap font-mono text-xs`} data-default-model>{p.defaults.model ?? "CLI default"}</td>
+                <td className={`${td} whitespace-nowrap text-xs`} data-default-effort>{p.tiers.length ? tier(p.defaults.effort) : "Not supported"}</td>
+                {admin && <td className={`${td} text-right`} data-provider-defaults><InlineEdit label="Edit defaults"><ProviderDefaultsForm engine={p.engine} models={p.models} tiers={[...p.tiers]} current={p.defaults} /></InlineEdit></td>}
+              </tr>
+            ))}</tbody>
+          </table></div>
+        )}
+      </Card>
+    </>
+  );
+}
+
 export function ProvidersView() {
   return (
-    <CollabPage title="Providers">
-      {(u) => {
-        const db = getDb(), admin = isSystemAdmin(u), mgr = canManageProviders(u), t = u.tenantId, team1 = t === ENV_FALLBACK_TEAM;
-        const providers = listProviders(db);
-        const sk = secretValue("COBRA_SECRET_KEY");
-        const creds = (e: keyof typeof PROVIDER_AUTH) => credentialViews(db, t, e, sk, secretValue, mgr);
-        const engines = Object.keys(PROVIDER_AUTH) as Array<keyof typeof PROVIDER_AUTH>;
-        const codexLogin = team1 && codexServerLogin();
-        return (
-          <div className="space-y-6">
-            {admin && (
-              <section aria-labelledby="defaults-h" className="space-y-3" data-provider-defaults>
-                <h2 id="defaults-h" className={sectionTitle}>Defaults</h2>
-                <div className="grid gap-4 lg:grid-cols-2">{providers.map((p) => (
-                  <Card key={p.engine} title={`${p.label} defaults`}>
-                    <ProviderDefaultsForm engine={p.engine} models={p.models} tiers={[...p.tiers]} current={p.defaults} />
-                  </Card>
-                ))}</div>
-              </section>
-            )}
-            <section aria-labelledby="creds-h" className="space-y-3" data-credentials-manager>
-              <h2 id="creds-h" className={sectionTitle}>Credentials</h2>
-              <div className="grid gap-4 lg:grid-cols-2">
-                {engines.map((e) => {
-                  const spec = PROVIDER_AUTH[e], mode = getAuthMode(db, t, e).mode, cs = creds(e);
-                  const ok = connected(mode, cs, e === "codex" && !!codexLogin);
-                  const ordered = [...cs].sort((x, y) => Number(primaryFor(mode, y)) - Number(primaryFor(mode, x)));
-                  return (
-                    <section key={e} data-cred-provider={e} aria-labelledby={`cp-${e}`} className="flex flex-col rounded-xl border border-border bg-surface/60 shadow-sm">
-                      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-                        <div className="flex items-center gap-2.5">
-                          <h3 id={`cp-${e}`} className="text-base font-semibold text-fg">{spec.label}</h3>
-                          <span data-provider-connected={ok ? "yes" : "no"} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${ok ? PILL.set.cls : PILL.unset.cls}`}><span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />{ok ? "Connected" : "Not connected"}</span>
-                        </div>
-                        {spec.modes.length > 1 && <AuthModeForm engine={e} modes={spec.modes} current={mode} disabled={!mgr} />}
-                      </header>
-                      <ul className="divide-y divide-border">
-                        {ordered.map((c) => {
-                          const main = primaryFor(mode, c);
-                          return (
-                            <li key={c.name} data-cred-slot={c.name} data-primary={main ? "yes" : "no"} className={`space-y-3 px-5 py-4 ${main ? "" : "bg-surface-2/40"}`}>
-                              <div className="flex flex-wrap items-start justify-between gap-2">
-                                <div className="min-w-0 space-y-0.5">
-                                  <div className={`font-medium ${main ? "text-sm text-fg" : "text-sm text-fg-soft"}`}>{c.label}{!main && <span className="ml-2 text-xs font-normal text-subtle">{TYPE[c.type]} · not used by this method</span>}</div>
-                                  <div className="font-mono text-xs text-subtle">{c.name}</div>
-                                  <Meta c={c} show={mgr} />
-                                </div>
-                                <StatusPill c={c} />
-                              </div>
-                              {e === "codex" && c.name === CODEX_LOGIN_SLOT && <CodexLoginInfo c={c} show={mgr} />}
-                              {mgr && <CredentialForm engine={e} name={c.name} label={c.label} stored={c.source === "stored"} open={main && !c.set} multiline={e === "codex" && c.name === CODEX_LOGIN_SLOT} />}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </section>
-                  );
-                })}
-              </div>
-            </section>
-            <section aria-labelledby="sum-h" className="space-y-3">
-              <h2 id="sum-h" className={sectionTitle}>Models and defaults</h2>
-              {providers.length === 0 ? <EmptyState title="No providers configured" /> : <div className={tableWrap}>
-                <table className={tableCls} data-providers>
-                  <thead className={theadCls}><tr><th scope="col" className={th}>Provider</th><th scope="col" className={th}>Models</th><th scope="col" className={th}>Effort tiers</th><th scope="col" className={th}>Default model</th><th scope="col" className={th}>Default effort</th><th scope="col" className={th}>Credentials</th></tr></thead>
-                  <tbody className="divide-y divide-border">{providers.map((p) => (
-                    <tr key={p.engine} data-provider={p.engine} className="transition-colors hover:bg-surface-2/40">
-                      <td className={td}><div className="font-medium text-fg">{p.label}</div><div className="mt-0.5 font-mono text-xs text-subtle">{p.engine} · {p.cli}</div></td>
-                      <td className={`${td} max-w-md`} data-models><div className="flex flex-wrap gap-1">{p.models.map((m) => <span key={m} className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-fg-soft">{m}</span>)}</div><div className="mt-1.5 font-mono text-xs text-subtle">{p.modelFlag}</div></td>
-                      <td className={`${td} text-xs`} data-tiers>{p.tiers.length ? p.tiers.join(" / ") : "Not supported"}<div className="mt-1.5 font-mono text-subtle">{p.effortFlag}</div></td>
-                      <td className={`${td} font-mono text-xs`} data-default-model>{p.defaults.model ?? "CLI default"}</td>
-                      <td className={`${td} text-xs`} data-default-effort>{p.tiers.length ? tier(p.defaults.effort) : "Not supported"}</td>
-                      <td className={`${td} text-xs`} data-credentials><ul className="space-y-1">{creds(p.engine).map((c) => <li key={c.name} data-secret-status={c.set ? "set" : "empty"} className="flex items-center gap-1.5"><span aria-hidden className={`h-1.5 w-1.5 rounded-full ${c.set ? "bg-emerald-500" : "bg-border-strong"}`} />{TYPE[c.type]}: {c.set ? "set" : "not set"}</li>)}{p.engine === "codex" && <li className="flex items-center gap-1.5"><span aria-hidden className={`h-1.5 w-1.5 rounded-full ${codexLogin ? "bg-emerald-500" : "bg-border-strong"}`} />Server ChatGPT login: {codexLogin ? "yes" : "no"}</li>}</ul></td>
-                    </tr>
-                  ))}</tbody>
-                </table>
-              </div>}
-            </section>
-          </div>
-        );
-      }}
-    </CollabPage>
+    <div className="space-y-6">
+      <PageHeader title="Providers" />
+      <Suspense fallback={<ListSkeleton />}><AuthGate>{(su) => <Providers su={su} />}</AuthGate></Suspense>
+    </div>
   );
 }

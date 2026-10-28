@@ -101,7 +101,7 @@ test("Settings > Providers UI: no helper copy, Sources or Recent provider change
   const { readFileSync } = await import("node:fs");
   const v = readFileSync(new URL("../components/providers.tsx", import.meta.url), "utf8");
   const f = readFileSync(new URL("../components/provider-credentials-form.tsx", import.meta.url), "utf8");
-  for (const s of ["The coding agents Cobra can run", "data-read-only-note", "data-no-subscription", "data-codex-login", 'title="Sources"', "Recent provider changes", "listProviderAudit", "AES-256-GCM", "subtitle="]) assert.ok(!v.includes(s), s);
+  for (const s of ["The coding agents Cobra can run", "data-read-only-note", "data-no-subscription", "data-codex-login", 'title="Sources"', "Recent provider changes", "listProviderAudit", "AES-256-GCM"]) assert.ok(!v.includes(s), s);
   for (const s of ["Stored encrypted; never shown again", "Set in server env"]) assert.ok(!f.includes(s), s);
   assert.ok(v.includes("data-credentials-manager") && f.includes("aria-label="));
   assert.ok(v.indexOf("data-credentials-manager") < v.indexOf("data-providers>"), "summary table below credentials");

@@ -23,3 +23,12 @@ test("Settings tabs use the shared Repos-style tokens; Dashboard/Tasks/Agents un
   for (const p of ["components/team.tsx", "components/team-invites.tsx", "components/notify-toggle-form.tsx", "components/updates-form.tsx", "app/settings/updates/page.tsx", "components/repos.tsx"]) assert.match(r(p), /styles"|page-header"/, p);
   for (const p of ["app/page.tsx", "app/tasks/page.tsx", "app/agents/page.tsx", "app/agents/skills/page.tsx", "components/tasks.tsx", "components/agents.tsx", "components/skills.tsx", "components/form-ui.tsx"]) assert.ok(!/components\/styles"|\.\/styles"/.test(r(p)), p);
 });
+
+test("Settings > Providers mirrors Settings > Repos structure (PageHeader, Suspense skeleton, Card tables, inline row edit)", () => {
+  const r = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  const v = r("components/providers.tsx"), repos = r("components/repos.tsx"), ie = r("components/inline-edit.tsx");
+  for (const s of ["<PageHeader title=", "<Suspense fallback={<ListSkeleton />}>", "<AuthGate>", "<Card title=", "-mx-5 overflow-x-auto", "theadCls", "hover:bg-surface-2/40"]) { assert.ok(v.includes(s), s); }
+  for (const s of ["<PageHeader title=", "<Suspense fallback={<ListSkeleton />}>", "<Card title="]) assert.ok(repos.includes(s), s);
+  assert.ok(v.includes('<InlineEdit label="Edit defaults">') && ie.includes("ghostBtn") && ie.includes("Cancel"));
+  assert.ok(!/secretValue\([^)]*\)\s*[}<]/.test(v), "never renders a secret value");
+});
