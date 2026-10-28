@@ -59,6 +59,9 @@ function baseEnv(ops: Ops): Record<string, string> {
   return e;
 }
 const prefixOf = (ops: Ops) => ops.env.COBRA_TOOLS_PREFIX || path.join(ops.env.HOME || "/home/cobra", ".local");
+/** npm CLIs (Claude Code, Codex, OpenCode) may live in a shared prefix the per-team run users can execute but not
+ *  modify (nova: /opt/cobra-tools, owned by cobra, 0755); the Cursor CLI stays in prefixOf (its installer's ~/.local). */
+export const npmPrefixOf = (ops: Ops) => ops.env.COBRA_NPM_TOOLS_PREFIX || prefixOf(ops);
 
 async function versionOf(ops: Ops, bin: string): Promise<{ ok: boolean; v: string | null; out: string }> {
   const r = await ops.run(bin, ["--version"], { env: baseEnv(ops), timeoutMs: 60_000 });
@@ -67,7 +70,7 @@ async function versionOf(ops: Ops, bin: string): Promise<{ ok: boolean; v: strin
 
 // ---------- npm-managed CLIs ----------
 export async function updateNpmTool(ops: Ops, t: (typeof NPM_TOOLS)[number]): Promise<Item> {
-  const prefix = prefixOf(ops), env = baseEnv(ops);
+  const prefix = npmPrefixOf(ops), env = baseEnv(ops);
   const pkgDir = path.join(prefix, "lib", "node_modules", t.pkg), link = path.join(prefix, "bin", t.bin);
   const base = { tool: t.tool, label: t.label, kind: "cli" as const };
   const before = await versionOf(ops, link);
@@ -153,7 +156,7 @@ function catalogItem(tool: string, label: string, method: string, before: { stat
 }
 
 export async function catalogs(ops: Ops, prev: (tool: string) => { state: string | null; ids: string[] | null }): Promise<Array<Item & { ids?: string[] }>> {
-  const prefix = prefixOf(ops), env = baseEnv(ops), out: Array<Item & { ids?: string[] }> = [];
+  const prefix = npmPrefixOf(ops), env = baseEnv(ops), out: Array<Item & { ids?: string[] }> = [];
   // OpenCode Zen (opencode/<model>): the CLI's own refreshed listing; paid ids only appear with the key.
   {
     const e = { ...env, ...(ops.env.OPENCODE_API_KEY ? { OPENCODE_API_KEY: ops.env.OPENCODE_API_KEY } : {}) };

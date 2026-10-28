@@ -1,0 +1,20 @@
+[Unit]
+Description=Cobra run launcher (runs agent steps as per-team users cobra-run-<tenantId>)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/python3 -I /usr/local/lib/cobra-launcher/launcher.py
+Environment=COBRA_LAUNCHER_SOCKET=/run/cobra-launcher.sock
+Environment=COBRA_TEAMS_ROOT=/srv/cobra-teams
+Environment=COBRA_DB_PATH=/var/lib/cobra/cobra.db
+Environment=COBRA_TOOLS_BIN=/opt/cobra-tools/bin
+Environment=COBRA_LAUNCHER_STAGE=/usr/local/lib/cobra-launcher/stage.py
+Restart=on-failure
+RestartSec=2
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
