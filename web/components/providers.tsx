@@ -7,6 +7,8 @@ import { isSystemAdmin } from "@/lib/collab";
 import { CODEX_LOGIN_SLOT } from "@/lib/codex-login";
 import { listProviders } from "@/lib/providers";
 import { getDb, secretValue } from "@/lib/workflows/server";
+import { EmptyState } from "@/components/collab-view";
+import { sectionTitle, tableCls, tableWrap, td, th, theadCls } from "@/components/styles";
 
 const tier = (t: string | null) => t ?? "Default (no flag)";
 const when = (t: number | null) => (t ? new Date(t).toISOString().slice(0, 16).replace("T", " ") + " UTC" : "");
@@ -48,7 +50,7 @@ function CodexLoginInfo({ c, show }: { c: CredentialView; show: boolean }) {
         </p>
       ) : <p className="text-xs text-danger" role="alert">The stored login can&apos;t be read. Paste ~/.codex/auth.json again.</p>)}
       {show && c.source === "stored" && s && !s.canRefresh && (
-        <p role="note" data-codex-chatgpt-login-warning className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-800 ring-1 ring-inset ring-amber-500/30 dark:text-amber-300">
+        <p role="note" data-codex-chatgpt-login-warning className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-warning ring-1 ring-inset ring-amber-500/30">
           Only an access token is stored, so it can&apos;t renew itself{s.expiresAt ? <> and Codex runs stop working {s.expired ? "now" : <>after <strong>{day(s.expiresAt)}</strong></>}</> : null}. Replace it with the full <span className="font-mono">~/.codex/auth.json</span> to keep it refreshed.
         </p>
       )}
@@ -68,8 +70,6 @@ function connected(mode: string, cs: CredentialView[], serverLogin: boolean) {
 }
 const primaryFor = (mode: string, c: CredentialView) => mode === "auto" || mode === c.type;
 
-const th = "px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-subtle";
-const td = "px-4 py-3 align-top";
 
 /** Settings > Providers: coding-agent CLIs, models and effort tiers (defaults: system admins), and the team's own
  *  credentials (any member of the team; system admins without a team role: read-only). */
@@ -85,13 +85,18 @@ export function ProvidersView() {
         const codexLogin = team1 && codexServerLogin();
         return (
           <div className="space-y-6">
-            {admin && providers.map((p) => (
-              <Card key={p.engine} title={`${p.label} defaults`}>
-                <ProviderDefaultsForm engine={p.engine} models={p.models} tiers={[...p.tiers]} current={p.defaults} />
-              </Card>
-            ))}
+            {admin && (
+              <section aria-labelledby="defaults-h" className="space-y-3" data-provider-defaults>
+                <h2 id="defaults-h" className={sectionTitle}>Defaults</h2>
+                <div className="grid gap-4 lg:grid-cols-2">{providers.map((p) => (
+                  <Card key={p.engine} title={`${p.label} defaults`}>
+                    <ProviderDefaultsForm engine={p.engine} models={p.models} tiers={[...p.tiers]} current={p.defaults} />
+                  </Card>
+                ))}</div>
+              </section>
+            )}
             <section aria-labelledby="creds-h" className="space-y-3" data-credentials-manager>
-              <h2 id="creds-h" className="text-sm font-semibold text-fg">Credentials</h2>
+              <h2 id="creds-h" className={sectionTitle}>Credentials</h2>
               <div className="grid gap-4 lg:grid-cols-2">
                 {engines.map((e) => {
                   const spec = PROVIDER_AUTH[e], mode = getAuthMode(db, t, e).mode, cs = creds(e);
@@ -131,12 +136,12 @@ export function ProvidersView() {
               </div>
             </section>
             <section aria-labelledby="sum-h" className="space-y-3">
-              <h2 id="sum-h" className="text-sm font-semibold text-fg">Models and defaults</h2>
-              <div className="overflow-x-auto rounded-xl border border-border bg-surface/60 shadow-sm">
-                <table className="w-full text-sm" data-providers>
-                  <thead className="border-b border-border bg-surface-2/50"><tr><th scope="col" className={th}>Provider</th><th scope="col" className={th}>Models</th><th scope="col" className={th}>Effort tiers</th><th scope="col" className={th}>Default model</th><th scope="col" className={th}>Default effort</th><th scope="col" className={th}>Credentials</th></tr></thead>
+              <h2 id="sum-h" className={sectionTitle}>Models and defaults</h2>
+              {providers.length === 0 ? <EmptyState title="No providers configured" /> : <div className={tableWrap}>
+                <table className={tableCls} data-providers>
+                  <thead className={theadCls}><tr><th scope="col" className={th}>Provider</th><th scope="col" className={th}>Models</th><th scope="col" className={th}>Effort tiers</th><th scope="col" className={th}>Default model</th><th scope="col" className={th}>Default effort</th><th scope="col" className={th}>Credentials</th></tr></thead>
                   <tbody className="divide-y divide-border">{providers.map((p) => (
-                    <tr key={p.engine} data-provider={p.engine}>
+                    <tr key={p.engine} data-provider={p.engine} className="transition-colors hover:bg-surface-2/40">
                       <td className={td}><div className="font-medium text-fg">{p.label}</div><div className="mt-0.5 font-mono text-xs text-subtle">{p.engine} · {p.cli}</div></td>
                       <td className={`${td} max-w-md`} data-models><div className="flex flex-wrap gap-1">{p.models.map((m) => <span key={m} className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-xs text-fg-soft">{m}</span>)}</div><div className="mt-1.5 font-mono text-xs text-subtle">{p.modelFlag}</div></td>
                       <td className={`${td} text-xs`} data-tiers>{p.tiers.length ? p.tiers.join(" / ") : "Not supported"}<div className="mt-1.5 font-mono text-subtle">{p.effortFlag}</div></td>
@@ -146,7 +151,7 @@ export function ProvidersView() {
                     </tr>
                   ))}</tbody>
                 </table>
-              </div>
+              </div>}
             </section>
           </div>
         );

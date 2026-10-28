@@ -2,13 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
+import { dangerBtn, ghostBtn, inputCls, primaryBtn, subtleDangerBtn } from "./styles";
 
-const focus = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg";
-const input = `w-full rounded-md border border-border-strong bg-bg px-3 py-2 font-mono text-sm placeholder:font-sans placeholder:text-subtle focus:border-emerald-500 ${focus}`;
-const primary = `rounded-md bg-accent-solid px-3 py-2 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 ${focus}`;
-const ghost = `rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-soft hover:bg-surface-2 disabled:opacity-50 ${focus}`;
-const subtleDanger = `rounded-md px-2.5 py-1.5 text-sm text-danger hover:bg-rose-500/10 disabled:opacity-50 ${focus}`;
-const danger = `rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 ${focus}`;
+
+const input = `${inputCls} font-mono placeholder:font-sans`;
+const primary = primaryBtn;
+const ghost = ghostBtn;
+const subtleDanger = subtleDangerBtn;
+const danger = dangerBtn;
 
 type Msg = { ok: boolean; text: string } | null;
 async function call(url: string, method: string, body?: unknown): Promise<{ ok: boolean; error?: string }> {
@@ -90,9 +91,9 @@ export function AuthModeForm({ engine, modes, current, disabled = false }: { eng
   };
   return (
     <div className="flex flex-col items-end gap-1" data-auth-mode={engine}>
-      <fieldset role="radiogroup" aria-label={`${engine} auth method`} disabled={disabled || busy} className="inline-flex rounded-lg border border-border bg-surface-2 p-0.5 text-xs">
+      <fieldset role="radiogroup" aria-label={`${engine} auth method`} disabled={disabled || busy} className="inline-flex gap-1 rounded-lg bg-surface-2 p-1 text-sm">
         {modes.map((m) => (
-          <label key={m} className={`cursor-pointer rounded-md px-2.5 py-1 font-medium transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-emerald-500/60 ${mode === m ? "bg-bg text-fg shadow-sm ring-1 ring-border-strong" : "text-muted hover:text-fg"} ${disabled ? "cursor-default" : ""}`}>
+          <label key={m} className={`inline-flex min-h-8 cursor-pointer items-center rounded-md px-3 font-medium transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-emerald-500/60 ${mode === m ? "bg-bg text-fg shadow-sm ring-1 ring-border-strong" : "text-muted hover:text-fg"} ${disabled ? "cursor-default" : ""}`}>
             <input type="radio" className="sr-only" name={`auth-${engine}`} value={m} checked={mode === m} onChange={() => void pick(m)} />
             {MODE_LABEL[m] ?? m}
           </label>
