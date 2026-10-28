@@ -767,6 +767,13 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     CREATE UNIQUE INDEX tasks_tenant_name ON tasks(tenant_id, name) WHERE deleted_at IS NULL;`),
   // 32 (Tasks UX): additive only. The task's latest run (for the "Last run" status on the Tasks list).
   (db) => db.exec("ALTER TABLE tasks ADD COLUMN last_run_id TEXT;"),
+  // 33 (Admin digest changes): additive only. last_commit = app commit reported in the last admin digest (for
+  // "deployed X -> Y"); oneoff_date/oneoff_hour = a one-off ET send hour for one NY date (that day the 7 AM send is
+  // replaced by one send at oneoff_hour); oneoff_sent_at claims it so it sends once.
+  (db) => db.exec(`ALTER TABLE notification_settings ADD COLUMN last_commit TEXT;
+    ALTER TABLE notification_settings ADD COLUMN oneoff_date TEXT;
+    ALTER TABLE notification_settings ADD COLUMN oneoff_hour INTEGER;
+    ALTER TABLE notification_settings ADD COLUMN oneoff_sent_at INTEGER;`),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

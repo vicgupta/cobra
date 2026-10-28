@@ -9,6 +9,11 @@ import { CollabError, isSystemAdmin } from "./collab";
 import { updateSummaryLine } from "./tool-updates";
 import { buildDigest, digestHtml, digestSubject, digestText, type Digest, type Health } from "./digest";
 import { currentAdminEmail } from "./members";
+import { buildAdminChanges, setLastReportedCommit, type SysInfo } from "./admin-changes";
+
+/** Host facts for the admin change sections; without a collector only DB-derived facts are shown. */
+export type SysFn = (h: Health) => SysInfo;
+export const basicSys: SysFn = (h) => ({ nodeVersion: process.version, appCommit: null, processUptimeSec: null, backups: null, diskFreeBytes: h.diskFreeBytes, diskTotalBytes: h.diskTotalBytes, dbBytes: h.dbBytes, hostUptimeSec: h.uptimeSec });
 
 export const NOTIFY_TZ = "America/New_York";
 export const DAILY_HOUR = 7;
@@ -74,11 +79,14 @@ export function serviceHealth(dbFile?: string, dir = "/"): Health {
 export type DailyReport = { since: number; until: number; text: string; html: string; subject: string; digest: Digest; counts: { runs: number; failed: number; tokens: number; costUsd: number | null } };
 
 /** The admin page's live preview: the digest as of now. */
-export const adminDigestNow = (db: DB, health: Health) => buildDailyReport(db, Date.now(), health).digest;
+export const adminDigestNow = (db: DB, health: Health, sys: SysFn = basicSys) => buildDailyReport(db, Date.now(), health, false, sys).digest;
 
 /** The last 24 hours across all teams (system-admin digest). */
-export function buildDailyReport(db: DB, now: number, health: Health, test = false): DailyReport {
+export function buildDailyReport(db: DB, now: number, health: Health, test = false, sys: SysFn = basicSys): DailyReport {
   const digest = buildDigest(db, { kind: "all" }, now, { health, updates: updateSummaryLine(db, nyClock(now).date) });
+  const info = sys(health);
+  digest.admin = buildAdminChanges(db, now, info);
+  digest.appCommit = info.appCommit;
   const subject = digestSubject(digest, nyClock(now).date, test);
   return { since: digest.since, until: now, text: digestText(digest), html: digestHtml(digest, subject), subject, digest,
     counts: { runs: digest.runs.total, failed: digest.runs.failed, tokens: digest.costs.tokens, costUsd: digest.costs.costUsd } };
@@ -94,8 +102,10 @@ async function deliver(db: DB, id: number, to: string[], subject: string, body: 
 }
 
 /** Called every minute by the in-app scheduler. Sends at most once per New York date, from 7:00 until noon ET. */
-export async function maybeSendDaily(db: DB, send: Send, now = Date.now(), health: () => Health = () => serviceHealth(), adminEmail = currentAdminEmail()): Promise<"sent" | "failed" | "not-due" | "already" | "disabled" | "no-recipients"> {
+export async function maybeSendDaily(db: DB, send: Send, now = Date.now(), health: () => Health = () => serviceHealth(), adminEmail = currentAdminEmail(), sys: SysFn = basicSys): Promise<"sent" | "failed" | "not-due" | "already" | "disabled" | "no-recipients"> {
   const c = nyClock(now);
+  const o = db.prepare("SELECT oneoff_date d, oneoff_hour h, oneoff_sent_at s FROM notification_settings WHERE id = 1").get() as { d: string | null; h: number | null; s: number | null };
+  if (o.d === c.date && o.h != null) return oneOffSend(db, send, now, o.h, health, adminEmail, sys);
   if (c.hour < DAILY_HOUR || c.hour >= CATCH_UP_UNTIL_HOUR) return "not-due";
   if (db.prepare("SELECT 1 FROM notification_sends WHERE kind = 'daily' AND send_date = ?").get(c.date)) return "already";
   const enabled = !!(db.prepare("SELECT daily_enabled FROM notification_settings WHERE id = 1").get() as { daily_enabled: number }).daily_enabled;
@@ -106,22 +116,41 @@ export async function maybeSendDaily(db: DB, send: Send, now = Date.now(), healt
     const r = db.prepare("INSERT INTO notification_sends (kind, send_date, status, recipients, error, triggered_by, at) VALUES ('daily', ?, ?, ?, ?, 'scheduler', ?)")
       .run(c.date, status, to.join(", "), !enabled ? "disabled" : !to.length ? "no recipient (COBRA_ADMIN_EMAIL unset, no admins)" : null, now);
     if (status === "skipped") return !enabled ? "disabled" : "no-recipients";
-    const rep = buildDailyReport(db, now, health());
-    return (await deliver(db, Number(r.lastInsertRowid), to, rep.subject, rep.text, send)) ? "sent" : "failed";
+    const rep = buildDailyReport(db, now, health(), false, sys);
+    const ok = await deliver(db, Number(r.lastInsertRowid), to, rep.subject, rep.text, send);
+    if (ok) setLastReportedCommit(db, rep.digest.appCommit ?? null);
+    return ok ? "sent" : "failed";
   } catch (e) {
     if (e instanceof Error && /UNIQUE/i.test(e.message)) return "already";
     throw e;
   }
 }
 
+/** One-off day (notification_settings.oneoff_date = today ET): the 7 AM send is replaced by one send at oneoff_hour
+ *  (until noon). Claimed by oneoff_sent_at so it goes once; logged as a notification_sends row with kind 'test' and
+ *  triggered_by 'scheduler (one-off)' because the day's 'daily' slot may already hold a 'skipped' row. */
+async function oneOffSend(db: DB, send: Send, now: number, hour: number, health: () => Health, adminEmail: string, sys: SysFn) {
+  const c = nyClock(now);
+  if (c.hour < hour || c.hour >= CATCH_UP_UNTIL_HOUR) return "not-due" as const;
+  if (!(db.prepare("SELECT daily_enabled FROM notification_settings WHERE id = 1").get() as { daily_enabled: number }).daily_enabled) return "disabled" as const;
+  const to = digestRecipients(db, adminEmail);
+  if (!to.length) return "no-recipients" as const;
+  if (!db.prepare("UPDATE notification_settings SET oneoff_sent_at = ? WHERE id = 1 AND oneoff_sent_at IS NULL AND oneoff_date = ?").run(now, c.date).changes) return "already" as const;
+  const r = db.prepare("INSERT INTO notification_sends (kind, send_date, status, recipients, triggered_by, at) VALUES ('test', ?, 'sending', ?, 'scheduler (one-off)', ?)").run(c.date, to.join(", "), now);
+  const rep = buildDailyReport(db, now, health(), false, sys);
+  const ok = await deliver(db, Number(r.lastInsertRowid), to, rep.subject, rep.text, send);
+  if (ok) setLastReportedCommit(db, rep.digest.appCommit ?? null);
+  return ok ? "sent" as const : "failed" as const;
+}
+
 /** System admins only: sends the current digest to the digest recipient (same as 7 AM). kind 'test' never claims the day. */
-export async function sendTestNow(db: DB, u: Admin, send: Send, now = Date.now(), health: () => Health = () => serviceHealth(), adminEmail = currentAdminEmail()): Promise<NotificationView> {
+export async function sendTestNow(db: DB, u: Admin, send: Send, now = Date.now(), health: () => Health = () => serviceHealth(), adminEmail = currentAdminEmail(), sys: SysFn = basicSys): Promise<NotificationView> {
   if (!isSystemAdmin(u)) throw new CollabError(403, "only system admins can send notifications");
   const to = digestRecipients(db, adminEmail);
   if (!to.length) throw new CollabError(400, "no digest recipient (COBRA_ADMIN_EMAIL unset and no admins)");
   const r = db.prepare("INSERT INTO notification_sends (kind, send_date, status, recipients, triggered_by, at) VALUES ('test', ?, 'sending', ?, ?, ?)").run(nyClock(now).date, to.join(", "), u.email, now);
   audit(db, u, "test_send", `test digest to ${to.join(", ")}`, now);
-  const rep = buildDailyReport(db, now, health(), true);
+  const rep = buildDailyReport(db, now, health(), true, sys);
   await deliver(db, Number(r.lastInsertRowid), to, rep.subject, rep.text, send);
   return notificationStatus(db, adminEmail);
 }

@@ -3,6 +3,7 @@
 // scope EVERY query is filtered by runs.tenant_id (run_usage has no tenant column, so it is always
 // joined through runs). Pure Node, no Next imports; display only.
 import type { DB } from "./db";
+import type { AdminSection } from "./admin-changes";
 
 export const APP_URL = "https://nova.kantsy.com";
 export const DIGEST_TZ = "America/New_York";
@@ -19,6 +20,9 @@ export type Digest = {
   costs: { tokens: N; costUsd: N | null; byModel: Array<{ provider: string; model: string | null; tokens: N; costUsd: N | null; steps: N }>; byTeam: Array<{ team: string; tokens: N; costUsd: N | null }> };
   errors: { groups: Array<{ team: string | null; engine: string; agent: string; n: N }>; top: Array<{ message: string; n: N; lastRunId: string }>; stuck: Array<{ id: string; team: string | null; engine: string; agent: string; startedAt: N }> };
   extra: { health: string | null; updates: string | null };
+  /** All-teams scope only: the system-admin change sections (lib/admin-changes.ts). */
+  admin?: AdminSection[];
+  appCommit?: string | null;
 };
 
 export const fmtNy = (t: number) => new Intl.DateTimeFormat("en-US", { timeZone: DIGEST_TZ, dateStyle: "medium", timeStyle: "short" }).format(new Date(t)) + " ET";
@@ -98,6 +102,7 @@ export function digestText(d: Digest): string {
     `  By ${d.teamName ? "" : "team, "}engine and agent:`, ...lines(d.errors.groups.map((g) => `  ${g.team ? `${g.team} / ` : ""}${g.engine} / ${g.agent}: ${g.n}`)),
     "  Top failure messages:", ...lines(d.errors.top.map((t) => `  ${t.n}x ${t.message.replace(/\s+/g, " ")}\n      ${APP_URL}/runs/${encodeURIComponent(t.lastRunId)}`)),
     `  Possibly stuck (still "running" after ${STUCK_AFTER_MS / 3_600_000} h):`, ...lines(d.errors.stuck.map((s) => `  ${s.team ? `${s.team} / ` : ""}${s.engine} / ${s.agent}, started ${fmtNy(s.startedAt)}: ${APP_URL}/runs/${encodeURIComponent(s.id)}`)),
+    ...(d.admin ?? []).flatMap((sec) => ["", sec.title, ...sec.lines.map((l) => `  ${l}`)]),
     ...(d.extra.health || d.extra.updates ? ["", "SERVICE", ...(d.extra.health ? [`  ${d.extra.health}`] : []), ...(d.extra.updates ? [`  4 AM tool updates: ${d.extra.updates}`] : [])] : []),
     "",
   ].join("\n");
@@ -126,5 +131,6 @@ th{color:#71717a;font-weight:600}.none{color:#a1a1aa;margin:2px 0 10px}.kpi{disp
 <p class="meta">Top failure messages</p>${tbl(["Count", "Message", "Latest run"], d.errors.top.map((t) => [t.n, t.message, t.lastRunId]))}
 <p class="meta">Possibly stuck (still running after ${STUCK_AFTER_MS / 3_600_000} h)</p>${tbl([...(all ? ["Team"] : []), "Engine", "Agent", "Started", "Run"], d.errors.stuck.map((s) => [...(all ? [s.team ?? ""] : []), s.engine, s.agent, fmtNy(s.startedAt), s.id]))}
 ${d.extra.health || d.extra.updates ? `<h2>Service</h2>${d.extra.health ? `<p>${esc(d.extra.health)}</p>` : ""}${d.extra.updates ? `<p>4 AM tool updates: ${esc(d.extra.updates)}</p>` : ""}` : ""}
+${(d.admin ?? []).map((sec) => `<h2>${esc(sec.title)}</h2><ul style="list-style:none;padding-left:0;margin:4px 0 10px">${sec.lines.map((l) => `<li${/^!!|FAILED/.test(l.trim()) ? ' style="color:#b91c1c;font-weight:600"' : ""}>${esc(l).replace(/^( +)/, (m) => "&nbsp;".repeat(m.length * 2))}</li>`).join("")}</ul>`).join("\n")}
 </div></body></html>`;
 }

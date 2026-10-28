@@ -1,4 +1,5 @@
 import { Badge, Card } from "@/components/ui";
+import { collectSysInfo } from "@/lib/admin-sysinfo";
 import { CollabPage } from "@/components/collab-page";
 import { DigestView } from "@/components/digest-view";
 import { NotifyToggleForm } from "@/components/notify-toggle-form";
@@ -49,7 +50,7 @@ function Body({ u }: { u: Actor }) {
 }
 
 function AdminSection() {
-  const db = getDb(), n = notificationStatus(db), d = adminDigestNow(db, serviceHealth(dbPath(), "/var/lib/cobra"));
+  const db = getDb(), n = notificationStatus(db), d = adminDigestNow(db, serviceHealth(dbPath(), "/var/lib/cobra"), (h) => collectSysInfo(h, dbPath()));
   return (
     <div className="space-y-6" data-admin-notify>
       <Card title="All-teams digest (system admin)" subtitle={`Daily at 7:00 AM ET. Emailed from cobra@kantsy.com. ${n.updatedBy ? `Last changed ${fmtNy(n.updatedAt!)} by ${n.updatedBy}.` : ""}`}>

@@ -159,7 +159,7 @@ test("migration 4 adds password_resets on an existing v3 database", () => {
   assert.equal(authenticate(db, "v@x.io", PW), id);
   assert.equal(getSessionUser(db, token)?.id, id);
   migrate(db); // no-op when current
-  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 32);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 33);
 });
 
 test("reset tokens: random, stored only as sha256, expire after 30 minutes", () => {
@@ -244,7 +244,7 @@ test("migration 6: rate_limits table created from v5 with data intact", () => {
   migrate(db, 5);
   db.prepare("INSERT INTO tenants VALUES (1, 'Vic', 'default', 0)").run();
   migrate(db);
-  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 32);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 33);
   assert.equal(count(db, "SELECT count(*) c FROM tenants"), 1);
   const cols = (db.prepare("PRAGMA table_info(rate_limits)").all() as Array<{ name: string }>).map((c) => c.name);
   assert.deepEqual(cols, ["bucket", "key", "count", "window_start", "expires_at"]);
@@ -259,7 +259,7 @@ test("migration 5: existing sessions stay valid (remembered), get a public id an
   const token = "v4-session-token", t0 = Date.now() - 1000;
   db.prepare("INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, 5, ?, ?)").run(createHash("sha256").update(token).digest("hex"), Date.now() + SESSION_TTL_MS, t0);
   migrate(db);
-  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 32);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 33);
   const u = getSessionUser(db, token)!;
   assert.equal(u.id, 5);
   assert.match(u.sessionId, /^[0-9a-f]{32}$/);

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { collectSysInfo } from "@/lib/admin-sysinfo";
 import { apiGuard } from "@/lib/auth/server";
 import { CollabError, isSystemAdmin } from "@/lib/collab";
 import { sendEmail } from "@/lib/mail";
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
   if (!isSystemAdmin(g.user)) return forbidden();
   const b = (await req.json().catch(() => null)) as { enabled?: unknown; action?: unknown } | null;
   try {
-    if (b?.action === "test") return NextResponse.json({ notifications: await sendTestNow(getDb(), g.user, sendEmail, Date.now(), () => serviceHealth(dbPath(), "/var/lib/cobra")) });
+    if (b?.action === "test") return NextResponse.json({ notifications: await sendTestNow(getDb(), g.user, sendEmail, Date.now(), () => serviceHealth(dbPath(), "/var/lib/cobra"), undefined, (h) => collectSysInfo(h, dbPath())) });
     if (b && "enabled" in b) return NextResponse.json({ notifications: setDailyEnabled(getDb(), g.user, b.enabled) });
     throw new CollabError(400, "send { enabled: boolean } or { action: \"test\" }");
   } catch (e) { return err(e); }

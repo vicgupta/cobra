@@ -1,6 +1,7 @@
 // In-app scheduler for the daily system-admin email: checks once a minute; maybeSendDaily records each
 // send in notification_sends and its unique per-day index prevents double sends. Started from
 // instrumentation.ts in the Node runtime only (disable with COBRA_NOTIFY_SCHEDULER=off).
+import { collectSysInfo } from "./admin-sysinfo";
 import { dbPath, getDb } from "./db";
 import { sendEmail } from "./mail";
 import { maybeSendDaily, serviceHealth } from "./notifications";
@@ -24,7 +25,7 @@ export function startNotifyScheduler(): void {
       }
     } catch (e) { console.error("[cobra] daily tool update:", e instanceof Error ? e.message : e); }
     try {
-      const r = await maybeSendDaily(getDb(), sendEmail, Date.now(), () => serviceHealth(dbPath(), "/var/lib/cobra"));
+      const r = await maybeSendDaily(getDb(), sendEmail, Date.now(), () => serviceHealth(dbPath(), "/var/lib/cobra"), undefined, (h) => collectSysInfo(h, dbPath()));
       if (r === "sent" || r === "failed") console.log(`[cobra] daily admin email: ${r}`);
     } catch (e) { console.error("[cobra] daily admin email:", e instanceof Error ? e.message : e); }
     try {
