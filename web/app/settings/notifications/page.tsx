@@ -16,7 +16,7 @@ type Row = { kind: string; sendDate: string; status: string; error: string | nul
 
 function Sends({ rows, attr }: { rows: Row[]; attr: string }) {
   return (
-    <ul className="space-y-1 text-xs" data-sends={attr}>{rows.length ? rows.map((s, i) => (
+    <ul className="divide-y divide-border text-xs [&>li]:py-2" data-sends={attr}>{rows.length ? rows.map((s, i) => (
       <li key={i}>{fmtNy(s.at)} · {s.kind} · {s.sendDate} · <Badge tone={TONE[s.status as keyof typeof TONE] ?? "gray"}>{s.status}</Badge>{s.error ? ` (${s.error})` : ""} · {s.recipients}</li>
     )) : <li className="text-subtle">None yet</li>}</ul>
   );
@@ -39,7 +39,7 @@ function Body({ u }: { u: Actor }) {
           <p data-team-status={t.enabled ? "on" : "off"}>Status: {t.enabled ? "On" : "Off"} · Last sent: {last(t.lastSend)}</p>
           {t.canEdit
             ? <NotifyToggleForm scope="team" api="/api/team-notifications" enabled={t.enabled} label="Email the team digest daily" testLabel="Send test team digest" recipients={t.recipients.join(", ")} />
-            : <p className="text-xs text-subtle">Only team leads, the designated lead and system admins can change this.</p>}
+            : <p className="rounded-lg border border-dashed border-border-strong px-4 py-3 text-xs text-subtle">Only team leads, the designated lead and system admins can change this.</p>}
         </div>
       </Card>
       <Card title="Your team, last 24 hours"><DigestView d={d} /></Card>

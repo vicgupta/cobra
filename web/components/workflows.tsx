@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Badge, type Tone } from "./ui";
 import { ENGINES, ENGINE_LABEL, engineLabel } from "@/lib/engines";
 import { collapseSteps } from "@/lib/workflows/step-log";
+import * as ui from "./styles";
 
 const input = "w-full rounded-md border border-border-strong bg-bg px-3 py-2 text-sm placeholder:text-faint focus:border-emerald-500 focus:outline-none";
 const button = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
@@ -333,53 +334,53 @@ export function RepoManager({ initial, canManage, canAdd = canManage }: { initia
   };
   return (
     <div className="space-y-3">
-      {initial.length === 0 ? <p className="text-sm text-subtle">No repos registered yet.</p> : (
-        <table className="w-full text-sm">
-          <thead><tr className="text-left text-xs text-subtle"><th className="py-1 font-normal">Repo</th><th className="py-1 font-normal">Added by</th><th className="py-1 font-normal">Branch</th><th className="py-1 font-normal">Personal access token</th><th /></tr></thead>
+      {initial.length === 0 ? <div className="rounded-lg border border-dashed border-border-strong px-6 py-10 text-center"><p className="text-sm font-medium text-fg-soft">No repos registered yet</p></div> : (
+        <div className="-mx-5 overflow-x-auto"><table className={ui.tableCls}>
+          <thead className={ui.theadCls}><tr><th scope="col" className={ui.th}>Repo</th><th scope="col" className={ui.th}>Added by</th><th scope="col" className={ui.th}>Branch</th><th scope="col" className={ui.th}>Personal access token</th><th scope="col" className={ui.th}><span className="sr-only">Actions</span></th></tr></thead>
           <tbody className="divide-y divide-border">{initial.map((r) => (
-            <tr key={r.repo}>
-              <td className="py-2 font-mono">{r.repo}</td>
-              <td className="py-2 text-xs text-subtle">{r.createdByEmail ?? "—"}</td>
-              <td className="py-2 text-xs text-subtle">{editBranch === r.repo ? (
-                <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void saveBranch(r.repo); }}>
-                  <input aria-label={`Default branch for ${r.repo}`} className={`${input} py-1 text-xs`} placeholder="repo default" value={branchVal} onChange={(e) => setBranchVal(e.target.value)} />
-                  <button className={`${button} py-1 text-xs`}>Save</button>
-                  <button type="button" className={`${ghost} text-xs`} onClick={() => setEditBranch(null)}>Cancel</button>
+            <tr key={r.repo} className="transition-colors hover:bg-surface-2/40">
+              <td className="px-4 py-3 align-top font-mono">{r.repo}</td>
+              <td className="px-4 py-3 align-top text-xs text-subtle">{r.createdByEmail ?? "—"}</td>
+              <td className="px-4 py-3 align-top text-xs text-subtle">{editBranch === r.repo ? (
+                <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); void saveBranch(r.repo); }}>
+                  <input aria-label={`Default branch for ${r.repo}`} className={`${ui.inputCls} text-xs`} placeholder="repo default" value={branchVal} onChange={(e) => setBranchVal(e.target.value)} />
+                  <button className={ui.primaryBtn}>Save</button>
+                  <button type="button" className={ui.ghostBtn} onClick={() => setEditBranch(null)}>Cancel</button>
                 </form>
               ) : r.defaultBranch ? `default branch ${r.defaultBranch}` : "repo default branch"}</td>
-              <td className="py-2 text-xs">
+              <td className="px-4 py-3 align-top text-xs">
                 {editing === r.repo ? (
-                  <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (newPat.trim()) void patch(r.repo, newPat); }}>
-                    <input type="password" autoComplete="off" aria-label={`New token for ${r.repo}`} className={`${input} py-1 text-xs`} placeholder="new token" value={newPat} onChange={(e) => setNewPat(e.target.value)} />
-                    <button className={`${button} py-1 text-xs`} disabled={!newPat.trim()}>Save</button>
-                    <button type="button" className={`${ghost} text-xs`} onClick={() => { setEditing(null); setNewPat(""); }}>Cancel</button>
+                  <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (newPat.trim()) void patch(r.repo, newPat); }}>
+                    <input type="password" autoComplete="off" aria-label={`New token for ${r.repo}`} className={`${ui.inputCls} text-xs`} placeholder="new token" value={newPat} onChange={(e) => setNewPat(e.target.value)} />
+                    <button className={ui.primaryBtn} disabled={!newPat.trim()}>Save</button>
+                    <button type="button" className={ui.ghostBtn} onClick={() => { setEditing(null); setNewPat(""); }}>Cancel</button>
                   </form>
                 ) : <span data-pat-status={r.patSet ? "set" : "none"} className={r.patSet ? "font-mono text-success" : "text-subtle"}>{r.patSet ? `Set ••••${r.patLast4 ?? ""}` : "—"}</span>}
               </td>
-              <td className="py-2 text-right">{editing !== r.repo && editBranch !== r.repo && (canManage || r.canEdit) && (
+              <td className="px-4 py-3 align-top text-right">{editing !== r.repo && editBranch !== r.repo && (canManage || r.canEdit) && (
                 <span className="inline-flex gap-2">
-                  {(r.canEdit ?? canManage) && <button className={`${ghost} text-xs`} onClick={() => { setEditing(r.repo); setNewPat(""); }}>{r.patSet ? "Replace token" : "Set token"}</button>}
-                  {(r.canEdit ?? canManage) && r.patSet && <button className={`${ghost} text-xs`} onClick={() => void patch(r.repo, null)}>Clear token</button>}
-                  {(r.canEdit ?? canManage) && <button className={`${ghost} text-xs`} onClick={() => { setEditBranch(r.repo); setBranchVal(r.defaultBranch ?? ""); }}>Edit branch</button>}
-                  {(r.canEdit ?? canManage) && <button className={`${ghost} text-xs`} onClick={async () => {
+                  {(r.canEdit ?? canManage) && <button className={ui.ghostBtn} onClick={() => { setEditing(r.repo); setNewPat(""); }}>{r.patSet ? "Replace token" : "Set token"}</button>}
+                  {(r.canEdit ?? canManage) && r.patSet && <button className={ui.ghostBtn} onClick={() => void patch(r.repo, null)}>Clear token</button>}
+                  {(r.canEdit ?? canManage) && <button className={ui.ghostBtn} onClick={() => { setEditBranch(r.repo); setBranchVal(r.defaultBranch ?? ""); }}>Edit branch</button>}
+                  {(r.canEdit ?? canManage) && <button className={ui.ghostBtn} onClick={async () => {
                     const res = await fetch(`/api/repos?repo=${encodeURIComponent(r.repo)}`, { method: "DELETE" });
                     if (!res.ok) setError(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Failed"); else router.refresh();
                   }}>Remove</button>}
                 </span>)}</td>
             </tr>))}</tbody>
-        </table>
+        </table></div>
       )}
       {canAdd ? (
-        <form className="grid grid-cols-1 gap-2 sm:grid-cols-4" onSubmit={async (e) => {
+        <form className="grid grid-cols-1 gap-3 sm:grid-cols-4" onSubmit={async (e) => {
           e.preventDefault();
           const { ok, data } = await send("/api/repos", { repo, defaultBranch: branch || undefined, pat: pat || undefined });
           if (!ok) { setNotice(null); return setError(data.error ?? "Failed"); }
           setError(null); setNotice(pat ? pushNote((data as { pushAccess?: unknown }).pushAccess) : null); setRepo(""); setBranch(""); setPat(""); router.refresh();
         }}>
-          <input aria-label="Repo" className={input} placeholder="owner/name" value={repo} onChange={(e) => setRepo(e.target.value)} />
-          <input aria-label="Default branch" className={input} placeholder="default branch (optional)" value={branch} onChange={(e) => setBranch(e.target.value)} />
-          <input aria-label="Personal access token (optional)" type="password" autoComplete="off" className={input} placeholder="Personal access token (optional)" value={pat} onChange={(e) => setPat(e.target.value)} />
-          <button className={button} disabled={!repo.trim()}>Add repo</button>
+          <input aria-label="Repo" className={ui.inputCls} placeholder="owner/name" value={repo} onChange={(e) => setRepo(e.target.value)} />
+          <input aria-label="Default branch" className={ui.inputCls} placeholder="default branch (optional)" value={branch} onChange={(e) => setBranch(e.target.value)} />
+          <input aria-label="Personal access token (optional)" type="password" autoComplete="off" className={ui.inputCls} placeholder="Personal access token (optional)" value={pat} onChange={(e) => setPat(e.target.value)} />
+          <button className={ui.primaryBtn} disabled={!repo.trim()}>Add repo</button>
         </form>
       ) : <p className="text-xs text-subtle">Only team members can add repos.</p>}
       {notice && <p className="text-sm text-success">{notice}</p>}

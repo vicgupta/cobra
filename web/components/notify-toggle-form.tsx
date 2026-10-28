@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { primaryBtn } from "./styles";
 
-const button = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
+const button = primaryBtn;
 
 /** On/off toggle + test button for a digest. The server enforces who may use it (403 otherwise). */
 export function NotifyToggleForm({ api, enabled, label, testLabel, recipients, scope }: { api: string; enabled: boolean; label: string; testLabel: string; recipients: string; scope: "admin" | "team" }) {
@@ -22,7 +23,7 @@ export function NotifyToggleForm({ api, enabled, label, testLabel, recipients, s
   };
   return (
     <div className="flex flex-wrap items-center gap-3" data-notify-form={scope}>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" aria-label={label} checked={enabled} disabled={busy} onChange={(e) => void post({ enabled: e.target.checked }, e.target.checked ? "Daily digest turned on" : "Daily digest turned off")} /> {label}</label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="h-4 w-4 accent-emerald-500" aria-label={label} checked={enabled} disabled={busy} onChange={(e) => void post({ enabled: e.target.checked }, e.target.checked ? "Daily digest turned on" : "Daily digest turned off")} /> {label}</label>
       <button className={button} disabled={busy} onClick={() => void post({ action: "test" }, `Test digest sent to ${recipients}`)}>{testLabel}</button>
       {msg && <p role={msg.ok ? "status" : "alert"} className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</p>}
     </div>

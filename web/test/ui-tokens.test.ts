@@ -17,3 +17,9 @@ test("PageHeader renders title, description and actions slots", () => {
   const src = readFileSync(new URL("../components/page-header.tsx", import.meta.url), "utf8");
   for (const s of ["data-page-header", "text-2xl font-semibold tracking-tight", "aria-label=\"Breadcrumb\""]) assert.ok(src.includes(s), s);
 });
+
+test("Settings tabs use the shared Repos-style tokens; Dashboard/Tasks/Agents untouched by them", () => {
+  const r = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+  for (const p of ["components/team.tsx", "components/team-invites.tsx", "components/notify-toggle-form.tsx", "components/updates-form.tsx", "app/settings/updates/page.tsx", "components/repos.tsx"]) assert.match(r(p), /styles"|page-header"/, p);
+  for (const p of ["app/page.tsx", "app/tasks/page.tsx", "app/agents/page.tsx", "app/agents/skills/page.tsx", "components/tasks.tsx", "components/agents.tsx", "components/skills.tsx", "components/form-ui.tsx"]) assert.ok(!/components\/styles"|\.\/styles"/.test(r(p)), p);
+});

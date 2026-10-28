@@ -1,8 +1,9 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { primaryBtn } from "./styles";
 
-const button = "rounded-md bg-accent-solid px-3 py-1.5 text-sm font-medium text-on-accent hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
+const button = primaryBtn;
 
 /** System admins only; the server enforces the same rule (app/api/updates). */
 export function UpdatesForm({ enabled, running }: { enabled: boolean; running: boolean }) {
@@ -22,7 +23,7 @@ export function UpdatesForm({ enabled, running }: { enabled: boolean; running: b
   };
   return (
     <div className="flex flex-wrap items-center gap-3" data-updates-form>
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" aria-label="Daily tool updates" checked={enabled} disabled={busy} onChange={(e) => void post({ enabled: e.target.checked }, e.target.checked ? "Daily updates enabled" : "Daily updates disabled")} /> Update agent tools daily at 4:00 AM ET</label>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="h-4 w-4 accent-emerald-500" aria-label="Daily tool updates" checked={enabled} disabled={busy} onChange={(e) => void post({ enabled: e.target.checked }, e.target.checked ? "Daily updates enabled" : "Daily updates disabled")} /> Update agent tools daily at 4:00 AM ET</label>
       <button className={button} disabled={busy || running} onClick={() => void post({ action: "run" }, "Update started")}>{running ? "Update running…" : "Run update now"}</button>
       {msg && <p role={msg.ok ? undefined : "alert"} className={`text-sm ${msg.ok ? "text-success" : "text-danger"}`}>{msg.text}</p>}
     </div>

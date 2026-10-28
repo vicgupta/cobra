@@ -8,6 +8,8 @@ import { getDb } from "@/lib/db";
 import { fmtNy, listNotificationAudit } from "@/lib/notifications";
 import { getUpdateRun, listUpdateRuns, nextScheduled, updateSettings } from "@/lib/tool-updates";
 import type { Actor } from "@/lib/workflows/store";
+import { tableCls, td, th, theadCls } from "@/components/styles";
+import { EmptyState } from "@/components/collab-view";
 
 export const metadata = { title: "Updates · Settings · Cobra" };
 
@@ -38,28 +40,28 @@ async function Body({ u, searchParams }: { u: Actor; searchParams: Promise<{ run
       </Card>
       <Card title={run ? `Before / after: ${run.runDate} (${run.kind}${run.triggeredBy && run.kind === "manual" ? ` by ${run.triggeredBy}` : ""})` : "Before / after"} subtitle={run ? `${run.startedAt ? `Started ${fmtNy(run.startedAt)}` : `Claimed ${fmtNy(run.createdAt)}`}${run.finishedAt ? ` · finished ${fmtNy(run.finishedAt)}` : ""} · ${run.status}${run.reason ? ` · ${run.reason}` : ""}` : "No updates have run yet."}>
         {run && (run.items.length ? (
-          <table className="w-full text-sm" data-update-compare>
-            <thead><tr className="text-left text-xs text-subtle"><th className="py-2">Tool</th><th>Before</th><th>After</th><th>Result</th><th>Time</th><th>Details</th></tr></thead>
+          <div className="-mx-5 overflow-x-auto"><table className={tableCls} data-update-compare>
+            <thead className={theadCls}><tr>{["Tool", "Before", "After", "Result", "Time", "Details"].map((h) => <th key={h} scope="col" className={th}>{h}</th>)}</tr></thead>
             <tbody className="divide-y divide-border">{run.items.map((i, k) => (
-              <tr key={k} data-update-tool={i.tool}>
-                <td className="py-2 font-medium">{i.label}<div className="text-xs font-normal text-subtle">{i.method}</div></td>
-                <td className="font-mono text-xs">{i.before ?? "—"}</td>
-                <td className="font-mono text-xs">{i.after ?? "—"}</td>
-                <td><Badge tone={RESULT_TONE[i.result as keyof typeof RESULT_TONE] ?? "gray"}>{label(i.result)}</Badge></td>
-                <td className="whitespace-nowrap text-xs text-muted">{fmtNy(i.at)}</td>
-                <td className="text-xs text-muted">{i.detail}</td>
+              <tr key={k} className="transition-colors hover:bg-surface-2/40" data-update-tool={i.tool}>
+                <td className={`${td} font-medium`}>{i.label}<div className="text-xs font-normal text-subtle">{i.method}</div></td>
+                <td className={`${td} font-mono text-xs`}>{i.before ?? "—"}</td>
+                <td className={`${td} font-mono text-xs`}>{i.after ?? "—"}</td>
+                <td className={td}><Badge tone={RESULT_TONE[i.result as keyof typeof RESULT_TONE] ?? "gray"}>{label(i.result)}</Badge></td>
+                <td className={`${td} whitespace-nowrap text-xs text-muted`}>{fmtNy(i.at)}</td>
+                <td className={`${td} text-xs text-muted`}>{i.detail}</td>
               </tr>
             ))}</tbody>
-          </table>
-        ) : <p className="text-sm text-subtle">{run.status === "running" || run.status === "waiting" ? "In progress…" : "No tools were checked in this run."}</p>)}
+          </table></div>
+        ) : <EmptyState title={run.status === "running" || run.status === "waiting" ? "In progress…" : "No tools were checked in this run."} />)}
       </Card>
       <Card title="History" subtitle="Every run is kept as a before/after snapshot. Pick one to compare.">
-        <ul className="space-y-1 text-xs" data-update-history>{runs.length ? runs.map((r) => (
+        <ul className="divide-y divide-border text-xs [&>li]:py-2" data-update-history>{runs.length ? runs.map((r) => (
           <li key={r.id}><Link className={`hover:underline ${run?.id === r.id ? "font-semibold" : "text-info"}`} href={`/settings/updates?run=${r.id}`}>{r.runDate} · {r.kind} · {fmtNy(r.startedAt ?? r.createdAt)}</Link> · {r.status}{r.reason ? ` (${r.reason})` : ""}</li>
         )) : <li className="text-subtle">None yet</li>}</ul>
       </Card>
       <Card title="Audit">
-        <ul className="space-y-1 text-xs" data-updates-audit>{audit.length ? audit.map((a, i) => <li key={i}>{fmtNy(a.at)} · {a.actorEmail} · {a.detail}</li>) : <li className="text-subtle">No changes yet</li>}</ul>
+        <ul className="divide-y divide-border text-xs [&>li]:py-2" data-updates-audit>{audit.length ? audit.map((a, i) => <li key={i}>{fmtNy(a.at)} · {a.actorEmail} · {a.detail}</li>) : <li className="text-subtle">No changes yet</li>}</ul>
       </Card>
     </div>
   );

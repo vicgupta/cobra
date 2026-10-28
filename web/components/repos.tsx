@@ -1,6 +1,8 @@
 import { Suspense } from "react";
 import { AuthGate } from "@/components/auth-gate";
 import { Card } from "@/components/ui";
+import { PageHeader } from "@/components/page-header";
+import { ListSkeleton } from "@/components/collab-view";
 import { RepoManager } from "@/components/workflows";
 import { canAddRepo, canEditRepo, canManageRepos, globalCeiling, listTeamRepos } from "@/lib/repos";
 import { actor, getDb } from "@/lib/workflows/server";
@@ -21,8 +23,8 @@ function Repos({ user }: { user: SessionUser }) {
 export function ReposView() {
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Repos</h1>
-      <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><AuthGate>{(u) => <Repos user={u} />}</AuthGate></Suspense>
+      <PageHeader title="Repos" />
+      <Suspense fallback={<ListSkeleton />}><AuthGate>{(u) => <Repos user={u} />}</AuthGate></Suspense>
     </div>
   );
 }
