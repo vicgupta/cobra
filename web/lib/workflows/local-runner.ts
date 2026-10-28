@@ -1,12 +1,15 @@
 // Basic local agent runner: a per-run scratch workspace (per team: <COBRA_TEAMS_ROOT>/<tenantId>/workspaces/<run-id>,
-// root default /home/cobra; legacy COBRA_WORKSPACES_DIR without a team), the chosen CLI run headless as the
-// service user with a timeout, output streamed into the step log. With GITHUB_TOKEN
+// root default /home/cobra; legacy COBRA_WORKSPACES_DIR without a team), the chosen CLI run headless with a
+// timeout, output streamed into the step log. With COBRA_LAUNCHER_SOCKET set, every git/CLI step runs through
+// the root-owned run launcher as the team's own Linux user (cobra-run-<tenantId>); in production without it the
+// runner refuses to run (it never falls back to running the CLIs as the service user). With GITHUB_TOKEN
 // and a team-registered repo it clones the repo and pushes changes to cobra/<run-id>
 // (never the default branch, never --force); otherwise it uses an empty scratch repo.
 // Pure Node (no Next imports) so tests can drive it with fake binaries.
 import { spawn } from "node:child_process";
 import { assertTeamWorkspace, legacyWorkspacesDir, teamWorkspacesDir } from "../workspaces";
-import { chmodSync, mkdirSync, readFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { launch, launchEnv, type LaunchEngine, type LaunchFile } from "./launcher-client";
 import { buildAuthJson, refreshedLogin } from "../codex-login";
 import path from "node:path";
 import type { AgentRunner, RepoCheck } from "./handlers";
@@ -49,7 +52,30 @@ export type LocalRunnerOptions = {
   providerDefaults?: (driver: Engine) => ProviderDefaults;
   /** Usage parsed from the engine's JSON output at the end of the agent step (display only). */
   onUsage?: (runKey: string, usage: Usage) => void;
+  /** Run launcher socket (default COBRA_LAUNCHER_SOCKET). Set: steps run as the team user via the launcher. */
+  launcherSocket?: string;
 };
+
+type Step = { engine: LaunchEngine; cmd: string; args: string[]; env: Env; log: (s: string) => void; timeoutMs?: number;
+  mkdir?: boolean; files?: LaunchFile[]; readBack?: string[]; rmAfter?: string[] };
+type StepResult = { code: number; out: string; files: Record<string, string | null> };
+
+/** Runs a step directly as this process's user (dev/tests): same workspace file semantics as the launcher's stage. */
+async function directStep(dir: string, s: Step, signal: AbortSignal): Promise<StepResult> {
+  if (s.mkdir) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  for (const f of s.files ?? []) {
+    const p = path.join(dir, f.path);
+    mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
+    (f.append ? appendFileSync : writeFileSync)(p, f.content);
+    if (f.mode) chmodSync(p, parseInt(f.mode, 8) & 0o700);
+  }
+  try {
+    const r = await run(s.cmd, s.args, { cwd: dir, env: s.env, signal, log: s.log, timeoutMs: s.timeoutMs });
+    const files: Record<string, string | null> = {};
+    for (const p of s.readBack ?? []) { try { files[p] = readFileSync(path.join(dir, p), "utf8"); } catch { files[p] = null; } }
+    return { ...r, files };
+  } finally { for (const p of s.rmAfter ?? []) rmSync(path.join(dir, p), { recursive: true, force: true }); }
+}
 
 /** Legacy shared dir (pre per-team); new runs use teamWorkspacesDir(tenantId) when the runner has a team. */
 export const workspacesDir = legacyWorkspacesDir;
@@ -76,7 +102,24 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     const root = opts.root ?? (opts.tenantId ? teamWorkspacesDir(opts.tenantId) : workspacesDir());
     const dir = path.join(root, runId);
     if (opts.tenantId && !opts.root) assertTeamWorkspace(opts.tenantId, dir);
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const sock = opts.launcherSocket ?? process.env.COBRA_LAUNCHER_SOCKET ?? "";
+    if (sock && !opts.tenantId) throw new Error("the run launcher needs a team: refusing to run");
+    if (!sock && process.env.NODE_ENV === "production") throw new Error("the run launcher is not configured (COBRA_LAUNCHER_SOCKET): refusing to run agent CLIs as the service user");
+    let made = false;
+    const step = async (s: Step): Promise<StepResult> => {
+      const first = !made; made = true;
+      if (!sock) return directStep(dir, { ...s, mkdir: s.mkdir || first }, signal);
+      const limit = s.timeoutMs ?? 30 * 60_000;
+      let t: ReturnType<typeof setTimeout> | undefined;
+      const ac = new AbortController();
+      const onAbort = () => ac.abort();
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (s.timeoutMs) t = setTimeout(() => { s.log(`\n[cobra] ${path.basename(s.cmd)} timed out after ${s.timeoutMs! / 1000}s; stopping\n`); ac.abort(); }, s.timeoutMs);
+      try {
+        return await launch(sock, { tenantId: opts.tenantId!, runId, engine: s.engine, args: s.args, env: launchEnv(s.env), workspace: dir,
+          timeoutSec: Math.ceil(limit / 1000) + 5, mkdir: s.mkdir || first, files: s.files, readBack: s.readBack, rmAfter: s.rmAfter }, { signal: ac.signal, log: s.log });
+      } finally { clearTimeout(t); signal.removeEventListener("abort", onAbort); }
+    };
     const note = (s: string) => log(`[cobra] ${s}\n`);
     const base: Env = { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: process.env.HOME ?? "/tmp", LANG: "C.UTF-8", GIT_TERMINAL_PROMPT: "0" };
     const git = opts.gitBin ?? "git";
@@ -87,7 +130,7 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       ? { ...base, GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader", GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}` }
       : base;
     const g = async (args: string[], cwd = dir) => {
-      const r = await run(git, args, { cwd, env: gitEnv, signal, log: () => {} });
+      const r = cwd === dir ? await step({ engine: "git", cmd: git, args, env: gitEnv, log: () => {} }) : await run(git, args, { cwd, env: gitEnv, signal, log: () => {} });
       if (r.code !== 0) throw new Error(`git ${args[0]} failed: ${r.out.trim().slice(-400)}`);
       return r.out;
     };
@@ -106,12 +149,10 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     if (!cloned) await g(["init", "-q"]);
     await g(["checkout", "-q", "-b", branch]);
     // SOP skills: the full SOP body as a workspace file, kept out of commits via .git/info/exclude.
+    // Written by the engine step (as the team user when launched), before the CLI starts.
+    const pre: LaunchFile[] = [];
     if (typeof w.sop_body === "string" && w.sop_body) {
-      mkdirSync(path.join(dir, ".cobra"), { recursive: true, mode: 0o700 });
-      writeFileSync(path.join(dir, ".cobra", "SOP.md"), w.sop_body, { mode: 0o600 });
-      mkdirSync(path.join(dir, ".git", "info"), { recursive: true });
-      const ex = path.join(dir, ".git", "info", "exclude");
-      writeFileSync(ex, `${existsSync(ex) ? readFileSync(ex, "utf8") : ""}\n.cobra/\n`);
+      pre.push({ path: ".cobra/SOP.md", content: w.sop_body, mode: "600" }, { path: ".git/info/exclude", content: "\n.cobra/\n", append: true });
       note("wrote the SOP to .cobra/SOP.md (excluded from git)");
     }
 
@@ -121,13 +162,13 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     // else GITHUB_TOKEN; none without a cloned repo. git inside the workspace authenticates via gitEnv.
     const env: Env = cloned && token ? { ...gitEnv, GH_TOKEN: token, GITHUB_TOKEN: token } : { ...base };
     const ghNote = cloned && token ? `\n\n[Cobra] GitHub access for ${repo} is in $GH_TOKEN (also $GITHUB_TOKEN). If the gh CLI is not installed, call the GitHub REST API (https://api.github.com) with curl and "Authorization: Bearer $GH_TOKEN". Never print the token.` : "";
-    const lastFile = path.join(dir, ".git", "cobra-last-message.txt");
+    const LAST = ".git/cobra-last-message.txt", lastFile = path.join(dir, LAST);
     const pd = opts.providerDefaults?.(driver) ?? { model: null, effort: null };
     const own = typeof w.model === "string" && w.model.trim() ? w.model.trim() : null;
     const model = own ?? pd.model;
     const effort = pd.effort;
     let cmd: string, args: string[];
-    let codexHome: { dir: string; file: string; login: string } | null = null;
+    let codexHome: { rel: string; file: string; login: string } | null = null;
     // Team isolation (Job 11): the server env file and the cobra user's CLI logins (~/.codex, ~/.claude) are a
     // fallback for team 1 only (and runners without a team, i.e. tests). Other teams use only their own rows.
     const fallback = opts.tenantId === undefined || opts.tenantId === ENV_FALLBACK_TEAM;
@@ -147,13 +188,10 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
         if (ra.codexLogin) {
           // The CLI only accepts a ChatGPT login as CODEX_HOME/auth.json. It lives under .git (never committed)
           // for this run only, mode 600, and is removed in the finally below.
-          const home = path.join(dir, ".git", "cobra-codex-home");
-          mkdirSync(home, { recursive: true, mode: 0o700 });
-          const file = path.join(home, "auth.json");
-          writeFileSync(file, buildAuthJson(ra.codexLogin), { mode: 0o600 });
-          chmodSync(file, 0o600);
-          codexHome = { dir: home, file, login: ra.codexLogin };
-          env.CODEX_HOME = home;
+          const rel = ".git/cobra-codex-home", file = `${rel}/auth.json`;
+          pre.push({ path: file, content: buildAuthJson(ra.codexLogin), mode: "600" });
+          codexHome = { rel, file, login: ra.codexLogin };
+          env.CODEX_HOME = path.join(dir, rel);
         }
         note(ra.note);
       }
@@ -171,15 +209,13 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     note(`running ${driver} headless (model: ${model ?? "default"}${!own && model ? " (provider default)" : ""}, effort: ${effort ?? "default"})`);
     const limit = timeoutMs ?? opts.defaultTimeoutMs ?? 10 * 60_000;
     const uc = usageCollector(driver, model, log);
-    let r: { code: number; out: string };
-    try { r = await run(cmd, args, { cwd: dir, env, signal, log: (s) => uc.write(s), timeoutMs: limit }); } finally {
-      if (codexHome) {
-        try {
-          const fresh = refreshedLogin(codexHome.login, existsSync(codexHome.file) ? readFileSync(codexHome.file, "utf8") : null);
-          if (fresh) { opts.onCodexLoginRefresh?.(fresh); note("codex refreshed the ChatGPT login; saved the new one (encrypted)"); }
-        } catch (e) { note(`the refreshed ChatGPT login wasn't saved: ${(e as Error).message}`); }
-        rmSync(codexHome.dir, { recursive: true, force: true });
-      }
+    const r = await step({ engine: driver, cmd, args, env, log: (s) => uc.write(s), timeoutMs: limit, files: pre,
+      readBack: [LAST, ...(codexHome ? [codexHome.file] : [])], rmAfter: codexHome ? [codexHome.rel] : [] });
+    if (codexHome) {
+      try {
+        const fresh = refreshedLogin(codexHome.login, r.files[codexHome.file] ?? null);
+        if (fresh) { opts.onCodexLoginRefresh?.(fresh); note("codex refreshed the ChatGPT login; saved the new one (encrypted)"); }
+      } catch (e) { note(`the refreshed ChatGPT login wasn't saved: ${(e as Error).message}`); }
     }
     const parsed = uc.finish();
     { try { opts.onUsage?.(runId, parsed.usage ?? uc.orNull()); } catch (e) { note(`usage not recorded: ${(e as Error).message}`); } }
@@ -194,7 +230,8 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       if (cloned) { await g(["push", "-q", "origin", `${branch}:refs/heads/${branch}`]); pushed = true; note(`pushed ${branch} to ${repo}`); }
       else note("not pushed (no clone)");
     } else note("no file changes");
-    const summary = existsSync(lastFile) ? readFileSync(lastFile, "utf8").trim() : (parsed.text || r.out).trim().slice(-2000);
+    const last = r.files[LAST];
+    const summary = typeof last === "string" ? last.trim() : (parsed.text || r.out).trim().slice(-2000);
     return { driver, workspace: dir, branch, pushed, files: files.join(","), summary };
   };
 }
