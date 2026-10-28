@@ -26,9 +26,10 @@ test("Settings tabs use the shared Repos-style tokens; Dashboard/Tasks/Agents un
 
 test("Settings > Providers mirrors Settings > Repos structure (PageHeader, Suspense skeleton, Card tables, inline row edit)", () => {
   const r = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
-  const v = r("components/providers.tsx"), repos = r("components/repos.tsx"), ie = r("components/inline-edit.tsx");
+  const v = r("components/providers.tsx"), repos = r("components/repos.tsx"), f = r("components/provider-credentials-form.tsx");
   for (const s of ["<PageHeader title=", "<Suspense fallback={<ListSkeleton />}>", "<AuthGate>", "<Card title=", "-mx-5 overflow-x-auto", "theadCls", "hover:bg-surface-2/40"]) { assert.ok(v.includes(s), s); }
   for (const s of ["<PageHeader title=", "<Suspense fallback={<ListSkeleton />}>", "<Card title="]) assert.ok(repos.includes(s), s);
-  assert.ok(v.includes('<InlineEdit label="Edit defaults">') && ie.includes("ghostBtn") && ie.includes("Cancel"));
+  assert.ok(v.includes("<DefaultsAction ") && /Edit defaults/.test(f) && f.includes("ghostBtn") && f.includes("Cancel"), "Edit defaults row action");
+  assert.ok(v.includes("<CustomProvidersTable ") && !v.includes("COBRA_UI_PREVIEW") && !/mock data/i.test(v + f), "real custom providers, no preview badge");
   assert.ok(!/secretValue\([^)]*\)\s*[}<]/.test(v), "never renders a secret value");
 });

@@ -108,12 +108,12 @@ test("Settings > Providers UI: no helper copy, Sources or Recent provider change
   assert.match(readFileSync(new URL("../lib/providers.ts", import.meta.url), "utf8"), /export function listProviderAudit/);
 });
 
-test("Settings > Providers redesign: one card per provider with badge, segmented auth, pills, inline replace", async () => {
+test("Settings > Providers redesign: Repos-style credentials table, row buttons open inputs on click, same APIs", async () => {
   const { readFileSync } = await import("node:fs");
   const v = readFileSync(new URL("../components/providers.tsx", import.meta.url), "utf8");
   const f = readFileSync(new URL("../components/provider-credentials-form.tsx", import.meta.url), "utf8");
-  for (const s of ["data-cred-provider={e}", "data-provider-connected", '"Connected"', '"Not connected"', '"From server env"', '"Not set"', "data-cred-meta", "data-primary"]) assert.ok(v.includes(s), s);
-  for (const s of ['role="radiogroup"', "type=\"radio\"", "aria-expanded", "from \"./styles\"", '"Replace"', "data-confirm-delete", "disabled={busy || !value.trim()}", 'role={msg.ok ? "status" : "alert"}']) assert.ok(f.includes(s), s);
-  // same APIs as before (UI only)
-  assert.ok(f.includes("/api/providers/${engine}/credentials") && f.includes("/api/providers/${engine}/auth"));
+  for (const s of ["<CredentialsTable rows={rows} canManage={mgr} />", "last4: mgr ? c.last4 : null", "<ModelChips models={p.models} />", "<CustomProvidersTable rows={custom} canManage={mgr} />"]) assert.ok(v.includes(s), s);
+  for (const s of ["From server env", "Auth method", "Edit method", "Clear token", 'type="password"', "Cancel", "from \"./styles\"", "Test connection", "Only team members can add custom providers."]) assert.ok(f.includes(s), s);
+  // same credential APIs as before
+  assert.ok(f.includes("/api/providers/${") && f.includes("/credentials") && f.includes("/auth"));
 });
