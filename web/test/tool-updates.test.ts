@@ -8,13 +8,14 @@ import { buildDailyReport } from "../lib/notifications";
 import * as U from "../lib/tool-updates";
 
 const P = "/h/.local";
-type World = { versions: Record<string, string>; latest: Record<string, string>; brokenAfterSwap?: string[]; stagedFails?: string[]; activeRuns?: number; cursorLatest?: string; calls: string[] };
+type World = { versions: Record<string, string>; latest: Record<string, string>; brokenAfterSwap?: string[]; stagedFails?: string[]; activeRuns?: number; cursorLatest?: string; calls: string[]; npmPrefix?: string };
 
 /** A fake HOME: package dirs carry a version; bins resolve to their package dir. */
 function mockOps(w: World): U.Ops {
   const dirs = new Map<string, string>(); // dir path -> version
   const links = new Map<string, string>();
-  for (const t of U.NPM_TOOLS) { dirs.set(`${P}/lib/node_modules/${t.pkg}`, w.versions[t.tool]); links.set(`${P}/bin/${t.bin}`, `../lib/node_modules/${t.pkg}/bin/${t.bin}`); }
+  const NP = w.npmPrefix ?? P;
+  for (const t of U.NPM_TOOLS) { dirs.set(`${NP}/lib/node_modules/${t.pkg}`, w.versions[t.tool]); links.set(`${NP}/bin/${t.bin}`, `../lib/node_modules/${t.pkg}/bin/${t.bin}`); }
   const cv = `${P}/share/cursor-agent/versions/${w.versions.cursor}`; dirs.set(cv, w.versions.cursor);
   links.set(`${P}/bin/cursor-agent`, `${cv}/cursor-agent`); links.set(`${P}/bin/agent`, `${cv}/cursor-agent`);
   let tmp = 0; const files = new Map<string, string>();
@@ -25,7 +26,7 @@ function mockOps(w: World): U.Ops {
   };
   const pkgDirOf = (p: string) => [...dirs.keys()].find((d) => p.startsWith(d + "/"));
   return {
-    env: { HOME: "/h", PATH: "/usr/bin", OPENROUTER_API_KEY: "sk-or-secret-should-not-pass" },
+    env: { HOME: "/h", PATH: "/usr/bin", OPENROUTER_API_KEY: "sk-or-secret-should-not-pass", ...(w.npmPrefix ? { COBRA_NPM_TOOLS_PREFIX: w.npmPrefix } : {}) },
     async run(cmd, args, o) {
       w.calls.push(`${cmd} ${args.join(" ")}`);
       assert.ok(!o?.env || !("OPENROUTER_API_KEY" in o.env), "secrets are not passed to tools");
@@ -100,6 +101,18 @@ test("npm tools: staged install, atomic swap, before/after recorded; unchanged w
   assert.equal(it["openrouter-models"].result, "skipped");
   assert.match(it["openrouter-models"].detail ?? "", /ON HOLD/);
   assert.equal(it["opencode-zen"].after?.startsWith("2 models"), true);
+});
+
+test("shared npm prefix (COBRA_NPM_TOOLS_PREFIX, run users): npm CLIs staged+swapped there; Cursor stays in ~/.local", async () => {
+  const { db, ops, world } = setup({ npmPrefix: "/opt/cobra-tools" });
+  await U.maybeRunDailyUpdate(db, ops, ny("2026-10-27T04:00:00-04:00"));
+  const it = Object.fromEntries(items(db).map((i) => [i.tool, i]));
+  assert.deepEqual([it["claude-code"].after, it["claude-code"].result], ["2.1.320", "changed"]);
+  assert.equal(it.codex.result, "unchanged");
+  assert.ok(world.calls.some((c) => /^npm i -g --prefix \/opt\/cobra-tools\/share\/cobra-updates\/claude-code-\d+ /.test(c)), "stages inside the shared prefix");
+  assert.equal(ops.exists("/opt/cobra-tools/lib/node_modules/@anthropic-ai/claude-code.cobra-prev"), true);
+  assert.ok(world.calls.includes("/opt/cobra-tools/bin/opencode models opencode --refresh"));
+  assert.equal(it.cursor.result, "unchanged");
 });
 
 test("rollback: new version fails --version after swap -> previous restored, marked rolled_back", async () => {
