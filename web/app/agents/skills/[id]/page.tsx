@@ -54,6 +54,7 @@ async function Body({ u, params }: { u: Actor; params: PageProps<"/agents/skills
         {d.can.edit && <Link href={`/agents/skills/${s.id}/edit`} className="ml-auto rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-soft hover:bg-surface-2">Edit</Link>}
       </div>
       {s.description ? <p className="text-sm text-fg-soft">{s.description}</p> : null}
+      {s.sourceUrl ? <p className="text-xs text-subtle" data-testid="source-url">Imported from <a className="break-all underline" href={s.sourceUrl} target="_blank" rel="noreferrer noopener">{s.sourceUrl}</a></p> : null}
       <div>
         <Card title="Run" subtitle="A test run goes through the steps without changing anything.">
           {d.effective.errors.length ? <p className="text-sm text-danger">{d.effective.errors[0]}</p> : <RunSkill id={s.id} inputs={s.plan.inputs as never} />}

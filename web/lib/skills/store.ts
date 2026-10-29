@@ -9,16 +9,18 @@ import { getAgent } from "../agents";
 import { designatedLead, isSystemAdmin } from "../collab";
 import { canonical, MAX_BODY_BYTES, MAX_DEPTH, validatePlan, type Plan } from "./plan";
 import { sections } from "./sections";
+import { cleanSourceUrl } from "../url-import";
 
 export type Actor = { id: number; email: string; role: "admin" | "team_lead" | "member"; tenantId: number; name?: string };
 export type Skill = {
   id: number; tenantId: number; name: string; version: number; description: string; kind: "sop" | "master"; body: string; plan: Plan;
   contentHash: string; builtin: boolean; createdBy: number | null; updatedBy: number | null; createdAt: number; updatedAt: number;
+  /** The https URL it was imported from (Import from URL), else null. */ sourceUrl: string | null;
 };
 export class SkillError extends Error { constructor(public status: number, public errors: string[]) { super(errors.join("; ")); } }
 
-type Row = { id: number; tenant_id: number; name: string; version: number; description: string; kind: "sop" | "master"; body: string; plan_json: string; content_hash: string; builtin: number; created_by: number | null; updated_by: number | null; created_at: number; updated_at: number };
-const fromRow = (r: Row): Skill => ({ id: r.id, tenantId: r.tenant_id, name: r.name, version: r.version, description: r.description, kind: r.kind, body: r.body, plan: JSON.parse(r.plan_json), contentHash: r.content_hash, builtin: !!r.builtin, createdBy: r.created_by, updatedBy: r.updated_by, createdAt: r.created_at, updatedAt: r.updated_at });
+type Row = { id: number; tenant_id: number; name: string; version: number; description: string; kind: "sop" | "master"; body: string; plan_json: string; content_hash: string; builtin: number; created_by: number | null; updated_by: number | null; created_at: number; updated_at: number; source_url?: string | null };
+const fromRow = (r: Row): Skill => ({ id: r.id, tenantId: r.tenant_id, name: r.name, version: r.version, description: r.description, kind: r.kind, body: r.body, plan: JSON.parse(r.plan_json), contentHash: r.content_hash, builtin: !!r.builtin, createdBy: r.created_by, updatedBy: r.updated_by, createdAt: r.created_at, updatedAt: r.updated_at, sourceUrl: r.source_url ?? null });
 
 export const NAME = /^[a-z][a-z0-9-]{0,62}$/;
 
@@ -160,7 +162,7 @@ export function planFromBody(body: string): Plan {
 /** True when a stored plan is exactly what the body would produce (so edits re-derive it). */
 const isDerived = (s: Skill) => s.kind !== "master" && [planFromBody(s.body), derivePlan()].some((p) => { const v = validatePlan(p); return v.ok && JSON.stringify(v.plan) === JSON.stringify(s.plan); });
 
-export type SaveInput = { name?: unknown; description?: unknown; body?: unknown; plan?: unknown; kind?: unknown };
+export type SaveInput = { name?: unknown; description?: unknown; body?: unknown; plan?: unknown; kind?: unknown; /** create only */ sourceUrl?: unknown };
 
 function prepare(db: DB, tenantId: number, b: SaveInput, current?: Skill, check = false) {
   const errors: string[] = [];
@@ -203,13 +205,16 @@ export function checkSkill(db: DB, tenantId: number, b: SaveInput): { ok: true; 
 /** Creates a skill in the actor's team. Any member or team lead can create. Returns the new skill. */
 export function createSkill(db: DB, u: Actor, b: SaveInput, now = Date.now()): Skill {
   const p = prepare(db, u.tenantId, b);
+  let sourceUrl: string | null;
+  try { sourceUrl = cleanSourceUrl(b.sourceUrl); } catch (e) { throw new SkillError(400, [(e as Error).message]); }
   if (skillByName(db, u.tenantId, p.name)) throw new SkillError(409, [`a skill named '${p.name}' already exists in your team`]);
   const hash = ownHash(p);
-  const r = db.prepare("INSERT INTO skills (tenant_id, name, version, description, kind, body, plan_json, content_hash, created_by, updated_by, created_at, updated_at) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(u.tenantId, p.name, p.description, p.kind, p.body, JSON.stringify(p.plan), hash, u.id, u.id, now, now);
+  const r = db.prepare("INSERT INTO skills (tenant_id, name, version, description, kind, body, plan_json, content_hash, created_by, updated_by, created_at, updated_at, source_url) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(u.tenantId, p.name, p.description, p.kind, p.body, JSON.stringify(p.plan), hash, u.id, u.id, now, now, sourceUrl);
   const id = Number(r.lastInsertRowid);
   db.prepare("INSERT INTO skill_versions (skill_id, version, description, body, plan_json, content_hash, saved_by, saved_at, note) VALUES (?, 1, ?, ?, ?, ?, ?, ?, 'created')").run(id, p.description, p.body, JSON.stringify(p.plan), hash, u.id, now);
   audit(db, u, "skill_create", id, `${p.name} v1 @${hash.slice(0, 12)}`);
+  if (sourceUrl) audit(db, u, "skill_import", id, `imported from ${sourceUrl}`);
   return getSkill(db, { role: "admin", tenantId: u.tenantId }, id)!;
 }
 

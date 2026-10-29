@@ -774,6 +774,21 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     ALTER TABLE notification_settings ADD COLUMN oneoff_date TEXT;
     ALTER TABLE notification_settings ADD COLUMN oneoff_hour INTEGER;
     ALTER TABLE notification_settings ADD COLUMN oneoff_sent_at INTEGER;`),
+  // 34 (Import from URL): additive only. source_url = the https URL a skill / team agent was imported from
+  // (null when written by hand). agent_audit records agent imports ("imported from <url>").
+  (db) => db.exec(`ALTER TABLE skills ADD COLUMN source_url TEXT;
+    ALTER TABLE team_agents ADD COLUMN source_url TEXT;
+    CREATE TABLE agent_audit (
+      id INTEGER PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email TEXT NOT NULL,
+      action TEXT NOT NULL,
+      agent_name TEXT NOT NULL,
+      detail TEXT NOT NULL DEFAULT '',
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX agent_audit_tenant ON agent_audit(tenant_id, at);`),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge } from "./ui";
+import { ImportFromUrl, ImportNotice, type ImportResponse } from "./import-url";
 import { button, call, ConfirmDialog, danger, EmptyState, ghost, sentence, td, th } from "./form-ui";
 
 const btn = "rounded-md border border-border-strong px-3 py-1.5 text-sm text-fg-soft hover:bg-surface-2 disabled:opacity-50";
@@ -48,9 +49,18 @@ export function SkillEditor({ id, initial, starters = [] }: { id?: number; initi
     if (typed && !window.confirm("Replace what you've typed with this template?")) return;
     setPicked(key); setName(next.name); setDescription(next.description); setBody(next.body); setKind(s?.kind); setFilled(next);
   };
+  const [imported, setImported] = useState<ImportResponse | null>(null);
+  /** Import from URL: pre-fill the form (editable); the source URL goes with the create. */
+  const onImported = (r: ImportResponse) => {
+    const sk = r.skill as { name: string; description: string; body: string } | undefined;
+    if (!sk) return;
+    const typed = (name && name !== filled.name) || (description && description !== filled.description) || (body.trim() && body !== filled.body);
+    if (typed && !window.confirm("Replace what you've typed with the imported skill?")) return;
+    setPicked(""); setKind(undefined); setName(sk.name); setDescription(sk.description); setBody(sk.body); setFilled(sk); setImported(r);
+  };
   const save = async () => {
     setBusy(true); setErrors([]);
-    const r = id ? await post(`/api/skills/${id}`, { description, body }, "PUT") : await post("/api/skills", { name, description, body, kind });
+    const r = id ? await post(`/api/skills/${id}`, { description, body }, "PUT") : await post("/api/skills", { name, description, body, kind, ...(imported?.sourceUrl ? { sourceUrl: imported.sourceUrl } : {}) });
     setBusy(false);
     if (!r.ok) { setErrors((r.j.errors as string[]) ?? [String(r.j.error ?? `error ${r.status}`)]); return; }
     const sid = (r.j.skill as { id: number }).id;
@@ -58,6 +68,8 @@ export function SkillEditor({ id, initial, starters = [] }: { id?: number; initi
   };
   return (
     <div className="space-y-4">
+      {!id && <ImportFromUrl endpoint="/api/skills/import" what="SKILL.md" examples="A Claude-format SKILL.md: a GitHub folder or file, raw.githubusercontent.com, a gist, or any https link. Private GitHub repos use your team's repo token." onImported={onImported} />}
+      {!id && imported?.sourceUrl && <ImportNotice sourceUrl={imported.sourceUrl} warnings={imported.warnings} errors={imported.errors} />}
       {!id && starters.length > 0 && <div className="text-sm">
         <label className="flex flex-wrap items-center gap-2"><span className="text-muted">Start from a template</span>
           <select className="rounded-md border border-border-strong bg-bg px-3 py-1.5 text-sm text-fg" data-testid="template" value={picked} onChange={(e) => start(e.target.value)}>

@@ -4,39 +4,17 @@
 // SSRF guard). COBRA_CP_TEST_ALLOW_HOSTS (comma-separated host[:port]) skips the address check for those
 // hosts; it is meant for local previews against a mock server and is not set in production.
 // The key is sent only as a Bearer header and never echoed: errors are reduced to fixed messages.
-import { lookup as dnsLookup } from "node:dns/promises";
-import { isIP } from "node:net";
 import { checkBaseUrl, checkModels } from "./provider-credentials";
 import { CollabError } from "./collab";
+import { BlockedHostError, guardPublicHost, isBlockedAddress } from "./safe-fetch";
 
+export { isBlockedAddress };
 export type TestResult = { ok: true; modelCount: number | null; ms: number; model: string } | { ok: false; error: string; ms: number };
 export type TestDeps = { fetch?: typeof fetch; lookup?: (host: string) => Promise<string[]>; now?: () => number; timeoutMs?: number; allowHosts?: string[] };
 
-const defaultLookup = async (host: string) => (await dnsLookup(host, { all: true, verbatim: true })).map((a) => a.address);
-
-/** True for addresses a server-side request must never reach. */
-export function isBlockedAddress(ip: string): boolean {
-  let a = ip.toLowerCase().replace(/^\[|\]$/g, "");
-  const mapped = a.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) a = mapped[1];
-  if (isIP(a) === 4) {
-    const [p, q] = a.split(".").map(Number);
-    return p === 0 || p === 10 || p === 127 || (p === 100 && q >= 64 && q <= 127) || (p === 169 && q === 254) || (p === 172 && q >= 16 && q <= 31) || (p === 192 && q === 168) || (p === 198 && (q === 18 || q === 19)) || p >= 224;
-  }
-  if (isIP(a) === 6) return a === "::" || a === "::1" || /^f[cd]/.test(a) || /^fe[89ab]/.test(a) || /^ff/.test(a) || a.startsWith("::ffff:") || a.startsWith("64:ff9b:");
-  return true;
-}
-
-const envAllow = () => (process.env.COBRA_CP_TEST_ALLOW_HOSTS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
-
 async function guardHost(u: URL, deps: TestDeps) {
-  const allow = deps.allowHosts ?? envAllow();
-  if (allow.includes(u.host.toLowerCase()) || allow.includes(u.hostname.toLowerCase())) return;
-  const host = u.hostname.replace(/^\[|\]$/g, "");
-  if (/^localhost$|\.localhost$|\.local$|\.internal$/i.test(host)) throw new CollabError(400, "base URL must be a public host (local and private addresses are blocked)");
-  let addrs: string[];
-  try { addrs = isIP(host) ? [host] : await (deps.lookup ?? defaultLookup)(host); } catch { throw new CollabError(400, `could not resolve ${host}`); }
-  if (!addrs.length || addrs.some(isBlockedAddress)) throw new CollabError(400, "base URL must be a public host (local and private addresses are blocked)");
+  try { await guardPublicHost(u, deps, "base URL must be a public host (local and private addresses are blocked)"); }
+  catch (e) { if (e instanceof BlockedHostError) throw new CollabError(400, e.message); throw e; }
 }
 
 function describe(status: number, body: string, model: string): string {

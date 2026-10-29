@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Badge } from "./ui";
 import { button, call, ConfirmDialog, danger, EmptyState, Field, ghost, input, nameProblem, Segmented, sentence, slug, td, th } from "./form-ui";
+import { ImportFromUrl, ImportNotice, type ImportResponse } from "./import-url";
 import { ENGINES, ENGINE_LABEL, isEngine, UNSUPPORTED_ENGINE } from "@/lib/engines";
 
 // Mirrors AGENT_PROMPT_MAX / AGENT_DESCRIPTION_MAX in lib/agents.ts (server-only module).
@@ -14,7 +15,7 @@ const PROMPT_EXAMPLE = "You are a careful code reviewer. Read the diff on the cu
 const ENGINE: Record<string, string> = ENGINE_LABEL;
 
 export type AgentView = { name: string; engine: string; model: string | null; description: string | null; prompt: string; defaultRepo: string | null; skillRef?: string | null;
-  cron?: string | null; cronMode?: "simulated" | "real"; contentHash: string; createdByEmail: string | null; createdAt?: number; canEdit: boolean };
+  cron?: string | null; cronMode?: "simulated" | "real"; contentHash: string; sourceUrl?: string | null; createdByEmail: string | null; createdAt?: number; canEdit: boolean };
 /** A skill an agent can run: "sop:<id>" (a team skill). */
 export type SkillOption = { ref: string; label: string; kind: "sop"; href?: string };
 
@@ -44,21 +45,32 @@ function AgentForm({ initial, repos, models, skills, onDone }: { initial?: Agent
   const [busy, setBusy] = useState(false);
   const router = useRouter();
   const idp = initial ? `agent-${initial.name}` : "agent-new";
+  const [imported, setImported] = useState<ImportResponse | null>(null);
+  const onImported = (r: ImportResponse) => {
+    const a = r.agent as { name: string; description: string; prompt: string; engine: string; model: string } | undefined;
+    if (!a) return;
+    if ((name || prompt.trim() || description) && !window.confirm("Replace what you've typed with the imported agent?")) return;
+    setKind("prompt"); setSkillRef(""); setName(a.name); setDescription(a.description); setPrompt(a.prompt); setEngine(a.engine); setModel(a.model); setImported(r);
+  };
   const nameErr = nameProblem(name) ?? (tried && !name ? "Give the agent a name" : null);
   const promptErr = tried && kind === "prompt" && !prompt.trim() ? "Write what the agent should do" : null;
   const skillErr = tried && kind === "skill" && !skillRef ? "Pick a skill" : null;
   const picked = skills.find((o) => o.ref === skillRef);
   return (
+    <div className="space-y-5">
+    {!initial && <ImportFromUrl endpoint="/api/import/agent" what="Agent file" examples="A Claude Code subagent .md (e.g. .claude/agents/reviewer.md): a GitHub file or folder, raw.githubusercontent.com, a gist, or any https link. Private GitHub repos use your team's repo token." onImported={onImported} />}
     <form className="space-y-5" noValidate onSubmit={async (e) => {
       e.preventDefault(); setTried(true);
       if (!name || nameProblem(name) || (kind === "prompt" ? !prompt.trim() : !skillRef)) return;
       setBusy(true);
-      const body = { name, engine, model: model || null, description: description.trim() || null, kind, ...(kind === "prompt" ? { prompt, skillRef: null } : { skillRef }), defaultRepo: repo || null };
+      const body = { name, engine, model: model || null, description: description.trim() || null, kind, ...(kind === "prompt" ? { prompt, skillRef: null } : { skillRef }), defaultRepo: repo || null, ...(!initial && imported?.sourceUrl ? { sourceUrl: imported.sourceUrl } : {}) };
       const r = initial ? await call(`/api/agents/${encodeURIComponent(initial.name)}`, "PATCH", body) : await call("/api/agents", "POST", body);
       setBusy(false);
       if (!r.ok) return setError(sentence(r.data.error ?? "Couldn't save the agent"));
       setError(null); onDone(); router.refresh();
     }}>
+      {!initial && imported?.sourceUrl && <ImportNotice sourceUrl={imported.sourceUrl} warnings={imported.warnings} errors={imported.errors} />}
+      {initial?.sourceUrl && <p className="text-xs text-subtle" data-testid="source-url">Imported from <a className="break-all underline" href={initial.sourceUrl} target="_blank" rel="noreferrer noopener">{initial.sourceUrl}</a></p>}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field id={`${idp}-name`} label="Name" error={nameErr} hint="Lowercase letters, numbers and dashes, e.g. reviewer">
           <input id={`${idp}-name`} name="name" autoFocus={!initial} className={input} placeholder="reviewer" value={name} aria-invalid={!!nameErr} onChange={(e) => setName(slug(e.target.value))} />
@@ -100,6 +112,7 @@ function AgentForm({ initial, repos, models, skills, onDone }: { initial?: Agent
         <button type="button" className={ghost} onClick={onDone}>Cancel</button>
       </div>
     </form>
+    </div>
   );
 }
 
@@ -157,7 +170,7 @@ export function AgentManager({ agents, repos, models, skills = [] }: { agents: A
               const s = a.skillRef ? skills.find((o) => o.ref === a.skillRef) : undefined;
               return [
                 <tr key={a.name} data-agent={a.name}>
-                  <td className={td}><div className="font-medium text-fg">{a.name}</div>{a.description && <div className="max-w-md text-xs text-subtle" data-description>{a.description}</div>}</td>
+                  <td className={td}><div className="font-medium text-fg">{a.name}</div>{a.description && <div className="max-w-md text-xs text-subtle" data-description>{a.description}</div>}{a.sourceUrl && <div className="max-w-md truncate text-xs text-subtle" data-source-url title={a.sourceUrl}>Imported from <a className="underline" href={a.sourceUrl} target="_blank" rel="noreferrer noopener">{a.sourceUrl.replace(/^https:\/\//, "")}</a></div>}</td>
                   <td className={td}>{a.skillRef ? <span data-agent-skill className="inline-flex items-center gap-2"><span className="text-fg-soft">{s?.label ?? "missing skill"}</span></span>
                     : <span data-agent-prompt className="text-fg-soft" title={a.prompt.slice(0, 400)}>Prompt</span>}</td>
                   <td className={td}>{isEngine(a.engine) ? <span className="text-fg-soft">{ENGINE[a.engine]}{a.model ? <span className="text-subtle"> · {a.model}</span> : null}</span> : <span data-unsupported-engine><Badge tone="gray">{a.engine}: {UNSUPPORTED_ENGINE}</Badge></span>}</td>
