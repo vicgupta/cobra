@@ -848,6 +848,63 @@ const MIGRATIONS: Array<(db: DB) => void> = [
       PRIMARY KEY (tenant_id, kind, period)
     );
     ALTER TABLE runs ADD COLUMN injected_lessons TEXT;`),
+  // 36: team API. Keys bound to one team + one repo (sha256 hash only; prefix for display), the repo each
+  // API-created skill/agent came from (API visibility), API run records (pending / started / re-runs), audit.
+  (db) => db.exec(`
+    CREATE TABLE api_keys (
+      id INTEGER PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      repo_id INTEGER NOT NULL REFERENCES team_repos(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      prefix TEXT NOT NULL,
+      key_hash TEXT NOT NULL UNIQUE,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      last_used_at INTEGER,
+      revoked_at INTEGER,
+      revoked_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX api_keys_tenant ON api_keys(tenant_id, repo_id);
+    CREATE TABLE api_objects (
+      kind TEXT NOT NULL CHECK (kind IN ('skill','agent')),
+      object_id INTEGER NOT NULL,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      repo_id INTEGER NOT NULL REFERENCES team_repos(id) ON DELETE CASCADE,
+      key_id INTEGER REFERENCES api_keys(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (kind, object_id)
+    );
+    CREATE INDEX api_objects_scope ON api_objects(tenant_id, repo_id, kind);
+    CREATE TABLE api_runs (
+      id TEXT PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      repo_id INTEGER NOT NULL REFERENCES team_repos(id) ON DELETE CASCADE,
+      key_id INTEGER REFERENCES api_keys(id) ON DELETE SET NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('skill','agent','engine')),
+      ref TEXT NOT NULL,
+      prompt TEXT NOT NULL DEFAULT '',
+      mode TEXT NOT NULL DEFAULT 'simulated',
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','started','cancelled')),
+      run_id TEXT REFERENCES runs(id) ON DELETE SET NULL,
+      rerun_of TEXT,
+      meta_json TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX api_runs_scope ON api_runs(tenant_id, repo_id, created_at DESC);
+    CREATE UNIQUE INDEX api_runs_run ON api_runs(run_id) WHERE run_id IS NOT NULL;
+    CREATE TABLE api_audit (
+      id INTEGER PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      repo_id INTEGER,
+      key_id INTEGER,
+      actor TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target TEXT NOT NULL DEFAULT '',
+      status INTEGER NOT NULL,
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX api_audit_tenant ON api_audit(tenant_id, at);`),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

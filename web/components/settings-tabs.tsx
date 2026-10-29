@@ -5,7 +5,7 @@ import { SubTabs } from "./tabs";
 import { currentUser } from "@/lib/auth/server";
 import { isSystemAdmin } from "@/lib/collab";
 
-const BASE = [["/settings/repos", "Repos"], ["/settings/providers", "Providers"], ["/settings/team", "Team"]] as const;
+const BASE = [["/settings/repos", "Repos"], ["/settings/providers", "Providers"], ["/settings/team", "Team"], ["/settings/api-keys", "API keys"]] as const;
 const NOTIFY = ["/settings/notifications", "Notifications"] as const;
 const TABS = [...BASE, NOTIFY] as const;
 const ADMIN_TABS = [...BASE, ["/settings/updates", "Updates"], NOTIFY] as const;

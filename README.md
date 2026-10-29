@@ -66,3 +66,7 @@ cd web && npm install && npm run dev
 ```
 
 Open http://localhost:3000. Pages: `/` (runs-first dashboard, example data), `/settings` (agent credentials, local dev storage in gitignored `web/data/`), `/workflows` (run workflows; the old `/runs/new` test run was retired and redirects to `/`).
+
+## Team API
+
+Teams can drive Cobra from scripts and CI with per-repo API keys made by team leads in **Settings → API keys**. Full reference: [docs/api.md](docs/api.md) (also served in the app at `/docs/api`, sign-in required).

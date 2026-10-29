@@ -14,6 +14,8 @@ export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (REMOVED.includes(pathname.replace(/\/$/, ""))) return new NextResponse("Not found", { status: 404 });
   if (PUBLIC.includes(pathname)) return withPath(req);
+  // Team API: bearer keys, checked by the route itself (401 without a valid key); cookies are not used there.
+  if (pathname.startsWith("/api/v1/")) return withPath(req);
   const token = req.cookies.get("cobra_session")?.value;
   if (token) return adminGate(req, pathname, token);
   if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Not signed in" }, { status: 401 });

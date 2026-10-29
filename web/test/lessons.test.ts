@@ -66,7 +66,7 @@ const deps = (db: DB, t: number): RunDeps => ({ handlers: builtinHandlers({ chec
 // ---------- migration 35 ----------
 test("migration 35: user_version 35, lessons/feedback/audit/jobs tables, runs.injected_lessons, indexes", () => {
   const { db } = setup();
-  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 35);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 36);
   for (const t of ["lessons", "lesson_feedback", "lesson_audit", "lesson_jobs"]) assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t), t);
   const cols = (db.prepare("PRAGMA table_info(lessons)").all() as Array<{ name: string; notnull: number }>);
   for (const c of ["tenant_id", "repo_id", "status", "title", "what_happened", "what_we_learned", "tags", "confidence", "signature", "source_run_ids", "flags_json", "stale_reason", "stale_run_id", "version", "supersedes_id", "approved_by"]) assert.ok(cols.some((x) => x.name === c), c);

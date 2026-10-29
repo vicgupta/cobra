@@ -16,9 +16,9 @@ test("sessions redirects keep the query string (307)", async () => {
   }
 });
 
-test("MVP Settings tabs: Repos, Providers, Team, (Updates for admins), Notifications; removed tabs are gone", () => {
+test("MVP Settings tabs: Repos, Providers, Team, API keys, (Updates for admins), Notifications; removed tabs are gone", () => {
   const tabs = src("components/settings-tabs.tsx");
-  assert.match(tabs, /const BASE = \[\["\/settings\/repos", "Repos"\], \["\/settings\/providers", "Providers"\], \["\/settings\/team", "Team"\]\]/);
+  assert.match(tabs, /const BASE = \[\["\/settings\/repos", "Repos"\], \["\/settings\/providers", "Providers"\], \["\/settings\/team", "Team"\], \["\/settings\/api-keys", "API keys"\]\]/);
   assert.match(tabs, /const TABS = \[\.\.\.BASE, NOTIFY\]/);
   assert.match(tabs, /const ADMIN_TABS = \[\.\.\.BASE, \["\/settings\/updates", "Updates"\], NOTIFY\]/);
   assert.match(tabs, /NOTIFY = \["\/settings\/notifications", "Notifications"\]/);
