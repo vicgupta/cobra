@@ -256,7 +256,7 @@ test("proxy lets /api/v1 through without a session cookie; other /api still 401"
   assert.equal((await proxy(new NextRequest("http://x/api/lessons"))).status, 401);
 });
 test("source: keys never logged; ingress route has no console calls", () => {
-  for (const f of ["lib/team-api/keys.ts", "lib/team-api/service.ts", "app/api/v1/teams/[teamId]/repos/[repoId]/[...path]/route.ts", "app/api/team/api-keys/route.ts"])
+  for (const f of ["lib/team-api/keys.ts", "lib/team-api/service.ts", "app/api/v1/teams/[teamId]/repos/[repoId]/[[...path]]/route.ts", "app/api/team/api-keys/route.ts"])
     assert.ok(!/console\./.test(readFileSync(f, "utf8")), f);
 });
 
@@ -283,4 +283,19 @@ test("docs: every implemented route is in docs/api.md (table + section + curl), 
   for (const h of ["Team confinement", "Generate (team leads only)", "Revoke", "Rate limits", "Audit", "How lessons apply", "Changelog", "Authorization: Bearer"]) assert.ok(md.includes(h), h);
   assert.match(readFileSync("../README.md", "utf8"), /docs\/api\.md/);
   assert.match(readFileSync("app/docs/api/page.tsx", "utf8"), /AuthGate/);
+});
+
+test("base path: GET returns key info (team, repo, endpoints); other methods 405; no key 401; mismatch 403 names the key's base", () => {
+  const s = setup();
+  const r = A(s, "GET", "");
+  assert.equal(r.status, 200);
+  const b = body(r);
+  assert.equal(b.team.id, s.lead.tenantId); assert.equal(b.repo.id, s.r1);
+  assert.ok(b.key.prefix.startsWith("cbk_")); assert.equal(JSON.stringify(b).includes(s.k1.plaintext), false);
+  assert.deepEqual(b.endpoints, ["skills", "agents", "runs"].map((x) => `/api/v1/teams/${s.lead.tenantId}/repos/${s.r1}/${x}`));
+  assert.equal(A(s, "POST", "").status, 405);
+  assert.equal(call(s, null, s.lead.tenantId, s.r1, "GET", "").status, 401);
+  const mm = call(s, s.k1.plaintext, s.lead.tenantId, s.r2, "GET", "");
+  assert.equal(mm.status, 403); assert.match(body(mm).error, new RegExp(`/teams/${s.lead.tenantId}/repos/${s.r1}`));
+  for (const x of ["skills", "agents", "runs"]) assert.equal(A(s, "GET", x).status, 200, x);
 });

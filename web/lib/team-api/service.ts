@@ -51,7 +51,7 @@ export function handle(db: DB, r: ApiReq, depsFor: DepsFor, now = Date.now()): A
     const key = bearer(r.auth);
     p = resolveKey(db, key, now);
     if (!p) { limited(db, API_LIMITS.authFail, r.ip || "unknown", now); return j(401, { error: key ? "invalid or revoked API key" : "missing API key (Authorization: Bearer <key>)" }); }
-    if (String(p.tenantId) !== r.teamId || String(p.repoId) !== r.repoId) return j(403, { error: "this key is not valid for this team and repo" });
+    if (String(p.tenantId) !== r.teamId || String(p.repoId) !== r.repoId) return j(403, { error: `this key is not valid for this team and repo; it is for /api/v1/teams/${p.tenantId}/repos/${p.repoId} (${p.repo})` });
     limited(db, API_LIMITS.key, String(p.keyId), now);
     const res = route(db, p, r, depsFor, now);
     if (r.method !== "GET") apiAudit(db, { tenantId: p.tenantId, repoId: p.repoId, keyId: p.keyId, actor: p.email, action: `${r.method} ${r.path[0] ?? ""}`, target: r.path.join("/"), status: res.status, at: now });
@@ -72,6 +72,13 @@ function route(db: DB, p: KeyPrincipal, r: ApiReq, depsFor: DepsFor, now: number
   const [res, rawId, action, ...rest] = r.path;
   if (rest.length) throw new ApiError(404, "not found");
   const u = actorOf(p), m = r.method, b = isObj(r.body) ? r.body : {};
+  if (res === undefined) {
+    // The base path itself: a small index so a first "does my key work?" call succeeds.
+    if (m !== "GET") return notAllowed("GET");
+    const team = db.prepare("SELECT name FROM tenants WHERE id = ?").get(p.tenantId) as { name: string } | undefined;
+    return j(200, { ok: true, team: { id: p.tenantId, name: team?.name ?? null }, repo: { id: p.repoId, name: p.repo }, key: { id: p.keyId, prefix: p.prefix },
+      endpoints: ["skills", "agents", "runs"].map((x) => `/api/v1/teams/${p.tenantId}/repos/${p.repoId}/${x}`) });
+  }
   if (res === "skills" || res === "agents") {
     const kind = res === "skills" ? "skill" : "agent";
     if (rawId === undefined) {

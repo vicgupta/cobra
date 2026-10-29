@@ -16,6 +16,18 @@ In the examples, `$COBRA`, `$TEAM`, `$REPO` and `$KEY` are placeholders, e.g. `C
 - Every run started through the API runs against the key's repo. Only runs created through the API are addressable.
 - A system admin has no bypass. Admins follow the same rules.
 
+
+### Check your key: `GET /api/v1/teams/{teamId}/repos/{repoId}`
+
+The bare base path returns the key's team, repo and endpoints. Use it as a first "does my key work?" call:
+
+```bash
+curl -H "Authorization: Bearer $KEY" https://nova.kantsy.com/api/v1/teams/2/repos/1
+# {"ok":true,"team":{"id":2,"name":"..."},"repo":{"id":1,"name":"owner/repo"},"key":{"id":1,"prefix":"cbk_..."},"endpoints":[...]}
+```
+
+`teamId` and `repoId` are numeric ids, not names. Settings → API keys shows each key's full base URL. If you get a 403, the error message tells you which base path the key is valid for.
+
 ## Keys
 
 ### Generate (team leads only)

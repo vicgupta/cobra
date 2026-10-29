@@ -1,14 +1,18 @@
 "use client";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import type { ApiKey } from "@/lib/team-api/keys";
 import { errText, fieldLabel, ghostBtn, inputCls, primaryBtn, selectCls, subtleDangerBtn, tableCls, tableWrap, td, th, theadCls } from "./styles";
 
 const when = (t: number | null) => (t ? new Date(t).toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" }) : "never");
 
+const noop = () => () => {};
+
 export function ApiKeysManager({ initial, repos, teamId, canManage }: { initial: ApiKey[]; repos: Array<{ id: number; repo: string }>; teamId: number; canManage: boolean }) {
   const [keys, setKeys] = useState(initial);
   const [name, setName] = useState(""), [repoId, setRepoId] = useState(repos[0]?.id ?? 0);
   const [fresh, setFresh] = useState<{ plaintext: string; key: ApiKey } | null>(null);
+  const origin = useSyncExternalStore(noop, () => window.location.origin, () => "");
+  const baseUrl = (k: { repoId: number }) => `${origin}/api/v1/teams/${teamId}/repos/${k.repoId}`;
   const [error, setError] = useState<string | null>(null), [busy, setBusy] = useState(false);
   const create = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError(null);
@@ -41,20 +45,24 @@ export function ApiKeysManager({ initial, repos, teamId, canManage }: { initial:
         <div className="rounded-lg border border-warning/50 bg-warning/10 p-3 text-sm" data-testid="api-key-once">
           <p className="font-medium">Copy this key now. It won&apos;t be shown again.</p>
           <code className="mt-2 block break-all rounded bg-bg px-2 py-1 font-mono">{fresh.plaintext}</code>
-          <p className="mt-2 text-fg-soft">Base URL: <code className="font-mono">/api/v1/teams/{teamId}/repos/{fresh.key.repoId}</code></p>
+          <p className="mt-2 text-fg-soft">Base URL (team {teamId}, repo {fresh.key.repo} = id {fresh.key.repoId}):</p>
+          <code className="mt-1 block break-all font-mono" data-testid="api-key-base-url">{baseUrl(fresh.key)}</code>
+          <p className="mt-2 text-fg-soft">Try it (replace $KEY with the key above):</p>
+          <code className="mt-1 block break-all font-mono text-xs" data-testid="api-key-curl">{`curl -H "Authorization: Bearer $KEY" ${baseUrl(fresh.key)}/skills`}</code>
           <div className="mt-2 flex gap-2"><button type="button" className={ghostBtn} onClick={() => navigator.clipboard?.writeText(fresh.plaintext)}>Copy</button><button type="button" className={ghostBtn} onClick={() => setFresh(null)}>Done</button></div>
         </div>
       )}
       <div className={tableWrap}>
         <table className={tableCls} data-testid="api-keys-table">
-          <thead className={theadCls}><tr><th className={th}>Name</th><th className={th}>Key</th><th className={th}>Repo</th><th className={th}>Created</th><th className={th}>Last used</th><th className={th}>Status</th>{canManage && <th className={th} />}</tr></thead>
+          <thead className={theadCls}><tr><th className={th}>Name</th><th className={th}>Key</th><th className={th}>Repo</th><th className={th}>Base URL</th><th className={th}>Created</th><th className={th}>Last used</th><th className={th}>Status</th>{canManage && <th className={th} />}</tr></thead>
           <tbody>
-            {keys.length === 0 && <tr><td className={td} colSpan={7}>No API keys yet.</td></tr>}
+            {keys.length === 0 && <tr><td className={td} colSpan={8}>No API keys yet.</td></tr>}
             {keys.map((k) => (
               <tr key={k.id} className="border-b border-border last:border-0">
                 <td className={td}>{k.name}</td>
                 <td className={`${td} font-mono`}>{k.prefix}…</td>
                 <td className={`${td} font-mono`}>{k.repo} <span className="text-subtle">#{k.repoId}</span></td>
+                <td className={`${td} break-all font-mono text-xs`} data-testid="api-key-row-url">{baseUrl(k)} <button type="button" className="ml-1 text-accent underline" onClick={() => navigator.clipboard?.writeText(baseUrl(k))}>Copy</button></td>
                 <td className={td}>{when(k.createdAt)}<div className="text-xs text-subtle">{k.createdBy ?? "unknown"}</div></td>
                 <td className={td}>{when(k.lastUsedAt)}</td>
                 <td className={td}>{k.revokedAt ? <span className="text-danger">revoked {when(k.revokedAt)}</span> : <span className="text-success">active</span>}</td>
