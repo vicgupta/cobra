@@ -14,6 +14,7 @@ import { attachedRepo, canEdit, canRun, findWorkflow, freeName, instancesOf, lis
 import type { GitHubFiles } from "./github-files";
 import { finalPrompt, getAgent } from "../agents";
 import type { Workflow } from "./schema";
+import { recordInjected, selectLessons, withLessons } from "../lessons/inject";
 
 export type Res = { status: number; body: unknown };
 const ok = (body: unknown, status = 200): Res => ({ status, body });
@@ -186,8 +187,12 @@ export function startRun(db: DB, user: Actor, name: string, body: StartBody | nu
     const r = resolveRunMeta(db, user, w, body, inputs);
     if (r.error) return err(400, r.error);
     const meta = r.meta ?? undefined;
+    // Team lessons for the run's exact team + repo, prepended to the run prompt (agent workflows with a prompt only).
+    const picked = meta?.prompt ? selectLessons(db, user.tenantId, meta.repo, `${name} ${meta.prompt}`) : { ids: [], block: "" };
+    if (meta && picked.block) meta.prompt = withLessons(meta.prompt, picked);
     const run = startWorkflowRun(db, { tenantId: user.tenantId, userId: user.id }, w, raw,
       { handlers: deps.handlers, resolveSecret: deps.resolveSecret, redact: deps.redact(), idPrefix: extra.idPrefix, meta, inputs });
+    recordInjected(db, run.id, picked.ids);
     return { ...ok({ id: run.id, startedAt: run.startedAt, inputs: run.inputs, workflow: name, engine: meta?.engine ?? null, promptSource: meta?.promptSource ?? null, mode: meta?.mode ?? null, repo: meta?.repo ?? null }, 201), run };
   } catch (e) {
     if (e instanceof WorkflowNotApprovedError) return err(409, e.message);
@@ -257,11 +262,15 @@ export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: stri
     steps: [{ id: "agent", name: label, uses: "agent", needs: [], with: { agent: label, mode, repo: repo ?? "" }, secrets: [], outputs: { summary: "${{ result.summary }}", branch: "${{ result.branch }}", pushed: "${{ result.pushed }}" }, retries: 0, continue_on_error: false }],
     outputs: { summary: "${{ steps.agent.outputs.summary }}", branch: "${{ steps.agent.outputs.branch }}", pushed: "${{ steps.agent.outputs.pushed }}" },
   };
-  const loaded: LoadedWorkflow = { workflow, file: wfName, source: "", hash, origin: "tenant", agents: { [label]: { engine, model: o.model ?? null, prompt, hash } }, agentErrors: [] };
+  // Team lessons (approved, this team + this repo only) prepended under a hard char cap; ids recorded on the run.
+  const picked = selectLessons(db, user.tenantId, repo, `${label} ${o.purpose ?? ""} ${prompt}`);
+  const runPrompt = withLessons(prompt, picked);
+  const loaded: LoadedWorkflow = { workflow, file: wfName, source: "", hash, origin: "tenant", agents: { [label]: { engine, model: o.model ?? null, prompt: runPrompt, hash } }, agentErrors: [] };
   // Cron runs have no user: created_by stays NULL and triggered_by records 'schedule'.
   const run = startWorkflowRun(db, o.scheduled ? { tenantId: user.tenantId, userId: null, triggeredBy: o.triggeredBy ?? "schedule" } : { tenantId: user.tenantId, userId: user.id }, loaded, {}, {
     handlers: deps.handlers, resolveSecret: deps.resolveSecret, redact: deps.redact(), preApproved: true, inputs: {},
-    meta: { engine, prompt, promptSource: o.agent ? "agent" : "custom", mode, repo },
+    meta: { engine, prompt: runPrompt, promptSource: o.agent ? "agent" : "custom", mode, repo },
   });
+  recordInjected(db, run.id, picked.ids);
   return { ...ok({ id: run.id, agent: o.agent ?? null, hash, engine, mode, repo: repo ?? null, prompt, startedAt: run.startedAt }, 201), run };
 }

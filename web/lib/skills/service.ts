@@ -1,4 +1,5 @@
 // API-facing operations for SOP skills: {status, body} results; every read is team-scoped (404 across teams).
+import { recordInjected, selectLessons } from "../lessons/inject";
 import type { DB } from "../db";
 import { planJsonSchema, MAX_BODY_BYTES, MAX_PLAN_BYTES, MAX_STEPS, MAX_DEPTH, type Plan } from "./plan";
 import { sections } from "./sections";
@@ -56,7 +57,9 @@ export const run = (db: DB, u: Actor, id: unknown, b: { inputs?: unknown; mode?:
   const repo = typeof b?.repo === "string" ? b.repo.trim() : "";
   if (repo && !/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new SkillError(400, ["repo must look like owner/name"]);
   const inputs = b?.inputs && typeof b.inputs === "object" && !Array.isArray(b.inputs) ? (b.inputs as Record<string, unknown>) : {};
-  const r = startSkillRun(db, { tenantId: s.tenantId, userId: u.id, email: u.email }, s, inputs, deps, { mode: b?.mode === "real" ? "real" : "simulated", repo });
+  const picked = selectLessons(db, s.tenantId, repo, `${s.name} ${Object.values(inputs).filter((v) => typeof v === "string").join(" ")}`);
+  const r = startSkillRun(db, { tenantId: s.tenantId, userId: u.id, email: u.email }, s, inputs, deps, { mode: b?.mode === "real" ? "real" : "simulated", repo, lessons: picked.block || undefined });
+  recordInjected(db, r.id, picked.ids);
   void r.done;
   return ok({ id: r.id, url: `/runs/${r.id}` }, 202);
 });

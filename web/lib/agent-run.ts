@@ -8,6 +8,7 @@ import { runAgent, runDirect, type Res, type RunDeps } from "./workflows/service
 import type { Actor } from "./workflows/store";
 import { startSkillRun } from "./skills/executor";
 import { getSkill, SkillError } from "./skills/store";
+import { recordInjected, selectLessons } from "./lessons/inject";
 
 export type TeamAgentRunBody = { repo?: unknown; mode?: unknown; instructions?: unknown };
 const err = (status: number, error: string): Res => ({ status, body: { error } });
@@ -51,7 +52,9 @@ function runSkillAgent(db: DB, user: Actor, a: TeamAgent, b: TeamAgentRunBody, d
   const inputs = extra ? { prompt: extra, instructions: extra, task: extra } : {};
   try {
     const who = o.scheduled ? { tenantId: user.tenantId, userId: null, email: o.triggeredBy ?? "schedule" } : { tenantId: user.tenantId, userId: user.id, email: user.email };
-    const r = startSkillRun(db, who, s, inputs, deps, { mode, repo: repo ?? "", parent: o.task ? `task ${o.task} · agent ${a.name}` : `agent ${a.name}` });
+    const picked = selectLessons(db, user.tenantId, repo, `${a.name} ${s.name} ${o.task ?? ""} ${extra}`);
+    const r = startSkillRun(db, who, s, inputs, deps, { mode, repo: repo ?? "", parent: o.task ? `task ${o.task} · agent ${a.name}` : `agent ${a.name}`, lessons: picked.block || undefined });
+    recordInjected(db, r.id, picked.ids);
     void r.done;
     return { status: 201, body: { id: r.id, url: `/runs/${r.id}`, agent: a.name, skill: `sop:${s.id}`, mode } };
   } catch (e) {

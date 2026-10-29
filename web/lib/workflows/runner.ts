@@ -7,6 +7,8 @@ import { executeWorkflow, LOG_CAP, redact as redactText, InputError, resolveInpu
 import type { LoadedWorkflow } from "./loader";
 import { capLog, LiveLog, mergeLogs } from "./step-log";
 import type { Engine } from "../engines";
+import { captureForRun } from "../lessons/capture";
+import { injectedFor } from "../lessons/inject";
 
 /** True when the workflow has at least one `uses: agent` step; only those runs carry engine/mode/repo/prompt/branch. */
 /** Agent steps, plus github pr_from_issue (it runs an agent): these get the engine/repo/mode run fields. */
@@ -95,6 +97,8 @@ export function startWorkflowRun(
       update.run("failed", null, null, error, Date.now(), id);
       return { status: "failed", steps: {}, outputs: {}, error } as RunResult;
     });
+  // Lesson capture once the run finishes (never fails the run).
+  void done.then(() => { try { captureForRun(db, id, redactList); } catch (e) { console.error("[cobra] lesson capture:", e instanceof Error ? e.message : e); } });
   return { id, startedAt, inputs, done };
 }
 
@@ -103,6 +107,7 @@ export type RunDetail = {
   id: string; workflow: string | null; workflowHash: string | null; status: string | null; error: string | null;
   startedAt: number; endedAt: number | null; createdBy: number | null; tenantId: number; outputs: Record<string, unknown> | null; events: RunEvent[];
   engine: string | null; promptSource: string | null; prompt: string | null; mode: string | null; repo: string | null; branch: string | null;
+  /** Team lessons prepended to this run (same team only). */ injectedLessons: Array<{ id: number; title: string; status: string }>;
 };
 
 export function getRunDetail(db: DB, id: string): RunDetail | null {
@@ -112,7 +117,7 @@ export function getRunDetail(db: DB, id: string): RunDetail | null {
   const events = (db.prepare("SELECT step_id AS stepId, status, attempt, output, truncated, at FROM run_step_events WHERE run_id = ? ORDER BY id").all(id) as Array<Omit<RunEvent, "truncated"> & { truncated: number }>)
     .map((e) => ({ ...e, truncated: !!e.truncated }));
   return { id: r.id, workflow: r.workflow, workflowHash: r.workflow_hash, status: r.status, error: r.error, startedAt: r.started_at, endedAt: r.ended_at, createdBy: r.created_by, tenantId: r.tenant_id, outputs: r.outputs_json ? JSON.parse(r.outputs_json) : null, events,
-    engine: r.engine ?? (r.agent || null), promptSource: r.prompt_source, prompt: r.prompt || null, mode: r.mode, repo: r.repo || null, branch: r.branch };
+    engine: r.engine ?? (r.agent || null), promptSource: r.prompt_source, prompt: r.prompt || null, mode: r.mode, repo: r.repo || null, branch: r.branch, injectedLessons: injectedFor(db, r.tenant_id, r.id) };
 }
 
 /** Any user of the run's tenant. */

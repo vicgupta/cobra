@@ -34,7 +34,7 @@ const err = (status: number, re?: RegExp) => (e: unknown) => e instanceof TaskEr
 
 test("migration 31: tasks table, disabled by default", () => {
   const { db, member } = setup();
-  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 34);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 35);
   createAgent(db, member, { name: "rev", engine: "codex", prompt: "Review" });
   const t = createTask(db, member, { name: "nightly", agent: "rev", cron: "0 9 * * *" });
   assert.equal(t.enabled, false); assert.equal(t.mode, "simulated"); assert.equal(t.skillRef, null);

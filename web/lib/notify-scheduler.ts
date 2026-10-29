@@ -8,6 +8,7 @@ import { maybeSendDaily, serviceHealth } from "./notifications";
 import { maybeRunDailyUpdate } from "./tool-updates";
 import { maybeSendTeamDaily } from "./team-notifications";
 import { updaterOps } from "./tool-updates-node";
+import { maybeRunLessonJobs } from "./lessons/jobs";
 
 const g = globalThis as { __cobraNotifyTimer?: ReturnType<typeof setInterval> };
 
@@ -28,6 +29,14 @@ export function startNotifyScheduler(): void {
       const r = await maybeSendDaily(getDb(), sendEmail, Date.now(), () => serviceHealth(dbPath(), "/var/lib/cobra"), undefined, (h) => collectSysInfo(h, dbPath()));
       if (r === "sent" || r === "failed") console.log(`[cobra] daily admin email: ${r}`);
     } catch (e) { console.error("[cobra] daily admin email:", e instanceof Error ? e.message : e); }
+    try {
+      // Team lessons: nightly capture sweep (2 AM ET) and weekly sanitization (Mon 3 AM ET), per team, claimed once.
+      if (process.env.COBRA_LESSONS_SCHEDULER !== "off") {
+        const { runDeps } = await import("./workflows/server");
+        const r = maybeRunLessonJobs(getDb(), Date.now(), (id) => runDeps(id).redact());
+        for (const [k, v] of Object.entries(r)) console.log(`[cobra] lessons ${k}: ${v}`);
+      }
+    } catch (e) { console.error("[cobra] lessons jobs:", e instanceof Error ? e.message : e); }
     try {
       // 7 AM ET team emails (team data only), one claim per team per day.
       const t = await maybeSendTeamDaily(getDb(), sendEmail, Date.now());

@@ -789,6 +789,65 @@ const MIGRATIONS: Array<(db: DB) => void> = [
       at INTEGER NOT NULL
     );
     CREATE INDEX agent_audit_tenant ON agent_audit(tenant_id, at);`),
+  // 35 (Team lessons): additive only. Per-team, per-repo lessons (every lesson belongs to one team repo) (DB is the source of truth; never shared across teams),
+  // captured deterministically from run logs (status pending) and reviewed by team leads. signature = dedupe key
+  // per team; flags_json = sanitization/staleness badges; runs.injected_lessons = lesson ids prepended to the run.
+  (db) => db.exec(`CREATE TABLE lessons (
+      id INTEGER PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','retired','stale')),
+      title TEXT NOT NULL,
+      what_happened TEXT NOT NULL DEFAULT '',
+      what_we_learned TEXT NOT NULL DEFAULT '',
+      repo_id INTEGER NOT NULL REFERENCES team_repos(id) ON DELETE CASCADE,
+      tags TEXT NOT NULL DEFAULT '[]',
+      confidence REAL NOT NULL DEFAULT 0.3 CHECK (confidence >= 0 AND confidence <= 1),
+      kind TEXT NOT NULL DEFAULT 'manual',
+      signature TEXT,
+      step_id TEXT,
+      source_run_ids TEXT NOT NULL DEFAULT '[]',
+      evidence TEXT NOT NULL DEFAULT '',
+      flags_json TEXT NOT NULL DEFAULT '[]',
+      stale_reason TEXT,
+      stale_run_id TEXT,
+      created_by TEXT NOT NULL DEFAULT 'system',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      approved_by TEXT,
+      approved_at INTEGER,
+      retired_reason TEXT,
+      version INTEGER NOT NULL DEFAULT 1,
+      supersedes_id INTEGER REFERENCES lessons(id) ON DELETE SET NULL
+    );
+    CREATE INDEX lessons_tenant_repo ON lessons(tenant_id, repo_id, status);
+    CREATE UNIQUE INDEX lessons_tenant_repo_sig ON lessons(tenant_id, repo_id, signature) WHERE signature IS NOT NULL;
+    CREATE TABLE lesson_feedback (
+      id INTEGER PRIMARY KEY,
+      lesson_id INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      author TEXT NOT NULL,
+      text TEXT NOT NULL,
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX lesson_feedback_lesson ON lesson_feedback(lesson_id, at);
+    CREATE TABLE lesson_audit (
+      id INTEGER PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      lesson_id INTEGER REFERENCES lessons(id) ON DELETE SET NULL,
+      actor TEXT NOT NULL,
+      action TEXT NOT NULL,
+      detail TEXT NOT NULL DEFAULT '',
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX lesson_audit_tenant ON lesson_audit(tenant_id, at);
+    CREATE TABLE lesson_jobs (
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      period TEXT NOT NULL,
+      at INTEGER NOT NULL,
+      PRIMARY KEY (tenant_id, kind, period)
+    );
+    ALTER TABLE runs ADD COLUMN injected_lessons TEXT;`),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

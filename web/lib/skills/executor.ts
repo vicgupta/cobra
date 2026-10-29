@@ -12,6 +12,7 @@ import { LOG_CAP, redact as redactText, type Handlers, type StepContext } from "
 import type { WorkflowStep } from "../workflows/schema";
 import { MAX_DEPTH, type Plan, type PlanStep } from "./plan";
 import { sectionText } from "./sections";
+import { captureForRun } from "../lessons/capture";
 import { audit, effectiveHash, skillByName, SkillError, type Skill } from "./store";
 
 export type SkillDeps = { handlers: Handlers; resolveSecret: (name: string) => string | undefined; redact: () => string[] };
@@ -43,7 +44,8 @@ const fill = (v: unknown, vars: Record<string, unknown>) => typeof v === "string
   ? v.replace(/\{\{\s*([a-z][a-z0-9_]*)\s*\}\}/g, (_, n) => { const x = vars[n]; return x === undefined || x === null ? "" : typeof x === "string" ? x : JSON.stringify(x); })
   : v;
 
-export type ExecOptions = { mode?: Mode; repo?: string; now?: number; depth?: number; parent?: string; path?: string[]; idPrefix?: string };
+export type ExecOptions = { mode?: Mode; repo?: string; now?: number; depth?: number; parent?: string; path?: string[]; idPrefix?: string;
+  /** Team lessons block (lib/lessons/inject.ts) prepended to every agent step prompt of this run. */ lessons?: string };
 
 /**
  * Starts a skill run (any team member, no approval). Simulated runs are dry runs (agents and GitHub
@@ -66,15 +68,17 @@ export function startSkillRun(db: DB, who: Who, skill: Skill, rawInputs: Record<
     id, who.tenantId, who.userId, run.repo, o.parent ? `${skill.name} (called by ${o.parent})` : skill.name, run.prompt.slice(0, 20000), mode === "simulated" ? 1 : 0,
     startedAt, `skill:${skill.name}`, eff.hash, mode, mode === "real" && agentSteps === 1 ? `cobra/${id}` : null, who.email);
   audit(db, { id: who.userId ?? 0, email: who.email, tenantId: who.tenantId }, "skill_run", skill.id, `${id} ${mode}${o.parent ? ` (from ${o.parent})` : ""} @${eff.hash.slice(0, 12)}`, skill.tenantId);
-  const done = execute(db, who, skill, inputs, run, deps, { depth, path, agentSteps }).catch((e: unknown) => {
+  const done = execute(db, who, skill, inputs, run, deps, { depth, path, agentSteps, lessons: o.lessons }).catch((e: unknown) => {
     const error = e instanceof Error ? e.message : String(e);
     db.prepare("UPDATE runs SET status = 'failed', error = ?, ended_at = ? WHERE id = ?").run(redactText(error, deps.redact()), Date.now(), id);
     return { id, status: "failed" as const, steps: {}, outputs: {}, error };
   });
+  // Lesson capture once the run finishes (never fails the run).
+  void done.then(() => { try { captureForRun(db, id, deps.redact()); } catch (e) { console.error("[cobra] lesson capture:", e instanceof Error ? e.message : e); } });
   return { id, done };
 }
 
-async function execute(db: DB, who: Who, skill: Skill, inputs: Record<string, unknown>, run: { id: string; repo: string; mode: Mode; engine: string; prompt: string }, deps: SkillDeps, x: { depth: number; path: string[]; agentSteps: number }): Promise<SkillRunResult> {
+async function execute(db: DB, who: Who, skill: Skill, inputs: Record<string, unknown>, run: { id: string; repo: string; mode: Mode; engine: string; prompt: string }, deps: SkillDeps, x: { depth: number; path: string[]; agentSteps: number; lessons?: string }): Promise<SkillRunResult> {
   const { plan } = skill;
   const secretsList = deps.redact();
   const logEvent = db.prepare("INSERT INTO run_step_events (run_id, tenant_id, step_id, status, attempt, output, truncated, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
@@ -139,7 +143,7 @@ async function execute(db: DB, who: Who, skill: Skill, inputs: Record<string, un
   return { id: run.id, status, steps, outputs, error: failed };
 }
 
-async function runStep(db: DB, who: Who, skill: Skill, step: PlanStep, vars: Record<string, unknown>, run: { id: string; repo: string; mode: Mode }, deps: SkillDeps, x: { depth: number; path: string[]; agentSteps: number }, log: (c: string) => void, st: StepResult): Promise<Record<string, unknown>> {
+async function runStep(db: DB, who: Who, skill: Skill, step: PlanStep, vars: Record<string, unknown>, run: { id: string; repo: string; mode: Mode }, deps: SkillDeps, x: { depth: number; path: string[]; agentSteps: number; lessons?: string }, log: (c: string) => void, st: StepResult): Promise<Record<string, unknown>> {
   const w: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(step.with)) w[k] = fill(v, vars);
   const sim = run.mode === "simulated";
@@ -186,6 +190,7 @@ async function runStep(db: DB, who: Who, skill: Skill, step: PlanStep, vars: Rec
       prompt += `\n\n--- SOP section #${step.section} ---\n${sec}`;
     }
     if (skill.body.trim()) { prompt += "\n\n(The full SOP is in .cobra/SOP.md in your workspace.)"; w.sop_body = skill.body; }
+    if (x.lessons) prompt = `${x.lessons}\n\n${prompt}`;
     w.prompt = prompt;
     log(`[agent] ${String(w.agent ?? w.driver ?? "claude-code")} (${String(w.mode)})${step.section ? ` section #${step.section}` : ""}\n`);
   }
