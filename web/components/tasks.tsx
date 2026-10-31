@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { StatusPill } from "./recent-runs-table";
 import { button, call, ConfirmDialog, danger, EmptyState, Field, ghost, input, nameProblem, Segmented, sentence, slug, Switch, td, th } from "./form-ui";
-import { DAYS, describeCron, fromCron, PRESETS, scheduleProblem, toCron, type Preset, type Schedule } from "@/lib/schedule";
+import { CRON_HELP, DAYS, describeCron, fromCron, PRESETS, scheduleProblem, toCron, type Preset, type Schedule } from "@/lib/schedule";
 import { relativeTime } from "@/lib/runs-table";
 
 /** A skill a task can run, shown by name. */
@@ -17,6 +17,18 @@ export type TaskView = { id: number; name: string; agent: string; skillRef: stri
 
 const RUN_TYPES: Array<["simulated" | "real", string]> = [["simulated", "Test run"], ["real", "Real run"]];
 export const runTypeLabel = (m: string) => (m === "real" ? "Real run" : "Test run");
+
+/** "?" next to the Custom field; the help shows on hover or keyboard focus. */
+function CronHelp({ id }: { id: string }) {
+  return (
+    <span className="group relative inline-flex" data-cron-help>
+      <button type="button" aria-label="How to write a schedule" aria-describedby={id} className="flex h-6 w-6 items-center justify-center rounded-full border border-border text-xs text-fg-soft hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">?</button>
+      <span id={id} role="tooltip" className="invisible absolute left-8 top-1/2 z-20 w-80 -translate-y-1/2 rounded-md border border-border bg-surface p-3 text-xs leading-relaxed text-fg-soft shadow-lg group-hover:visible group-focus-within:visible">
+        {CRON_HELP.split("`").map((t, i) => (i % 2 ? <code key={i} className="whitespace-nowrap rounded bg-surface-2 px-1 font-mono">{t}</code> : t))}
+      </span>
+    </span>
+  );
+}
 
 function TaskForm({ initial, agents, skills, repos, onDone }: { initial?: TaskView; agents: TaskAgentOption[]; skills: TaskSkillOption[]; repos: string[]; onDone: () => void }) {
   const [name, setName] = useState(initial?.name ?? "");
@@ -80,11 +92,12 @@ function TaskForm({ initial, agents, skills, repos, onDone }: { initial?: TaskVi
             <input id={`${idp}-time`} aria-label="Time" type="time" step={60} className={input} value={sched.time} onChange={(e) => set({ time: e.target.value })} /></div>}
           {sched.preset === "hourly" && <div className="flex items-center gap-2 text-sm text-fg-soft"><label htmlFor={`${idp}-minute`}>at minute</label>
             <input id={`${idp}-minute`} type="number" min={0} max={59} className={`${input} w-20`} value={sched.minute} onChange={(e) => set({ minute: Number(e.target.value) })} /></div>}
-          {sched.preset === "custom" && <div className="w-56"><label htmlFor={`${idp}-cron`} className="sr-only">Cron</label>
-            <input id={`${idp}-cron`} aria-label="Cron" className={`${input} font-mono`} placeholder="0 9 * * 1-5" value={sched.cron} aria-invalid={!!schedErr} onChange={(e) => set({ cron: e.target.value })} /></div>}
+          {sched.preset === "custom" && <div className="flex items-center gap-2"><div className="w-56"><label htmlFor={`${idp}-cron`} className="sr-only">Cron</label>
+            <input id={`${idp}-cron`} aria-label="Cron" aria-describedby={`${idp}-cron-help`} className={`${input} font-mono`} placeholder="0 9 * * 1-5" value={sched.cron} aria-invalid={!!schedErr} onChange={(e) => set({ cron: e.target.value })} /></div>
+            <CronHelp id={`${idp}-cron-help`} /></div>}
         </div>
         {schedErr ? <p className="text-xs text-danger" data-field-error>{schedErr}</p>
-          : <p className="text-sm text-fg-soft" data-schedule-preview aria-live="polite">{describeCron(cron)}{sched.preset === "custom" && <span className="text-subtle"> · minute hour day month weekday, Eastern time</span>}</p>}
+          : <p className="text-sm text-fg-soft" data-schedule-preview aria-live="polite">{describeCron(cron)}</p>}
         {sched.preset !== "none" && <label className="flex items-center gap-2 text-sm text-fg-soft"><Switch checked={enabled} onChange={setEnabled} label="Schedule on" /> {enabled ? "On — runs automatically" : "Off — only runs when you click Run"}</label>}
       </fieldset>
       <Segmented name={`${idp}-mode`} label="Run type" value={mode} options={RUN_TYPES} onChange={setMode} />

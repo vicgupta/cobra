@@ -2,11 +2,19 @@
 // Pure (no server imports): used by the Tasks form and list, and by tests.
 import { parseCron } from "./cron";
 
-export type Preset = "none" | "hourly" | "daily" | "weekdays" | "weekly" | "custom";
+export type Preset = "none" | "every15" | "every30" | "hourly" | "every2h" | "every4h" | "even" | "odd" | "daily" | "weekdays" | "weekly" | "custom";
 export type Schedule = { preset: Preset; time: string; minute: number; day: number; cron: string };
 export const PRESETS: Array<[Preset, string]> = [
-  ["none", "Not scheduled"], ["hourly", "Every hour"], ["daily", "Every day"], ["weekdays", "Weekdays (Mon–Fri)"], ["weekly", "Once a week"], ["custom", "Custom (cron)"],
+  ["none", "Not scheduled"], ["every15", "Every 15 minutes"], ["every30", "Every 30 minutes"], ["hourly", "Every hour"],
+  ["every2h", "Every 2 hours"], ["every4h", "Every 4 hours"], ["even", "Every even hour"], ["odd", "Every odd hour"],
+  ["daily", "Once a day"], ["weekdays", "Weekdays only"], ["weekly", "Once a week"], ["custom", "Custom"],
 ];
+/** Presets with a fixed cron (no time or minute to pick). */
+export const FIXED: Partial<Record<Preset, string>> = {
+  every15: "*/15 * * * *", every30: "*/30 * * * *", every2h: "0 */2 * * *", every4h: "0 */4 * * *", even: "0 0-22/2 * * *", odd: "0 1-23/2 * * *",
+};
+/** Help for the Custom field; `code` spans are marked with backticks. */
+export const CRON_HELP = "A schedule is five values separated by spaces: minute hour day-of-month month day-of-week. `*` means every, `*/n` means every n, `a-b` is a range, `a,b` is a list. Sunday is 0. Example: `30 8 * * 1-5` runs at 8:30 every weekday. Times are Eastern (ET).";
 export const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 export const DEFAULT_SCHEDULE: Schedule = { preset: "none", time: "09:00", minute: 0, day: 1, cron: "" };
 
@@ -22,6 +30,8 @@ const pad = (n: number) => String(n).padStart(2, "0");
 export function toCron(s: Schedule): string | null {
   if (s.preset === "none") return "";
   if (s.preset === "custom") return s.cron.trim().replace(/\s+/g, " ");
+  const fixed = FIXED[s.preset];
+  if (fixed) return fixed;
   if (s.preset === "hourly") return Number.isInteger(s.minute) && s.minute >= 0 && s.minute <= 59 ? `${s.minute} * * * *` : null;
   const t = hm(s.time);
   if (!t) return null;
@@ -35,6 +45,7 @@ export function toCron(s: Schedule): string | null {
 export function fromCron(cron: string | null | undefined): Schedule {
   const c = (cron ?? "").trim().replace(/\s+/g, " ");
   if (!c) return { ...DEFAULT_SCHEDULE };
+  for (const [p, f] of Object.entries(FIXED)) if (f === c) return { ...DEFAULT_SCHEDULE, preset: p as Preset, cron: c };
   const num = (x: string, hi: number) => (/^\d{1,2}$/.test(x) && Number(x) <= hi ? Number(x) : null);
   const [mi, ho, dom, mon, dow, extra] = c.split(" ");
   if (extra === undefined && dom === "*" && mon === "*") {
@@ -67,9 +78,13 @@ export function describeCron(cron: string | null | undefined): string {
   if (s.preset === "daily") return `Runs every day at ${at} ET`;
   if (s.preset === "weekdays") return `Runs weekdays at ${at} ET`;
   if (s.preset === "weekly") return `Runs every ${DAYS[s.day]} at ${at} ET`;
+  if (s.preset === "even") return "Runs every even hour (12 AM, 2 AM … 10 PM ET)";
+  if (s.preset === "odd") return "Runs every odd hour (1 AM, 3 AM … 11 PM ET)";
   const every = /^\*\/(\d+) \* \* \* \*$/.exec(c);
   if (every) return `Runs every ${every[1]} minutes`;
-  return `Runs on a custom schedule (${c}, ET)`;
+  const hours = /^(\d{1,2}) \*\/(\d+) \* \* \*$/.exec(c);
+  if (hours) { const m = Number(hours[1]); return `Runs every ${hours[2]} hours, ${m === 0 ? "on the hour" : `at :${pad(m)}`}`; }
+  return `Custom schedule (${c}, ET)`;
 }
 
 /** Plain-words problem with a schedule, or null when it's fine. */
