@@ -37,6 +37,14 @@ Each team has a built-in `workflow` skill (kind `master`). It is an ordinary ski
 - Approvers: system admins and team leads of the skill's team. An author's approval counts only if they are an admin. One approval approves; any reject blocks.
 - **Simulated runs are dry runs and need no approval**: agent steps run in simulated mode, GitHub steps are never sent to GitHub (logged as would-run), shell commands are not executed (result `would_run`), approval steps auto-pass.
 
+## Writing skills: style guide
+
+Each step runs as its own agent call. The steps of one run usually share one workspace (one clone, branch `cobra/<run-id>`), but files are not guaranteed to survive: a server restart, a retry or a different runner can start a step in a fresh workspace. The only thing always passed on is the previous step's text summary, in the prompt.
+
+1. **Stateless steps.** Write each step so it works from a clean checkout of the repo plus the previous step's summary. Don't depend on files or notes left by earlier steps. If a later step needs something, have the earlier step put it in its summary.
+2. **Explicit early exit.** Say in the skill when to stop, with a clear signal: for example, "if there is nothing to do, start your summary with `NOTHING TO FILE`". Tell later steps: "if the previous summary starts with `NOTHING TO FILE`, do nothing and say so." Cobra does not yet stop the run on this signal by itself, so the skill text is what keeps later steps cheap.
+3. **Idempotent, cheap steps.** A re-run or retry should cost the same as the first pass and not duplicate side effects. Check before creating (search for an existing issue, branch or PR before opening one), avoid heavy repeated work, and keep outputs small.
+
 ## Review
 
 The MVP has no rulebook or review score: approval alone gates real runs. Old `skill_review_rules`, `skill_reviews` and `skill_review_cycles` rows stay in the database (kept for v1 rollback) and are not read.
