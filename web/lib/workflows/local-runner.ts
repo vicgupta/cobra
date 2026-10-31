@@ -224,6 +224,9 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     note(`running ${driver} headless (model: ${model ?? "default"}${!own && model ? " (provider default)" : ""}, effort: ${effort ?? "default"})`);
     const limit = timeoutMs ?? opts.defaultTimeoutMs ?? 10 * 60_000;
     const uc = usageCollector(driver, model, log);
+    // HEAD before the agent: an agent may commit (or switch branches) itself, so its commits count as changes too.
+    const head = async () => { const h = await step({ engine: "git", cmd: git, args: ["rev-parse", "-q", "--verify", "HEAD"], env: gitEnv, log: () => {} }); return h.code === 0 ? h.out.trim() : ""; };
+    const before = await head();
     const r = await step({ engine: driver, cmd, args, env, log: (s) => uc.write(s), timeoutMs: limit, files: pre,
       readBack: [LAST, ...(codexHome ? [codexHome.file] : [])], rmAfter: codexHome ? [codexHome.rel] : [] });
     if (codexHome) {
@@ -234,17 +237,30 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     }
     const parsed = uc.finish();
     { try { opts.onUsage?.(runId, parsed.usage ?? uc.orNull()); } catch (e) { note(`usage not recorded: ${(e as Error).message}`); } }
-    if (r.code !== 0) throw new Error(`${driver} exited with code ${r.code}`);
-
-    await g(["add", "-A"]);
-    const files = (await g(["diff", "--cached", "--name-only"])).split("\n").filter(Boolean);
-    let pushed = false;
-    if (files.length) {
-      await g(["-c", "user.name=Cobra", "-c", "user.email=cobra@localhost", "commit", "-q", "-m", `cobra: ${driver} run ${runId}`]);
-      note(`committed ${files.length} file(s): ${files.join(", ")}`);
-      if (cloned) { await g(["push", "-q", "origin", `${branch}:refs/heads/${branch}`]); pushed = true; note(`pushed ${branch} to ${repo}`); }
+    // Save the work: commit what's staged, then push HEAD (the agent's own commits included, whatever branch it
+    // checked out) to cobra/<run-id>. Also on failure, so a run stopped late (timeout, memory limit) keeps its work.
+    const save = async (failed: boolean) => {
+      await g(["add", "-A"]);
+      const staged = (await g(["diff", "--cached", "--name-only"])).split("\n").filter(Boolean);
+      if (staged.length) {
+        await g(["-c", "user.name=Cobra", "-c", "user.email=cobra@localhost", "commit", "-q", "-m", `cobra: ${driver} run ${runId}${failed ? " (partial: the agent did not finish)" : ""}`]);
+        note(`committed ${staged.length} file(s): ${staged.join(", ")}`);
+      }
+      const after = await head();
+      const changed = !!after && after !== before;
+      const files = changed && before ? (await g(["diff", "--name-only", before, after])).split("\n").filter(Boolean) : staged;
+      let pushed = false;
+      if (!changed) note("no file changes");
+      else if (cloned) { await g(["push", "-q", "origin", `HEAD:refs/heads/${branch}`]); pushed = true; note(`pushed ${branch} to ${repo}${failed ? " (partial work)" : ""}`); }
       else note("not pushed (no clone)");
-    } else note("no file changes");
+      return { files, pushed };
+    };
+    if (r.code !== 0) {
+      let saved = "";
+      try { const s = await save(true); if (s.pushed) saved = `; partial work pushed to ${branch}`; } catch (e) { note(`partial work not saved: ${(e as Error).message}`); }
+      throw new Error(`${driver} exited with code ${r.code}${saved}`);
+    }
+    const { files, pushed } = await save(false);
     const last = r.files[LAST];
     const summary = typeof last === "string" ? last.trim() : (parsed.text || r.out).trim().slice(-2000);
     return { driver, workspace: dir, branch, pushed, files: files.join(","), summary };

@@ -58,7 +58,7 @@ test("launcher: every step goes through it with the team workspace; tokens only 
     const r = await go({ sock: f.sock, sop: "Be careful.", log });
     const ws = path.join(teams, "2", "workspaces", "run_l1");
     assert.equal(r.workspace, ws);
-    assert.deepEqual(f.reqs.map((q) => `${q.engine} ${q.args[0]}`), ["git init", "git checkout", "claude-code -p", "git add", "git diff", "git -c"]);
+    assert.deepEqual(f.reqs.map((q) => `${q.engine} ${q.args[0]}`), ["git init", "git checkout", "git rev-parse", "claude-code -p", "git add", "git diff", "git -c", "git rev-parse"]);
     for (const q of f.reqs) { assert.equal(q.tenantId, 2); assert.equal(q.runId, "run_l1"); assert.equal(q.workspace, ws); assert.ok(!("PATH" in q.env) && !("HOME" in q.env)); }
     assert.equal(f.reqs[0].mkdir, true, "the first step creates the workspace");
     const eng = f.reqs[2];
