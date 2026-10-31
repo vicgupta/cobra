@@ -95,17 +95,27 @@ function run(cmd: string, args: string[], o: { cwd: string; env: Env; signal: Ab
   });
 }
 
+/** Workspaces already cloned/initialised and on their run branch, by absolute dir: later steps of the same run
+ *  reuse them (no clone/init/checkout). Module-level so it survives a runner being rebuilt per request. */
+type Prepared = { cloned: boolean; branch: string; sop: boolean };
+const prepared = new Map<string, Prepared>();
+/** Tests only. */
+export function _resetPreparedWorkspaces(): void { prepared.clear(); }
+
 export function localRunner(opts: LocalRunnerOptions): AgentRunner {
-  return async ({ runId, driver, with: w, signal, timeoutMs, log }) => {
+  return async ({ runId, workspaceKey, driver, with: w, signal, timeoutMs, log }) => {
     if (!/^[\w-]+$/.test(runId)) throw new Error("invalid run id");
+    const wsKey = workspaceKey ?? runId;
+    if (!/^[\w-]+$/.test(wsKey)) throw new Error("invalid run id");
     if (!isEngine(driver)) throw new Error(`${String(driver)}: ${UNSUPPORTED_ENGINE} (MVP runs Claude Code or Codex only)`);
     const root = opts.root ?? (opts.tenantId ? teamWorkspacesDir(opts.tenantId) : workspacesDir());
-    const dir = path.join(root, runId);
+    const dir = path.join(root, wsKey);
     if (opts.tenantId && !opts.root) assertTeamWorkspace(opts.tenantId, dir);
     const sock = opts.launcherSocket ?? process.env.COBRA_LAUNCHER_SOCKET ?? "";
     if (sock && !opts.tenantId) throw new Error("the run launcher needs a team: refusing to run");
     if (!sock && process.env.NODE_ENV === "production") throw new Error("the run launcher is not configured (COBRA_LAUNCHER_SOCKET): refusing to run agent CLIs as the service user");
-    let made = false;
+    const reuse = prepared.get(dir);
+    let made = !!reuse; // an existing workspace is never re-created (mkdir only on the run's first step)
     const step = async (s: Step): Promise<StepResult> => {
       const first = !made; made = true;
       if (!sock) return directStep(dir, { ...s, mkdir: s.mkdir || first }, signal);
@@ -134,25 +144,30 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       if (r.code !== 0) throw new Error(`git ${args[0]} failed: ${r.out.trim().slice(-400)}`);
       return r.out;
     };
-    const branch = `cobra/${runId}`;
-    let cloned = false;
+    const branch = reuse?.branch ?? `cobra/${wsKey}`;
+    let cloned = reuse?.cloned ?? false;
     note(`workspace ${dir}`);
-    if (repo && !token) note(`no GitHub token (repo PAT or GITHUB_TOKEN) is set, so ${repo} is not cloned; running in an empty scratch repo`);
-    else if (repo) {
-      const denied = opts.checkRepo(repo);
-      if (denied) throw new Error(denied);
-      const def = opts.defaultBranch?.(repo) ?? undefined;
-      note(`cloning ${repo}${def ? ` (${def})` : ""}`);
-      await g(["clone", "--depth", "1", ...(def ? ["--branch", def] : []), `${opts.remoteBase ?? "https://github.com"}/${repo}.git`, "."]);
-      cloned = true;
-    } else note("no repo selected; running in an empty scratch repo");
-    if (!cloned) await g(["init", "-q"]);
-    await g(["checkout", "-q", "-b", branch]);
+    if (repo && token) { const denied = opts.checkRepo(repo); if (denied) throw new Error(denied); }
+    if (reuse) note(`reusing this run's workspace (branch ${branch}); no clone`);
+    else {
+      if (repo && !token) note(`no GitHub token (repo PAT or GITHUB_TOKEN) is set, so ${repo} is not cloned; running in an empty scratch repo`);
+      else if (repo) {
+        const def = opts.defaultBranch?.(repo) ?? undefined;
+        note(`cloning ${repo}${def ? ` (${def})` : ""}`);
+        await g(["clone", "--depth", "1", ...(def ? ["--branch", def] : []), `${opts.remoteBase ?? "https://github.com"}/${repo}.git`, "."]);
+        cloned = true;
+      } else note("no repo selected; running in an empty scratch repo");
+      if (!cloned) await g(["init", "-q"]);
+      await g(["checkout", "-q", "-b", branch]);
+      prepared.set(dir, { cloned, branch, sop: false });
+    }
     // SOP skills: the full SOP body as a workspace file, kept out of commits via .git/info/exclude.
     // Written by the engine step (as the team user when launched), before the CLI starts.
     const pre: LaunchFile[] = [];
     if (typeof w.sop_body === "string" && w.sop_body) {
-      pre.push({ path: ".cobra/SOP.md", content: w.sop_body, mode: "600" }, { path: ".git/info/exclude", content: "\n.cobra/\n", append: true });
+      const st = prepared.get(dir)!;
+      pre.push({ path: ".cobra/SOP.md", content: w.sop_body, mode: "600" });
+      if (!st.sop) { pre.push({ path: ".git/info/exclude", content: "\n.cobra/\n", append: true }); st.sop = true; }
       note("wrote the SOP to .cobra/SOP.md (excluded from git)");
     }
 
