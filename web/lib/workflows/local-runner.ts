@@ -126,7 +126,8 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
       signal.addEventListener("abort", onAbort, { once: true });
       if (s.timeoutMs) t = setTimeout(() => { s.log(`\n[cobra] ${path.basename(s.cmd)} timed out after ${s.timeoutMs! / 1000}s; stopping\n`); ac.abort(); }, s.timeoutMs);
       try {
-        return await launch(sock, { tenantId: opts.tenantId!, runId, engine: s.engine, args: s.args, env: launchEnv(s.env), workspace: dir,
+        // The launcher requires workspace == <team>/workspaces/<runId>: send the shared workspace key, not the step key.
+        return await launch(sock, { tenantId: opts.tenantId!, runId: wsKey, engine: s.engine, args: s.args, env: launchEnv(s.env), workspace: dir,
           timeoutSec: Math.ceil(limit / 1000) + 5, mkdir: s.mkdir || first, files: s.files, readBack: s.readBack, rmAfter: s.rmAfter }, { signal: ac.signal, log: s.log });
       } finally { clearTimeout(t); signal.removeEventListener("abort", onAbort); }
     };

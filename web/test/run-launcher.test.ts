@@ -46,10 +46,10 @@ const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const JWT = `${b64({ alg: "none" })}.${b64({ iss: "https://auth.openai.com", exp: Math.floor(Date.now() / 1000) + 9 * 86400, "https://api.openai.com/auth": { chatgpt_plan_type: "plus", chatgpt_account_id: "acct-1" } })}.c2ln`;
 const teams = path.join(tmp, "teams");
 process.env.COBRA_TEAMS_ROOT = teams;
-const go = (o: { sock?: string; driver?: "claude-code" | "codex"; signal?: AbortSignal; sop?: string; runId?: string; log?: string[] }) =>
+const go = (o: { sock?: string; driver?: "claude-code" | "codex"; signal?: AbortSignal; sop?: string; runId?: string; workspaceKey?: string; log?: string[] }) =>
   localRunner({ tenantId: 2, launcherSocket: o.sock, resolveSecret: () => undefined, checkRepo: () => null, claudeBin: "/nonexistent/claude", codexBin: "/nonexistent/codex",
     credential: (_e, n) => (n === "CLAUDE_CODE_OAUTH_TOKEN" ? "oauth-secret" : n === "CODEX_ACCESS_TOKEN" ? JWT : undefined), authMode: () => "subscription", codexServerLogin: () => false })(
-    { runId: o.runId ?? "run_l1", driver: o.driver ?? "claude-code", with: { prompt: "do it", ...(o.sop ? { sop_body: o.sop } : {}) }, secrets: {}, signal: o.signal ?? new AbortController().signal, log: (s) => o.log?.push(s) });
+    { runId: o.runId ?? "run_l1", workspaceKey: o.workspaceKey, driver: o.driver ?? "claude-code", with: { prompt: "do it", ...(o.sop ? { sop_body: o.sop } : {}) }, secrets: {}, signal: o.signal ?? new AbortController().signal, log: (s) => o.log?.push(s) });
 
 test("launcher: every step goes through it with the team workspace; tokens only in the allowlisted env", async () => {
   const f = await fakeLauncher();
@@ -103,4 +103,30 @@ test("fails closed: launcher down, refusal, production without a launcher; cance
   await new Promise((r) => setTimeout(r, 100));
   assert.equal(hang.closed, 1, "cancel closes the launcher connection (which stops the unit)");
   await hang.close();
+});
+
+// Mirrors launcher.py's check: workspace must be exactly <team dir>/workspaces/<runId> (no "..").
+const launcherAccepts = (q: LaunchRequest) => path.normalize(q.workspace) === path.join(teams, String(q.tenantId), "workspaces", q.runId) && !q.workspace.split("/").includes("..");
+
+test("launcher: multi-agent-step skill runs send the shared workspace key as runId, so every step passes the workspace check", async () => {
+  const f = await fakeLauncher();
+  try {
+    const ws = path.join(teams, "2", "workspaces", "skr_ms1");
+    const a = await go({ sock: f.sock, runId: "skr_ms1-step-1", workspaceKey: "skr_ms1" });
+    const n1 = f.reqs.length;
+    const b = await go({ sock: f.sock, runId: "skr_ms1-step-2", workspaceKey: "skr_ms1" });
+    assert.equal(a.workspace, ws); assert.equal(b.workspace, ws);
+    assert.ok(n1 > 0 && f.reqs.length > n1);
+    for (const q of f.reqs) { assert.equal(q.runId, "skr_ms1"); assert.equal(q.workspace, ws); assert.ok(launcherAccepts(q), `launcher would refuse ${q.runId} ${q.workspace}`); }
+    assert.equal(f.reqs[n1].mkdir, false, "the second step reuses the run's workspace");
+  } finally { await f.close(); }
+});
+
+test("launcher: single-step runs still use the run id for both runId and workspace", async () => {
+  const f = await fakeLauncher();
+  try {
+    await go({ sock: f.sock, runId: "run_single1" });
+    assert.ok(f.reqs.length > 0);
+    for (const q of f.reqs) { assert.equal(q.runId, "run_single1"); assert.ok(launcherAccepts(q)); }
+  } finally { await f.close(); }
 });
