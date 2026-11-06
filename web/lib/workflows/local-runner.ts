@@ -18,6 +18,7 @@ import { effortArgs, type ProviderDefaults } from "../providers";
 import { isEngine, UNSUPPORTED_ENGINE, type Engine } from "../engines";
 import { usageCollector, type Usage } from "../usage";
 
+import { TEAM_EMAIL_ENV, TEAM_EMAIL_TOKEN_ENV, teamEmailNote } from "../team-email-note";
 import { codexServerLogin, ENV_FALLBACK_TEAM, runAuth, type AuthMode } from "../provider-credentials";
 type Env = Record<string, string | undefined>;
 
@@ -52,6 +53,8 @@ export type LocalRunnerOptions = {
   providerDefaults?: (driver: Engine) => ProviderDefaults;
   /** Usage parsed from the engine's JSON output at the end of the agent step (display only). */
   onUsage?: (runKey: string, usage: Usage) => void;
+  /** The team's kantsy.com mailbox (Settings > Email), read only for runs that ask for it (with.team_email === true). Never log. */
+  teamEmail?: () => { address: string; token: string } | null;
   /** Run launcher socket (default COBRA_LAUNCHER_SOCKET). Set: steps run as the team user via the launcher. */
   launcherSocket?: string;
 };
@@ -177,7 +180,15 @@ export function localRunner(opts: LocalRunnerOptions): AgentRunner {
     // The agent gets exactly one GitHub token, the same one used for the clone: the repo's PAT when set,
     // else GITHUB_TOKEN; none without a cloned repo. git inside the workspace authenticates via gitEnv.
     const env: Env = cloned && token ? { ...gitEnv, GH_TOKEN: token, GITHUB_TOKEN: token } : { ...base };
-    const ghNote = cloned && token ? `\n\n[Cobra] GitHub access for ${repo} is in $GH_TOKEN (also $GITHUB_TOKEN). If the gh CLI is not installed, call the GitHub REST API (https://api.github.com) with curl and "Authorization: Bearer $GH_TOKEN". Never print the token.` : "";
+    // Team email (Settings > Email): only for agents with "Can use team email" or steps with team_email: true.
+    // Address and token go in the step env only (never argv); the token is in the run's redaction list.
+    let mailNote = "";
+    if (w.team_email === true) {
+      const m = opts.teamEmail?.() ?? null;
+      if (m) { env[TEAM_EMAIL_ENV] = m.address; env[TEAM_EMAIL_TOKEN_ENV] = m.token; mailNote = teamEmailNote(m.address); note(`team email ${m.address} available to this run`); }
+      else note("this agent can use the team email, but none is set up (Settings > Email); running without it");
+    }
+    const ghNote = (cloned && token ? `\n\n[Cobra] GitHub access for ${repo} is in $GH_TOKEN (also $GITHUB_TOKEN). If the gh CLI is not installed, call the GitHub REST API (https://api.github.com) with curl and "Authorization: Bearer $GH_TOKEN". Never print the token.` : "") + mailNote;
     const LAST = ".git/cobra-last-message.txt", lastFile = path.join(dir, LAST);
     const pd = opts.providerDefaults?.(driver) ?? { model: null, effort: null };
     const own = typeof w.model === "string" && w.model.trim() ? w.model.trim() : null;

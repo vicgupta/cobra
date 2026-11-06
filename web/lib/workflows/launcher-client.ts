@@ -14,7 +14,7 @@ export type LaunchResult = { code: number; out: string; files: Record<string, st
 
 /** Env keys the launcher accepts from Cobra; it sets PATH, HOME, USER, LANG and SHELL itself. */
 export const LAUNCH_ENV = new Set(["GIT_TERMINAL_PROMPT", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GH_TOKEN",
-  "GITHUB_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CODEX_API_KEY", "CODEX_HOME"]);
+  "GITHUB_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CODEX_API_KEY", "CODEX_HOME", "COBRA_TEAM_EMAIL", "COBRA_TEAM_EMAIL_TOKEN"]);
 const LAUNCHER_SET = new Set(["PATH", "HOME", "LANG", "USER", "SHELL"]);
 
 export function launchEnv(env: Record<string, string | undefined>): Record<string, string> {

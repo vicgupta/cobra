@@ -23,7 +23,7 @@ export type LoadedWorkflow = {
   /** Unknown agent references (run-time validation errors shown on the workflow page). */
   agentErrors?: string[];
 };
-export type ResolvedAgent = { engine: Engine; model?: string | null; prompt: string; hash: string };
+export type ResolvedAgent = { engine: Engine; model?: string | null; prompt: string; hash: string; /** Can use team email (Settings > Email). */ email?: boolean };
 export type LoadError = { file: string; errors: string[] };
 export class WorkflowError extends Error {
   constructor(public file: string, public errors: string[]) {

@@ -182,6 +182,7 @@ async function runStep(db: DB, who: Who, skill: Skill, step: PlanStep, vars: Rec
       // Depth cap: an agent that runs a skill can't be a step inside another skill (no agent -> skill -> agent chains).
       if (a.skillRef) throw new Error(`agent '${a.name}' runs a skill; skill steps can only call prompt agents`);
       w.driver = a.engine; if (a.model) w.model = a.model;
+      if (a.emailEnabled) w.team_email = true;
       prompt = finalPrompt(a.prompt, prompt);
     }
     if (step.section) {

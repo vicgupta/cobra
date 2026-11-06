@@ -23,6 +23,7 @@ export type TeamAgent = {
   skillRef: string | null;
   /** Optional 5-field cron (America/New_York); runs only while cronEnabled. cronMode: simulated (default) or real. */
   cron: string | null; cronEnabled: boolean; cronMode: "simulated" | "real"; cronLastFire: number | null;
+  /** "Can use team email" (Settings > Email); off by default. */ emailEnabled: boolean;
   contentHash: string; /** https URL it was imported from, else null. */ sourceUrl: string | null; createdBy: number | null; createdByEmail: string | null; createdAt: number; updatedAt: number;
 };
 export type AgentUser = { id: number; role: string; tenantId: number };
@@ -38,10 +39,10 @@ export const agentHash = (engine: string, prompt: string, model?: string | null,
   createHash("sha256").update((model ? `${engine}\n${prompt}\nmodel:${model}` : `${engine}\n${prompt}`) + (skillRef ? `\nskill:${skillRef}` : "")).digest("hex");
 
 const COLS = `a.id, a.name, a.engine, a.model, a.description, a.prompt, a.default_repo AS defaultRepo, a.skill_ref AS skillRef,
-  a.cron, a.cron_enabled AS cronEnabled, a.cron_mode AS cronMode, a.cron_last_fire AS cronLastFire, a.content_hash AS contentHash, a.source_url AS sourceUrl, a.created_by AS createdBy,
+  a.cron, a.cron_enabled AS cronEnabled, a.cron_mode AS cronMode, a.cron_last_fire AS cronLastFire, a.email_enabled AS emailEnabled, a.content_hash AS contentHash, a.source_url AS sourceUrl, a.created_by AS createdBy,
   u.email AS createdByEmail, a.created_at AS createdAt, a.updated_at AS updatedAt`;
 // node:sqlite rows have a null prototype; spread into plain objects for client components.
-const plain = (r: unknown): TeamAgent => { const a = { ...(r as TeamAgent) }; a.cronEnabled = !!a.cronEnabled; a.cronMode = a.cronMode === "real" ? "real" : "simulated"; return a; };
+const plain = (r: unknown): TeamAgent => { const a = { ...(r as TeamAgent) }; a.cronEnabled = !!a.cronEnabled; a.emailEnabled = !!a.emailEnabled; a.cronMode = a.cronMode === "real" ? "real" : "simulated"; return a; };
 
 export function listAgents(db: DB, tenantId: number): TeamAgent[] {
   return db.prepare(`SELECT ${COLS} FROM team_agents a LEFT JOIN users u ON u.id = a.created_by WHERE a.tenant_id = ? AND a.deleted_at IS NULL ORDER BY a.name`).all(tenantId).map(plain);
@@ -63,7 +64,7 @@ export function canEditAgent(u: AgentUser, a: Pick<TeamAgent, "createdBy">, db?:
 const DENY = "only the agent's creator, team leads, the designated lead and admins can";
 
 type Input = { name?: unknown; engine?: unknown; model?: unknown; description?: unknown; prompt?: unknown; defaultRepo?: unknown;
-  kind?: unknown; skillRef?: unknown; cron?: unknown; cronEnabled?: unknown; cronMode?: unknown; /** create only */ sourceUrl?: unknown };
+  kind?: unknown; skillRef?: unknown; cron?: unknown; cronEnabled?: unknown; cronMode?: unknown; emailEnabled?: unknown; /** create only */ sourceUrl?: unknown };
 
 type SkillRow = { id: number; name: string; plan_json: string };
 const planOf = (r: SkillRow) => { try { return JSON.parse(r.plan_json) as { steps?: Array<{ action?: string; skill?: string; with?: Record<string, unknown> }> }; } catch { return { steps: [] }; } };
@@ -142,7 +143,9 @@ function validate(db: DB, tenantId: number, b: Input, partial: TeamAgent | null)
   if (cronEnabled && !cron) throw new AgentError(400, "set a cron schedule before enabling it");
   if (b.cronMode !== undefined && b.cronMode !== "simulated" && b.cronMode !== "real") throw new AgentError(400, "cronMode must be simulated or real");
   const cronMode = (b.cronMode ?? partial?.cronMode ?? "simulated") as "simulated" | "real";
-  return { name, engine, model, description, prompt, defaultRepo, skillRef, cron, cronEnabled, cronMode };
+  if (b.emailEnabled !== undefined && typeof b.emailEnabled !== "boolean") throw new AgentError(400, "emailEnabled must be true or false");
+  const emailEnabled = b.emailEnabled === undefined ? !!partial?.emailEnabled : b.emailEnabled;
+  return { name, engine, model, description, prompt, defaultRepo, skillRef, cron, cronEnabled, cronMode, emailEnabled };
 }
 
 export function createAgent(db: DB, u: AgentUser, b: Input | null, now = Date.now()): TeamAgent {
@@ -150,8 +153,8 @@ export function createAgent(db: DB, u: AgentUser, b: Input | null, now = Date.no
   let sourceUrl: string | null;
   try { sourceUrl = cleanSourceUrl(b?.sourceUrl); } catch (e) { throw new AgentError(400, (e as Error).message); }
   if (getAgent(db, u.tenantId, v.name)) throw new AgentError(409, `an agent named '${v.name}' already exists in this team`);
-  db.prepare("INSERT INTO team_agents (tenant_id, name, engine, model, description, prompt, default_repo, skill_ref, cron, cron_enabled, cron_mode, content_hash, created_by, created_at, updated_at, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(u.tenantId, v.name, v.engine, v.model, v.description, v.prompt, v.defaultRepo, v.skillRef, v.cron, v.cronEnabled ? 1 : 0, v.cronMode, agentHash(v.engine, v.prompt, v.model, v.skillRef), u.id, now, now, sourceUrl);
+  db.prepare("INSERT INTO team_agents (tenant_id, name, engine, model, description, prompt, default_repo, skill_ref, cron, cron_enabled, cron_mode, email_enabled, content_hash, created_by, created_at, updated_at, source_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(u.tenantId, v.name, v.engine, v.model, v.description, v.prompt, v.defaultRepo, v.skillRef, v.cron, v.cronEnabled ? 1 : 0, v.cronMode, v.emailEnabled ? 1 : 0, agentHash(v.engine, v.prompt, v.model, v.skillRef), u.id, now, now, sourceUrl);
   if (sourceUrl) {
     const email = (db.prepare("SELECT email FROM users WHERE id = ?").get(u.id) as { email: string } | undefined)?.email ?? "unknown";
     db.prepare("INSERT INTO agent_audit (tenant_id, actor_id, actor_email, action, agent_name, detail, at) VALUES (?, ?, ?, 'agent_import', ?, ?, ?)").run(u.tenantId, u.id, email, v.name, `imported from ${sourceUrl}`.slice(0, 1000), now);
@@ -165,8 +168,8 @@ export function updateAgent(db: DB, u: AgentUser, name: string, b: Input | null,
   if (!canEditAgent(u, a, db)) throw new AgentError(403, `${DENY} edit it`);
   const v = validate(db, u.tenantId, b ?? {}, a);
   if (v.name !== a.name && getAgent(db, u.tenantId, v.name)) throw new AgentError(409, `an agent named '${v.name}' already exists in this team`);
-  db.prepare("UPDATE team_agents SET name = ?, engine = ?, model = ?, description = ?, prompt = ?, default_repo = ?, skill_ref = ?, cron = ?, cron_enabled = ?, cron_mode = ?, content_hash = ?, updated_at = ? WHERE id = ?")
-    .run(v.name, v.engine, v.model, v.description, v.prompt, v.defaultRepo, v.skillRef, v.cron, v.cronEnabled ? 1 : 0, v.cronMode, agentHash(v.engine, v.prompt, v.model, v.skillRef), now, a.id);
+  db.prepare("UPDATE team_agents SET name = ?, engine = ?, model = ?, description = ?, prompt = ?, default_repo = ?, skill_ref = ?, cron = ?, cron_enabled = ?, cron_mode = ?, email_enabled = ?, content_hash = ?, updated_at = ? WHERE id = ?")
+    .run(v.name, v.engine, v.model, v.description, v.prompt, v.defaultRepo, v.skillRef, v.cron, v.cronEnabled ? 1 : 0, v.cronMode, v.emailEnabled ? 1 : 0, agentHash(v.engine, v.prompt, v.model, v.skillRef), now, a.id);
   return getAgent(db, u.tenantId, v.name)!;
 }
 

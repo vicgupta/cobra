@@ -171,6 +171,7 @@ export async function executeWorkflow(loaded: LoadedWorkflow, opts: ExecuteOptio
           withArgs.driver = a.engine;
           if (a.model) withArgs.model = a.model; else delete withArgs.model;
           withArgs.prompt = finalPrompt(a.prompt, withArgs.prompt);
+          if (a.email) withArgs.team_email = true;
           if (withArgs.mode === undefined || withArgs.mode === "") withArgs.mode = run.mode || "simulated";
           if (withArgs.repo === undefined || withArgs.repo === "") withArgs.repo = run.repo || "";
           if (!header) {

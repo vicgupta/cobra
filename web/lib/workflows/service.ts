@@ -239,11 +239,11 @@ export function runAgent(db: DB, user: Actor, name: string, body: AgentRunBody |
   if (b.instructions !== undefined && typeof b.instructions !== "string") return err(400, "instructions must be text");
   const extra = typeof b.instructions === "string" ? b.instructions.trim() : "";
   if (extra.length > 4000) return err(400, "instructions must be at most 4000 characters");
-  return runDirect(db, user, { agent: a.name, engine: a.engine, model: a.model, prompt: finalPrompt(a.prompt, extra), hash: a.contentHash, repo: str(b.repo) ?? a.defaultRepo ?? undefined, mode: b.mode }, deps);
+  return runDirect(db, user, { agent: a.name, engine: a.engine, model: a.model, prompt: finalPrompt(a.prompt, extra), hash: a.contentHash, repo: str(b.repo) ?? a.defaultRepo ?? undefined, mode: b.mode, email: a.emailEnabled }, deps);
 }
 
 /** A pre-approved single agent step: a team agent (agent set) or a plain engine + prompt. */
-export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: string; model?: string | null; prompt: string; hash?: string; repo?: string; mode?: unknown; purpose?: string; scheduled?: boolean; triggeredBy?: string }, deps: RunDeps): Res & { run?: ReturnType<typeof startWorkflowRun> } {
+export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: string; model?: string | null; prompt: string; hash?: string; repo?: string; mode?: unknown; purpose?: string; scheduled?: boolean; triggeredBy?: string; email?: boolean }, deps: RunDeps): Res & { run?: ReturnType<typeof startWorkflowRun> } {
   const mode = str(o.mode) ?? "simulated";
   if (mode !== "simulated" && mode !== "real") return err(400, "mode must be simulated or real");
   if (!isEngine(o.engine)) return err(400, `${o.engine}: ${UNSUPPORTED_ENGINE}; engine must be ${ENGINE_LIST}`);
@@ -265,7 +265,7 @@ export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: stri
   // Team lessons (approved, this team + this repo only) prepended under a hard char cap; ids recorded on the run.
   const picked = selectLessons(db, user.tenantId, repo, `${label} ${o.purpose ?? ""} ${prompt}`);
   const runPrompt = withLessons(prompt, picked);
-  const loaded: LoadedWorkflow = { workflow, file: wfName, source: "", hash, origin: "tenant", agents: { [label]: { engine, model: o.model ?? null, prompt: runPrompt, hash } }, agentErrors: [] };
+  const loaded: LoadedWorkflow = { workflow, file: wfName, source: "", hash, origin: "tenant", agents: { [label]: { engine, model: o.model ?? null, prompt: runPrompt, hash, ...(o.email ? { email: true } : {}) } }, agentErrors: [] };
   // Cron runs have no user: created_by stays NULL and triggered_by records 'schedule'.
   const run = startWorkflowRun(db, o.scheduled ? { tenantId: user.tenantId, userId: null, triggeredBy: o.triggeredBy ?? "schedule" } : { tenantId: user.tenantId, userId: user.id }, loaded, {}, {
     handlers: deps.handlers, resolveSecret: deps.resolveSecret, redact: deps.redact(), preApproved: true, inputs: {},

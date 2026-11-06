@@ -59,6 +59,12 @@ class Validate(unittest.TestCase):
         self.refused(req(env={"CODEX_HOME": "/home/cobra/.codex"}), msg="CODEX_HOME")
         self.refused(req(env={"GH_TOKEN": 5}), msg="bad env")
 
+    def test_team_email_env_allowed(self):
+        r = L.validate(req(env={"CODEX_API_KEY": "k", "COBRA_TEAM_EMAIL": "team@kantsy.com", "COBRA_TEAM_EMAIL_TOKEN": "t" * 64}), UID, UID, yes)
+        self.assertEqual(r["engine"], "codex")
+        self.refused(req(env={"COBRA_TEAM_EMAIL_TOKEN": 5}), msg="bad env")
+        self.refused(req(env={"COBRA_TEAM_EMAIL_OTHER": "x"}), msg="env not allowed")
+
     def test_bad_args_and_timeout(self):
         self.refused(req(args="exec"), msg="args")
         self.refused(req(args=["a\0b"]), msg="args")

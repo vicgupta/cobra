@@ -29,7 +29,7 @@ export function runTeamAgent(db: DB, user: Actor, name: string, body: TeamAgentR
     const b = body ?? {};
     if (b.instructions !== undefined && typeof b.instructions !== "string") return err(400, "instructions must be text");
     const prompt = finalPrompt(a.prompt, b.instructions);
-    return runDirect(db, user, { agent: a.name, engine: a.engine, model: a.model, prompt, hash: a.contentHash, repo: str(b.repo) ?? a.defaultRepo ?? undefined, mode: b.mode,
+    return runDirect(db, user, { agent: a.name, engine: a.engine, model: a.model, prompt, hash: a.contentHash, repo: str(b.repo) ?? a.defaultRepo ?? undefined, mode: b.mode, email: a.emailEnabled,
       purpose: o.task ? `Task ${o.task} · agent ${a.name}` : undefined, scheduled: o.scheduled, triggeredBy: o.triggeredBy }, deps);
   }
   return runSkillAgent(db, user, { ...a, skillRef: ref }, body ?? {}, deps, o);

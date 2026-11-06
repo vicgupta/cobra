@@ -15,7 +15,7 @@ const PROMPT_EXAMPLE = "You are a careful code reviewer. Read the diff on the cu
 const ENGINE: Record<string, string> = ENGINE_LABEL;
 
 export type AgentView = { name: string; engine: string; model: string | null; description: string | null; prompt: string; defaultRepo: string | null; skillRef?: string | null;
-  cron?: string | null; cronMode?: "simulated" | "real"; contentHash: string; sourceUrl?: string | null; createdByEmail: string | null; createdAt?: number; canEdit: boolean };
+  cron?: string | null; cronMode?: "simulated" | "real"; contentHash: string; sourceUrl?: string | null; createdByEmail: string | null; createdAt?: number; canEdit: boolean; emailEnabled?: boolean };
 /** A skill an agent can run: "sop:<id>" (a team skill). */
 export type SkillOption = { ref: string; label: string; kind: "sop"; href?: string };
 
@@ -40,6 +40,7 @@ function AgentForm({ initial, repos, models, skills, onDone }: { initial?: Agent
   const [description, setDescription] = useState(initial?.description ?? "");
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const [repo, setRepo] = useState(initial?.defaultRepo ?? "");
+  const [emailEnabled, setEmailEnabled] = useState(!!initial?.emailEnabled);
   const [error, setError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -63,7 +64,7 @@ function AgentForm({ initial, repos, models, skills, onDone }: { initial?: Agent
       e.preventDefault(); setTried(true);
       if (!name || nameProblem(name) || (kind === "prompt" ? !prompt.trim() : !skillRef)) return;
       setBusy(true);
-      const body = { name, engine, model: model || null, description: description.trim() || null, kind, ...(kind === "prompt" ? { prompt, skillRef: null } : { skillRef }), defaultRepo: repo || null, ...(!initial && imported?.sourceUrl ? { sourceUrl: imported.sourceUrl } : {}) };
+      const body = { name, engine, model: model || null, description: description.trim() || null, kind, ...(kind === "prompt" ? { prompt, skillRef: null } : { skillRef }), defaultRepo: repo || null, emailEnabled, ...(!initial && imported?.sourceUrl ? { sourceUrl: imported.sourceUrl } : {}) };
       const r = initial ? await call(`/api/agents/${encodeURIComponent(initial.name)}`, "PATCH", body) : await call("/api/agents", "POST", body);
       setBusy(false);
       if (!r.ok) return setError(sentence(r.data.error ?? "Couldn't save the agent"));
@@ -106,6 +107,7 @@ function AgentForm({ initial, repos, models, skills, onDone }: { initial?: Agent
           </select>
         </Field>
       </div>
+      <label className="flex items-center gap-2 text-sm" data-agent-email><input type="checkbox" name="emailEnabled" className="h-4 w-4 accent-emerald-500" checked={emailEnabled} onChange={(e) => setEmailEnabled(e.target.checked)} /> Can use team email <span className="text-xs text-subtle">(the team&apos;s kantsy.com address from Settings &gt; Email; off by default)</span></label>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       <div className="flex gap-2">
         <button className={button} disabled={busy}>{busy ? "Saving…" : initial ? "Save changes" : "Create agent"}</button>

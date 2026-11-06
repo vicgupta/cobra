@@ -93,7 +93,7 @@ function pickAgent(db: DB, u: Actor, b: Record<string, unknown>, basePrompt: str
     const a = getAgent(db, u.tenantId, b.agent);
     if (!a) throw new CollabError(404, `agent '${b.agent}' not found`);
     if (a.skillRef) throw new CollabError(400, `agent '${a.name}' runs a skill; pick a prompt agent here`);
-    return { agent: a.name, engine: a.engine, prompt: `${a.prompt}\n\nAdditional instructions:\n${basePrompt}`, hash: a.contentHash };
+    return { agent: a.name, engine: a.engine, prompt: `${a.prompt}\n\nAdditional instructions:\n${basePrompt}`, hash: a.contentHash, email: a.emailEnabled };
   }
   const engine = b.engine ?? "claude-code";
   if (!isEngine(engine)) throw new CollabError(400, `engine must be ${ENGINE_LIST}`);

@@ -905,6 +905,28 @@ const MIGRATIONS: Array<(db: DB) => void> = [
       at INTEGER NOT NULL
     );
     CREATE INDEX api_audit_tenant ON api_audit(tenant_id, at);`),
+  // 37: Settings > Email: one kantsy.com mailbox per team (token encrypted), its audit, per-agent opt-in
+  (db) => db.exec(`
+    CREATE TABLE team_email (
+      tenant_id INTEGER PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+      address TEXT NOT NULL,
+      token_enc TEXT NOT NULL,
+      tier TEXT,
+      display_name TEXT,
+      set_at INTEGER NOT NULL,
+      set_by TEXT
+    );
+    CREATE TABLE team_email_audit (
+      id INTEGER PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      actor_id INTEGER,
+      actor_email TEXT NOT NULL,
+      action TEXT NOT NULL,
+      detail TEXT NOT NULL DEFAULT '',
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX team_email_audit_tenant ON team_email_audit(tenant_id, at);
+    ALTER TABLE team_agents ADD COLUMN email_enabled INTEGER NOT NULL DEFAULT 0;`),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

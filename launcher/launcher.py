@@ -23,7 +23,8 @@ CONF = {
 }
 ENGINES = {"claude-code": "claude", "codex": "codex", "git": None}  # git -> /usr/bin/git
 ENV_ALLOW = {"GIT_TERMINAL_PROMPT", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GH_TOKEN",
-             "GITHUB_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CODEX_API_KEY", "CODEX_HOME"}
+             "GITHUB_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CODEX_API_KEY", "CODEX_HOME",
+             "COBRA_TEAM_EMAIL", "COBRA_TEAM_EMAIL_TOKEN"}
 GIT_KEY = "http.https://github.com/.extraheader"
 RUN_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 MAX_REQ = 16 * 1024 * 1024
