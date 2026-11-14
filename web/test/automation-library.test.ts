@@ -8,7 +8,8 @@ import { createAgent } from "../lib/agents";
 import { addTeamRepo } from "../lib/repos";
 import { getSkill, skillByName, type Actor } from "../lib/skills/store";
 import { getTask, listTasks } from "../lib/tasks";
-import { activateLibraryPack, LIBRARY_PACKS, LibraryError, libraryPack } from "../lib/automation-library";
+import { activateLibraryPack, LibraryError, libraryPack } from "../lib/automation-library";
+import { listTaskTemplates, toLibraryPack } from "../lib/task-templates";
 
 function setup() {
   const db = openDb(":memory:");
@@ -22,13 +23,15 @@ function setup() {
 }
 
 test("catalog has the five engineering packs with ET schedules and suggested delivery", () => {
-  assert.deepEqual(LIBRARY_PACKS.map((p) => p.key), ["morning-brief", "stale-prs", "ci-digest", "review-follow-up", "weekly-health"]);
-  assert.equal(libraryPack("morning-brief")!.cron, "0 9 * * 1-5");
-  assert.equal(libraryPack("stale-prs")!.cron, "0 10 * * 1-5");
-  assert.equal(libraryPack("ci-digest")!.cron, "0 8 * * 1-5");
-  assert.equal(libraryPack("review-follow-up")!.cron, "0 11 * * 1-5");
-  assert.equal(libraryPack("weekly-health")!.cron, "0 9 * * 1");
-  for (const p of LIBRARY_PACKS) {
+  const { db } = setup();
+  const packs = listTaskTemplates(db).map((t) => toLibraryPack(t));
+  assert.deepEqual(packs.map((p) => p.key).sort(), ["ci-digest", "morning-brief", "review-follow-up", "stale-prs", "weekly-health"]);
+  assert.equal(libraryPack(db, "morning-brief")!.cron, "0 9 * * 1-5");
+  assert.equal(libraryPack(db, "stale-prs")!.cron, "0 10 * * 1-5");
+  assert.equal(libraryPack(db, "ci-digest")!.cron, "0 8 * * 1-5");
+  assert.equal(libraryPack(db, "review-follow-up")!.cron, "0 11 * * 1-5");
+  assert.equal(libraryPack(db, "weekly-health")!.cron, "0 9 * * 1");
+  for (const p of packs) {
     assert.equal(p.notifyOn, "both");
     assert.equal(p.notifyInApp, true);
     assert.ok(p.skillBody.includes("## "));

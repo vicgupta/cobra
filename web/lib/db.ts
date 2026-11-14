@@ -4,6 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { seedTemplates } from "./workflows/store";
+import { seedTaskTemplates } from "./task-templates";
 
 export type DB = DatabaseSync;
 
@@ -958,6 +959,33 @@ const MIGRATIONS: Array<(db: DB) => void> = [
       at INTEGER NOT NULL
     );
     CREATE INDEX team_email_sends_tenant_at ON team_email_sends(tenant_id, at);`),
+  // 39 (Task templates): global catalog for the Tasks → Templates tab. Not team-scoped.
+  // Seeded with the original five packs so they stay available without a code-only list.
+  // New templates are added later with `npm run template:add` (no redeploy).
+  (db) => {
+    db.exec(`
+    CREATE TABLE task_templates (
+      id INTEGER PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL,
+      description TEXT NOT NULL,
+      skill_name TEXT NOT NULL,
+      skill_description TEXT NOT NULL DEFAULT '',
+      skill_body TEXT NOT NULL,
+      task_name TEXT NOT NULL,
+      cron TEXT NOT NULL,
+      schedule_label TEXT NOT NULL DEFAULT '',
+      notify_on TEXT NOT NULL DEFAULT 'both',
+      notify_inapp INTEGER NOT NULL DEFAULT 1,
+      notify_email INTEGER NOT NULL DEFAULT 0,
+      mode TEXT NOT NULL DEFAULT 'simulated',
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX task_templates_category ON task_templates(category, created_at);
+    `);
+    seedTaskTemplates(db);
+  },
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

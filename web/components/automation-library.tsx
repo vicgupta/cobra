@@ -5,12 +5,14 @@ import { useRouter } from "next/navigation";
 import { button, call, ConfirmDialog, Field, ghost, input, nameProblem, Segmented, sentence, slug, Switch } from "./form-ui";
 import { DAYS, describeCron, fromCron, PRESETS, scheduleProblem, toCron, type Preset, type Schedule } from "@/lib/schedule";
 import type { LibraryPack } from "@/lib/automation-library";
+import { categoryLabel } from "@/lib/task-templates";
+import { Badge } from "./ui";
 import type { TaskAgentOption, TaskMember, NotifyOn } from "./tasks";
 
 const RUN_TYPES: Array<["simulated" | "real", string]> = [["simulated", "Test run"], ["real", "Real run"]];
 const NOTIFY_WHEN: Array<[NotifyOn, string]> = [["off", "Off"], ["success", "On success"], ["failure", "On failure"], ["both", "On success or failure"]];
 
-export function AutomationLibrary({ packs, agents, repos, members, hasTeamEmail }: { packs: LibraryPack[]; agents: TaskAgentOption[]; repos: string[]; members: TaskMember[]; hasTeamEmail: boolean }) {
+export function AutomationLibrary({ packs, agents, repos, members, hasTeamEmail, emptyCategory }: { packs: LibraryPack[]; agents: TaskAgentOption[]; repos: string[]; members: TaskMember[]; hasTeamEmail: boolean; now?: number; emptyCategory?: string }) {
   const [open, setOpen] = useState<LibraryPack | null>(null);
   if (agents.length === 0 || repos.length === 0) {
     return (
@@ -25,16 +27,24 @@ export function AutomationLibrary({ packs, agents, repos, members, hasTeamEmail 
     <section className="space-y-3" data-automation-library>
       <header><h2 className="text-base font-semibold tracking-tight">Automation library</h2>
         <p className="mt-1 text-sm text-muted">One-click starting points. You pick the repo and agent, and you can edit the skill, schedule and delivery before turning one on.</p></header>
+      {packs.length === 0 ? (
+        <p className="text-sm text-subtle">{emptyCategory ? `No templates in ${categoryLabel(emptyCategory)} yet.` : "No templates yet."}</p>
+      ) : (
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {packs.map((p) => (
-          <article key={p.key} data-pack={p.key} className="flex flex-col rounded-xl border border-border bg-surface/60 p-4 shadow-sm">
-            <h3 className="text-sm font-semibold text-fg">{p.title}</h3>
+          <article key={p.key} data-pack={p.key} data-category={p.category} className="flex flex-col rounded-xl border border-border bg-surface/60 p-4 shadow-sm">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {p.category && <Badge tone="gray">{categoryLabel(p.category)}</Badge>}
+              {p.isNew && <span data-new><Badge tone="green">New</Badge></span>}
+            </div>
+            <h3 className="mt-2 text-sm font-semibold text-fg">{p.title}</h3>
             <p className="mt-1 flex-1 text-sm text-muted">{p.summary}</p>
             <p className="mt-2 text-xs text-subtle">{p.scheduleLabel} · starts as a {p.mode === "real" ? "real" : "test"} run</p>
             <button type="button" className={`${button} mt-3 self-start`} onClick={() => setOpen(p)}>Use this</button>
           </article>
         ))}
       </div>
+      )}
     </section>
   );
 }

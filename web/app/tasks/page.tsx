@@ -3,8 +3,9 @@ import { AuthGate } from "@/components/auth-gate";
 import { TaskManager, type TaskSkillOption } from "@/components/tasks";
 import { AutomationLibrary } from "@/components/automation-library";
 import { TasksTabs } from "@/components/tasks-tabs";
+import { TemplateCategoryPills } from "@/components/template-category-pills";
 import { parseTasksTab } from "@/lib/tasks-tabs";
-import { LIBRARY_PACKS } from "@/lib/automation-library";
+import { listTaskTemplates, parseTemplateCategory, templateCountsByCategory, toLibraryPack } from "@/lib/task-templates";
 import { list } from "@/lib/skills/service";
 import { listAgents } from "@/lib/agents";
 import { canEditTask, listTasks } from "@/lib/tasks";
@@ -19,10 +20,10 @@ const requestTime = () => Date.now();
 
 export const metadata = { title: "Tasks · Cobra" };
 
-type TasksSearch = Promise<{ tab?: string; task?: string }>;
+type TasksSearch = Promise<{ tab?: string; task?: string; category?: string }>;
 
-function Tasks({ user, tab, highlightTaskId }: { user: SessionUser; tab: "current" | "templates"; highlightTaskId?: number }) {
-  const u = actor(user), db = getDb();
+function Tasks({ user, tab, highlightTaskId, category }: { user: SessionUser; tab: "current" | "templates"; highlightTaskId?: number; category?: ReturnType<typeof parseTemplateCategory> }) {
+  const u = actor(user), db = getDb(), now = requestTime();
   const tasks = listTasks(db, u.tenantId).map((t) => ({ ...t, canEdit: canEditTask(u, t, db) }));
   const sop = ((list(db, u).body as { skills?: Array<{ id: number; name: string; tenantId: number }> }).skills ?? []).filter((s) => s.tenantId === u.tenantId);
   const skills: TaskSkillOption[] = [...sop.map((s) => ({ ref: `sop:${s.id}`, name: s.name }))];
@@ -31,19 +32,28 @@ function Tasks({ user, tab, highlightTaskId }: { user: SessionUser; tab: "curren
   const members = displayTeamMembers(db, u.tenantId).map((m) => ({ email: m.email, name: m.name }));
   const hasTeamEmail = teamHasMailbox(db, u.tenantId);
   const shared = { agents, repos, members, hasTeamEmail };
-  return tab === "templates"
-    ? <AutomationLibrary packs={LIBRARY_PACKS} {...shared} />
-    : <TaskManager tasks={tasks} skills={skills} now={requestTime()} highlightTaskId={highlightTaskId} {...shared} />;
+  if (tab === "templates") {
+    const packs = listTaskTemplates(db, category ? { category } : {}).map((t) => toLibraryPack(t, now));
+    const counts = templateCountsByCategory(db);
+    return (
+      <div className="space-y-4">
+        <TemplateCategoryPills active={category ?? "all"} counts={counts} />
+        <AutomationLibrary packs={packs} now={now} emptyCategory={category} {...shared} />
+      </div>
+    );
+  }
+  return <TaskManager tasks={tasks} skills={skills} now={now} highlightTaskId={highlightTaskId} {...shared} />;
 }
 
 async function Body({ user, searchParams }: { user: SessionUser; searchParams: TasksSearch }) {
   const sp = await searchParams;
   const tab = parseTasksTab(sp.tab);
   const highlightTaskId = Number(sp.task) || undefined;
+  const category = parseTemplateCategory(sp.category);
   return (
     <>
       <TasksTabs active={tab} />
-      <Tasks user={user} tab={tab} highlightTaskId={tab === "current" ? highlightTaskId : undefined} />
+      <Tasks user={user} tab={tab} highlightTaskId={tab === "current" ? highlightTaskId : undefined} category={tab === "templates" ? category : undefined} />
     </>
   );
 }

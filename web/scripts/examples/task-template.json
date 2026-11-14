@@ -1,0 +1,16 @@
+{
+  "slug": "dependency-advisories",
+  "name": "Dependency advisory digest",
+  "category": "dependencies",
+  "description": "A weekday look at known-vulnerable or outdated dependencies in the repo.",
+  "skillName": "dependency-advisory-digest",
+  "skillDescription": "Summarise dependency advisories and outdated packages.",
+  "skillBody": "# Dependency advisory digest\n\n## Check dependencies\nIn this repo, look at the lockfile or manifest and list direct dependencies with known security advisories or that are clearly behind a current major. Don't change any files.\n\n## Write the digest\nWrite a short digest: what looks urgent, what can wait, and a suggested next step for each urgent item.\n\n## Report\nReturn only the digest. Don't open, comment on, or close anything.",
+  "taskName": "dependency-advisories",
+  "cron": "0 9 * * 1-5",
+  "scheduleLabel": "Weekdays at 9:00 AM ET",
+  "notifyOn": "both",
+  "notifyInApp": true,
+  "notifyEmail": false,
+  "mode": "simulated"
+}
