@@ -1,6 +1,8 @@
 import { Suspense } from "react";
 import { AuthGate } from "@/components/auth-gate";
 import { TaskManager, type TaskSkillOption } from "@/components/tasks";
+import { AutomationLibrary } from "@/components/automation-library";
+import { LIBRARY_PACKS } from "@/lib/automation-library";
 import { list } from "@/lib/skills/service";
 import { listAgents } from "@/lib/agents";
 import { canEditTask, listTasks } from "@/lib/tasks";
@@ -20,10 +22,15 @@ function Tasks({ user }: { user: SessionUser }) {
   const tasks = listTasks(db, u.tenantId).map((t) => ({ ...t, canEdit: canEditTask(u, t, db) }));
   const sop = ((list(db, u).body as { skills?: Array<{ id: number; name: string; tenantId: number }> }).skills ?? []).filter((s) => s.tenantId === u.tenantId);
   const skills: TaskSkillOption[] = [...sop.map((s) => ({ ref: `sop:${s.id}`, name: s.name }))];
+  const agents = listAgents(db, u.tenantId).map((a) => ({ name: a.name, skillRef: a.skillRef ?? null }));
+  const repos = listTeamRepos(db, u.tenantId).map((r) => r.repo);
+  const members = displayTeamMembers(db, u.tenantId).map((m) => ({ email: m.email, name: m.name }));
+  const hasTeamEmail = teamHasMailbox(db, u.tenantId);
   return (
-    <TaskManager tasks={tasks} agents={listAgents(db, u.tenantId).map((a) => ({ name: a.name, skillRef: a.skillRef ?? null }))} skills={skills}
-      repos={listTeamRepos(db, u.tenantId).map((r) => r.repo)} now={requestTime()}
-      members={displayTeamMembers(db, u.tenantId).map((m) => ({ email: m.email, name: m.name }))} hasTeamEmail={teamHasMailbox(db, u.tenantId)} />
+    <div className="space-y-8">
+      <AutomationLibrary packs={LIBRARY_PACKS} agents={agents} repos={repos} members={members} hasTeamEmail={hasTeamEmail} />
+      <TaskManager tasks={tasks} agents={agents} skills={skills} repos={repos} now={requestTime()} members={members} hasTeamEmail={hasTeamEmail} />
+    </div>
   );
 }
 

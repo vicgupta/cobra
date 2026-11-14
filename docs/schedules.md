@@ -63,3 +63,5 @@ Set this on the task form under **When it finishes**:
 Delivery problems (a failed send, or the mailbox hitting the 60 messages/hour cap) are logged and never fail the run. Extra emails past the cap are skipped with a log line.
 
 Existing tasks stay off until you turn delivery on.
+
+The Tasks page also has an [automation library](automation-library.md) of ready-made engineering schedules you can edit and turn on.
