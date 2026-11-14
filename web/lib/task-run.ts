@@ -15,8 +15,11 @@ export function runTask(db: DB, user: Actor | null, tenantId: number, id: number
   const mode = o.mode === undefined ? t.mode : o.mode;
   const actor = o.scheduled || !user ? scheduleActor(tenantId) : user;
   const r = runTeamAgent(db, actor, t.agent, { mode, repo: t.repo ?? undefined, instructions: t.instructions ?? undefined }, deps,
-    { scheduled: !!o.scheduled, skillRef: t.skillRef, triggeredBy: o.scheduled ? scheduleLabel(t) : undefined, task: t.name });
+    { scheduled: !!o.scheduled, skillRef: t.skillRef, triggeredBy: o.scheduled ? scheduleLabel(t) : undefined, task: t.name, taskId: t.id });
   const runId = (r.body as { id?: unknown } | null)?.id;
-  if (r.status < 300 && typeof runId === "string") setTaskLastRun(db, tenantId, t.id, runId);
+  if (r.status < 300 && typeof runId === "string") {
+    setTaskLastRun(db, tenantId, t.id, runId);
+    db.prepare("UPDATE runs SET task_id = ? WHERE id = ? AND tenant_id = ?").run(t.id, runId, tenantId);
+  }
   return r.status < 300 ? { ...r, body: { ...(r.body as object), task: t.name } } : r;
 }

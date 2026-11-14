@@ -243,7 +243,7 @@ export function runAgent(db: DB, user: Actor, name: string, body: AgentRunBody |
 }
 
 /** A pre-approved single agent step: a team agent (agent set) or a plain engine + prompt. */
-export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: string; model?: string | null; prompt: string; hash?: string; repo?: string; mode?: unknown; purpose?: string; scheduled?: boolean; triggeredBy?: string; email?: boolean }, deps: RunDeps): Res & { run?: ReturnType<typeof startWorkflowRun> } {
+export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: string; model?: string | null; prompt: string; hash?: string; repo?: string; mode?: unknown; purpose?: string; scheduled?: boolean; triggeredBy?: string; email?: boolean; taskId?: number }, deps: RunDeps): Res & { run?: ReturnType<typeof startWorkflowRun> } {
   const mode = str(o.mode) ?? "simulated";
   if (mode !== "simulated" && mode !== "real") return err(400, "mode must be simulated or real");
   if (!isEngine(o.engine)) return err(400, `${o.engine}: ${UNSUPPORTED_ENGINE}; engine must be ${ENGINE_LIST}`);
@@ -269,7 +269,7 @@ export function runDirect(db: DB, user: Actor, o: { agent?: string; engine: stri
   // Cron runs have no user: created_by stays NULL and triggered_by records 'schedule'.
   const run = startWorkflowRun(db, o.scheduled ? { tenantId: user.tenantId, userId: null, triggeredBy: o.triggeredBy ?? "schedule" } : { tenantId: user.tenantId, userId: user.id }, loaded, {}, {
     handlers: deps.handlers, resolveSecret: deps.resolveSecret, redact: deps.redact(), preApproved: true, inputs: {},
-    meta: { engine, prompt: runPrompt, promptSource: o.agent ? "agent" : "custom", mode, repo },
+    meta: { engine, prompt: runPrompt, promptSource: o.agent ? "agent" : "custom", mode, repo }, taskId: o.taskId,
   });
   recordInjected(db, run.id, picked.ids);
   return { ...ok({ id: run.id, agent: o.agent ?? null, hash, engine, mode, repo: repo ?? null, prompt, startedAt: run.startedAt }, 201), run };

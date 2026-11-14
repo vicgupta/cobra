@@ -8,6 +8,7 @@ import type { LoadedWorkflow } from "./loader";
 import { capLog, LiveLog, mergeLogs } from "./step-log";
 import type { Engine } from "../engines";
 import { captureForRun } from "../lessons/capture";
+import { deliverTaskResult } from "../task-delivery";
 import { injectedFor } from "../lessons/inject";
 
 /** True when the workflow has at least one `uses: agent` step; only those runs carry engine/mode/repo/prompt/branch. */
@@ -27,7 +28,7 @@ export function startWorkflowRun(
   rawInputs: Record<string, unknown>,
   opts: Pick<ExecuteOptions, "handlers" | "resolveSecret" | "redact"> & { idPrefix?: string; now?: number; meta?: RunMeta; inputs?: Record<string, string | number | boolean>;
     /** Direct team-agent runs: no workflow approval (the agent itself is the unit; see service.runAgent). */
-    preApproved?: boolean },
+    preApproved?: boolean; taskId?: number },
 ): StartedRun {
   const { workflow: wf, hash } = loaded;
   if (!opts.preApproved && approvalState(db, who.tenantId, loaded).status !== "approved") throw new WorkflowNotApprovedError(wf.name, hash);
@@ -41,12 +42,12 @@ export function startWorkflowRun(
   if (meta?.mode === "real" && !meta.branch && wf.steps.filter((s) => s.uses === "agent").length === 1) meta.branch = `cobra/${id}`;
   // Legacy columns (agent/repo/issue/title/prompt) are filled from same-named inputs when present.
   const issue = Number(inputs.issue ?? 0);
-  db.prepare(`INSERT INTO runs (id, tenant_id, created_by, agent, repo, issue, title, prompt, simulated, started_at, workflow, workflow_hash, status, engine, prompt_source, mode, branch, triggered_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, coalesce(?, (SELECT email FROM users WHERE id = ?), 'system'))`).run(
+  db.prepare(`INSERT INTO runs (id, tenant_id, created_by, agent, repo, issue, title, prompt, simulated, started_at, workflow, workflow_hash, status, engine, prompt_source, mode, branch, triggered_by, task_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, coalesce(?, (SELECT email FROM users WHERE id = ?), 'system'), ?)`).run(
     id, who.tenantId, who.userId, String(meta?.engine ?? inputs.agent ?? ""), String(meta?.repo ?? inputs.repo ?? ""), Number.isFinite(issue) ? issue : 0,
     String(inputs.title ?? "") || (issue ? `Issue #${issue}` : wf.name), String(meta?.prompt ?? inputs.prompt ?? ""),
     meta?.mode === "real" ? 0 : meta?.mode === "simulated" || wf.steps.every((s) => s.uses === "simulate" || s.uses === "noop") ? 1 : 0, startedAt, wf.name, hash,
-    meta?.engine ?? null, meta?.promptSource ?? null, meta?.mode ?? null, meta?.branch ?? null, who.triggeredBy ?? null, who.userId,
+    meta?.engine ?? null, meta?.promptSource ?? null, meta?.mode ?? null, meta?.branch ?? null, who.triggeredBy ?? null, who.userId, opts.taskId ?? null,
   );
   const redactList = opts.redact ?? [];
   const update = db.prepare("UPDATE runs SET status = ?, steps_json = ?, outputs_json = ?, error = ?, ended_at = ? WHERE id = ?");
@@ -97,8 +98,11 @@ export function startWorkflowRun(
       update.run("failed", null, null, error, Date.now(), id);
       return { status: "failed", steps: {}, outputs: {}, error } as RunResult;
     });
-  // Lesson capture once the run finishes (never fails the run).
-  void done.then(() => { try { captureForRun(db, id, redactList); } catch (e) { console.error("[cobra] lesson capture:", e instanceof Error ? e.message : e); } });
+  // Lesson capture and task-result delivery once the run finishes (never fail the run).
+  void done.then(() => {
+    try { captureForRun(db, id, redactList); } catch (e) { console.error("[cobra] lesson capture:", e instanceof Error ? e.message : e); }
+    void deliverTaskResult(db, id).catch((e) => console.error("[cobra] task delivery:", e instanceof Error ? e.message : e));
+  });
   return { id, startedAt, inputs, done };
 }
 

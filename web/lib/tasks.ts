@@ -10,21 +10,37 @@ export const TASK_NAME_RE = /^[a-z][a-z0-9-]{0,62}$/;
 export const TASK_INSTRUCTIONS_MAX = 4000;
 export class TaskError extends AgentError {}
 
+export const NOTIFY_ON = ["off", "success", "failure", "both"] as const;
+export type NotifyOn = (typeof NOTIFY_ON)[number];
 export type Task = {
   id: number; tenantId: number; name: string; agent: string; skillRef: string | null; cron: string | null; enabled: boolean; mode: "simulated" | "real";
   repo: string | null; instructions: string | null; lastFire: number | null;
   lastRun: { id: string; status: string; startedAt: number } | null; createdBy: number | null; createdByEmail: string | null; createdAt: number; updatedAt: number;
+  notifyOn: NotifyOn; notifyEmail: boolean; notifyInApp: boolean; notifyEmails: string[];
 };
-type Input = { name?: unknown; agent?: unknown; skillRef?: unknown; cron?: unknown; enabled?: unknown; mode?: unknown; repo?: unknown; instructions?: unknown };
+type Input = { name?: unknown; agent?: unknown; skillRef?: unknown; cron?: unknown; enabled?: unknown; mode?: unknown; repo?: unknown; instructions?: unknown;
+  notifyOn?: unknown; notifyEmail?: unknown; notifyInApp?: unknown; notifyEmails?: unknown };
 
 const COLS = `t.id, t.tenant_id AS tenantId, t.name, t.agent, t.skill_ref AS skillRef, t.cron, t.enabled, t.mode, t.repo, t.instructions, t.last_fire AS lastFire,
   t.created_by AS createdBy, u.email AS createdByEmail, t.created_at AS createdAt, t.updated_at AS updatedAt,
+  t.notify_on AS notifyOn, t.notify_email AS notifyEmail, t.notify_inapp AS notifyInApp, t.notify_emails AS notifyEmails,
   r.id AS lastRunId, r.status AS lastRunStatus, r.started_at AS lastRunAt`;
 const FROM = "FROM tasks t LEFT JOIN users u ON u.id = t.created_by LEFT JOIN runs r ON r.id = t.last_run_id AND r.tenant_id = t.tenant_id";
-type Row = Task & { lastRunId: string | null; lastRunStatus: string | null; lastRunAt: number | null };
+type Row = Omit<Task, "notifyEmails" | "notifyEmail" | "notifyInApp" | "notifyOn" | "lastRun"> & {
+  lastRunId: string | null; lastRunStatus: string | null; lastRunAt: number | null;
+  notifyOn: string; notifyEmail: number; notifyInApp: number; notifyEmails: string;
+};
+const parseEmails = (raw: string): string[] => {
+  try { const v = JSON.parse(raw); return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []; }
+  catch { return []; }
+};
+const notifyOnOf = (v: string): NotifyOn => (NOTIFY_ON as readonly string[]).includes(v) ? v as NotifyOn : "off";
 const plain = (r: unknown): Task => {
-  const { lastRunId, lastRunStatus, lastRunAt, ...t } = { ...(r as Row) };
+  const { lastRunId, lastRunStatus, lastRunAt, notifyOn, notifyEmail, notifyInApp, notifyEmails, ...rest } = { ...(r as Row) };
+  const t = rest as unknown as Task;
   t.enabled = !!t.enabled; t.mode = t.mode === "real" ? "real" : "simulated";
+  t.notifyOn = notifyOnOf(notifyOn); t.notifyEmail = !!notifyEmail; t.notifyInApp = !!notifyInApp;
+  t.notifyEmails = parseEmails(notifyEmails);
   t.lastRun = lastRunId ? { id: lastRunId, status: lastRunStatus ?? "unknown", startedAt: lastRunAt ?? 0 } : null;
   return t;
 };
@@ -74,7 +90,22 @@ function validate(db: DB, tenantId: number, b: Input, cur: Task | null) {
   if (rawIns !== undefined && rawIns !== null && typeof rawIns !== "string") throw new TaskError(400, "instructions must be text");
   const instructions = typeof rawIns === "string" && rawIns.trim() ? rawIns.replace(/\r\n/g, "\n").trim() : null;
   if (instructions && instructions.length > TASK_INSTRUCTIONS_MAX) throw new TaskError(400, `instructions must be at most ${TASK_INSTRUCTIONS_MAX} characters`);
-  return { name, agent: agentName, skillRef, cron, enabled, mode: mode as "simulated" | "real", repo, instructions };
+  const rawOn = pick(b.notifyOn, cur?.notifyOn) ?? "off";
+  if (typeof rawOn !== "string" || !(NOTIFY_ON as readonly string[]).includes(rawOn)) throw new TaskError(400, "notify when must be off, success, failure or both");
+  const notifyOn = rawOn as NotifyOn;
+  if (b.notifyEmail !== undefined && typeof b.notifyEmail !== "boolean") throw new TaskError(400, "notifyEmail must be true or false");
+  const notifyEmail = b.notifyEmail === undefined ? !!cur?.notifyEmail : b.notifyEmail;
+  if (b.notifyInApp !== undefined && typeof b.notifyInApp !== "boolean") throw new TaskError(400, "notifyInApp must be true or false");
+  const notifyInApp = b.notifyInApp === undefined ? !!cur?.notifyInApp : b.notifyInApp;
+  const rawEmails = pick(b.notifyEmails, cur?.notifyEmails) ?? [];
+  if (!Array.isArray(rawEmails) || rawEmails.some((x) => typeof x !== "string")) throw new TaskError(400, "notifyEmails must be a list of email addresses");
+  const emails = [...new Set((rawEmails as string[]).map((e) => e.trim().toLowerCase()).filter(Boolean))];
+  if (emails.length > 50) throw new TaskError(400, "notifyEmails is limited to 50 addresses");
+  if (emails.some((e) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))) throw new TaskError(400, "notifyEmails must be valid email addresses");
+  const team = new Set((db.prepare("SELECT email FROM users WHERE tenant_id = ?").all(tenantId) as Array<{ email: string }>).map((r) => r.email));
+  const unknown = emails.filter((e) => !team.has(e));
+  if (unknown.length) throw new TaskError(400, `notifyEmails must be members of this team (${unknown[0]} isn't)`);
+  return { name, agent: agentName, skillRef, cron, enabled, mode: mode as "simulated" | "real", repo, instructions, notifyOn, notifyEmail, notifyInApp, notifyEmails: emails };
 }
 
 const byName = (db: DB, tenantId: number, name: string) => db.prepare("SELECT id FROM tasks WHERE tenant_id = ? AND name = ? AND deleted_at IS NULL").get(tenantId, name) as { id: number } | undefined;
@@ -83,8 +114,8 @@ export function createTask(db: DB, u: AgentUser, b: Input | null, o: { now?: num
   const now = o.now ?? Date.now();
   const v = validate(db, u.tenantId, b ?? {}, null);
   if (byName(db, u.tenantId, v.name)) throw new TaskError(409, `a task named '${v.name}' already exists in this team`);
-  const r = db.prepare("INSERT INTO tasks (tenant_id, name, agent, skill_ref, cron, enabled, mode, repo, instructions, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-    .run(u.tenantId, v.name, v.agent, v.skillRef, v.cron, v.enabled ? 1 : 0, v.mode, v.repo, v.instructions, u.id, now, now);
+  const r = db.prepare("INSERT INTO tasks (tenant_id, name, agent, skill_ref, cron, enabled, mode, repo, instructions, notify_on, notify_email, notify_inapp, notify_emails, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(u.tenantId, v.name, v.agent, v.skillRef, v.cron, v.enabled ? 1 : 0, v.mode, v.repo, v.instructions, v.notifyOn, v.notifyEmail ? 1 : 0, v.notifyInApp ? 1 : 0, JSON.stringify(v.notifyEmails), u.id, now, now);
   return getTask(db, u.tenantId, Number(r.lastInsertRowid))!;
 }
 
@@ -95,8 +126,8 @@ export function updateTask(db: DB, u: AgentUser, id: number, b: Input | null, o:
   const v = validate(db, u.tenantId, b ?? {}, t);
   const other = byName(db, u.tenantId, v.name);
   if (other && other.id !== t.id) throw new TaskError(409, `a task named '${v.name}' already exists in this team`);
-  db.prepare("UPDATE tasks SET name = ?, agent = ?, skill_ref = ?, cron = ?, enabled = ?, mode = ?, repo = ?, instructions = ?, updated_at = ? WHERE id = ?")
-    .run(v.name, v.agent, v.skillRef, v.cron, v.enabled ? 1 : 0, v.mode, v.repo, v.instructions, o.now ?? Date.now(), t.id);
+  db.prepare("UPDATE tasks SET name = ?, agent = ?, skill_ref = ?, cron = ?, enabled = ?, mode = ?, repo = ?, instructions = ?, notify_on = ?, notify_email = ?, notify_inapp = ?, notify_emails = ?, updated_at = ? WHERE id = ?")
+    .run(v.name, v.agent, v.skillRef, v.cron, v.enabled ? 1 : 0, v.mode, v.repo, v.instructions, v.notifyOn, v.notifyEmail ? 1 : 0, v.notifyInApp ? 1 : 0, JSON.stringify(v.notifyEmails), o.now ?? Date.now(), t.id);
   return getTask(db, u.tenantId, t.id)!;
 }
 

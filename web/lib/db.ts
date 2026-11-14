@@ -927,6 +927,37 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     );
     CREATE INDEX team_email_audit_tenant ON team_email_audit(tenant_id, at);
     ALTER TABLE team_agents ADD COLUMN email_enabled INTEGER NOT NULL DEFAULT 0;`),
+  // 38 (Task result delivery): additive only. Per-task notify_on (off|success|failure|both, default off so
+  // existing tasks stay quiet), email and in-app channel flags, and a JSON list of team-member recipient
+  // emails. runs.task_id links a run back to the task that started it (so delivery still fires if last_run_id
+  // is overwritten). run_notifications is the in-app bell (per user, team-scoped). team_email_sends counts
+  // mailbox sends for the 60/hour Kantsy cap.
+  (db) => db.exec(`
+    ALTER TABLE tasks ADD COLUMN notify_on TEXT NOT NULL DEFAULT 'off';
+    ALTER TABLE tasks ADD COLUMN notify_email INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE tasks ADD COLUMN notify_inapp INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE tasks ADD COLUMN notify_emails TEXT NOT NULL DEFAULT '[]';
+    ALTER TABLE runs ADD COLUMN task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL;
+    CREATE INDEX runs_task ON runs(task_id);
+    CREATE TABLE run_notifications (
+      id INTEGER PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      run_id TEXT REFERENCES runs(id) ON DELETE SET NULL,
+      task_id INTEGER REFERENCES tasks(id) ON DELETE SET NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL,
+      read_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX run_notifications_user ON run_notifications(user_id, read_at, created_at);
+    CREATE TABLE team_email_sends (
+      id INTEGER PRIMARY KEY,
+      tenant_id INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      at INTEGER NOT NULL
+    );
+    CREATE INDEX team_email_sends_tenant_at ON team_email_sends(tenant_id, at);`),
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */

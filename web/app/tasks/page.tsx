@@ -5,6 +5,8 @@ import { list } from "@/lib/skills/service";
 import { listAgents } from "@/lib/agents";
 import { canEditTask, listTasks } from "@/lib/tasks";
 import { listTeamRepos } from "@/lib/repos";
+import { displayTeamMembers } from "@/lib/team";
+import { teamHasMailbox } from "@/lib/team-email";
 import { actor, getDb } from "@/lib/workflows/server";
 import type { SessionUser } from "@/lib/auth/sessions";
 
@@ -20,7 +22,8 @@ function Tasks({ user }: { user: SessionUser }) {
   const skills: TaskSkillOption[] = [...sop.map((s) => ({ ref: `sop:${s.id}`, name: s.name }))];
   return (
     <TaskManager tasks={tasks} agents={listAgents(db, u.tenantId).map((a) => ({ name: a.name, skillRef: a.skillRef ?? null }))} skills={skills}
-      repos={listTeamRepos(db, u.tenantId).map((r) => r.repo)} now={requestTime()} />
+      repos={listTeamRepos(db, u.tenantId).map((r) => r.repo)} now={requestTime()}
+      members={displayTeamMembers(db, u.tenantId).map((m) => ({ email: m.email, name: m.name }))} hasTeamEmail={teamHasMailbox(db, u.tenantId)} />
   );
 }
 

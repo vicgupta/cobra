@@ -13,6 +13,7 @@ import type { WorkflowStep } from "../workflows/schema";
 import { MAX_DEPTH, type Plan, type PlanStep } from "./plan";
 import { sectionText } from "./sections";
 import { captureForRun } from "../lessons/capture";
+import { deliverTaskResult } from "../task-delivery";
 import { audit, effectiveHash, skillByName, SkillError, type Skill } from "./store";
 
 export type SkillDeps = { handlers: Handlers; resolveSecret: (name: string) => string | undefined; redact: () => string[] };
@@ -45,7 +46,7 @@ const fill = (v: unknown, vars: Record<string, unknown>) => typeof v === "string
   : v;
 
 export type ExecOptions = { mode?: Mode; repo?: string; now?: number; depth?: number; parent?: string; path?: string[]; idPrefix?: string;
-  /** Team lessons block (lib/lessons/inject.ts) prepended to every agent step prompt of this run. */ lessons?: string };
+  /** Team lessons block (lib/lessons/inject.ts) prepended to every agent step prompt of this run. */ lessons?: string; taskId?: number };
 
 /**
  * Starts a skill run (any team member, no approval). Simulated runs are dry runs (agents and GitHub
@@ -63,18 +64,21 @@ export function startSkillRun(db: DB, who: Who, skill: Skill, rawInputs: Record<
   const id = `${o.idPrefix ?? "skr_"}${startedAt.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const run = { id, repo: o.repo ?? "", mode, engine: "", prompt: String(inputs.prompt ?? "") };
   const agentSteps = skill.plan.steps.filter((s) => s.action === "agent").length;
-  db.prepare(`INSERT INTO runs (id, tenant_id, created_by, agent, repo, issue, title, prompt, simulated, started_at, workflow, workflow_hash, status, engine, prompt_source, mode, branch, triggered_by)
-    VALUES (?, ?, ?, '', ?, 0, ?, ?, ?, ?, ?, ?, 'running', NULL, 'skill', ?, ?, ?)`).run(
+  db.prepare(`INSERT INTO runs (id, tenant_id, created_by, agent, repo, issue, title, prompt, simulated, started_at, workflow, workflow_hash, status, engine, prompt_source, mode, branch, triggered_by, task_id)
+    VALUES (?, ?, ?, '', ?, 0, ?, ?, ?, ?, ?, ?, 'running', NULL, 'skill', ?, ?, ?, ?)`).run(
     id, who.tenantId, who.userId, run.repo, o.parent ? `${skill.name} (called by ${o.parent})` : skill.name, run.prompt.slice(0, 20000), mode === "simulated" ? 1 : 0,
-    startedAt, `skill:${skill.name}`, eff.hash, mode, mode === "real" && agentSteps === 1 ? `cobra/${id}` : null, who.email);
+    startedAt, `skill:${skill.name}`, eff.hash, mode, mode === "real" && agentSteps === 1 ? `cobra/${id}` : null, who.email, o.taskId ?? null);
   audit(db, { id: who.userId ?? 0, email: who.email, tenantId: who.tenantId }, "skill_run", skill.id, `${id} ${mode}${o.parent ? ` (from ${o.parent})` : ""} @${eff.hash.slice(0, 12)}`, skill.tenantId);
   const done = execute(db, who, skill, inputs, run, deps, { depth, path, agentSteps, lessons: o.lessons }).catch((e: unknown) => {
     const error = e instanceof Error ? e.message : String(e);
     db.prepare("UPDATE runs SET status = 'failed', error = ?, ended_at = ? WHERE id = ?").run(redactText(error, deps.redact()), Date.now(), id);
     return { id, status: "failed" as const, steps: {}, outputs: {}, error };
   });
-  // Lesson capture once the run finishes (never fails the run).
-  void done.then(() => { try { captureForRun(db, id, deps.redact()); } catch (e) { console.error("[cobra] lesson capture:", e instanceof Error ? e.message : e); } });
+  // Lesson capture and task-result delivery once the run finishes (never fail the run).
+  void done.then(() => {
+    try { captureForRun(db, id, deps.redact()); } catch (e) { console.error("[cobra] lesson capture:", e instanceof Error ? e.message : e); }
+    void deliverTaskResult(db, id).catch((e) => console.error("[cobra] task delivery:", e instanceof Error ? e.message : e));
+  });
   return { id, done };
 }
 

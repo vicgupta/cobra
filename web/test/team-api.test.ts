@@ -45,7 +45,7 @@ const mkAgent = (s: S, f = A, name = "builder") => body(f(s, "POST", "agents", {
 // ---------- migration ----------
 test("migration 36: api_keys/api_objects/api_runs/api_audit tables", () => {
   const { db } = setup();
-  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 37);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 38);
   for (const t of ["api_keys", "api_objects", "api_runs", "api_audit"]) assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t), t);
 });
 

@@ -23,6 +23,9 @@ export const canManageTeamEmail = (db: DB, u: U) => isSystemAdmin(u) || u.role =
 type Row = { address: string; token_enc: string; tier: string | null; display_name: string | null; set_at: number; set_by: string | null };
 const row = (db: DB, t: number) => db.prepare("SELECT address, token_enc, tier, display_name, set_at, set_by FROM team_email WHERE tenant_id = ?").get(t) as Row | undefined;
 
+/** True when the team has a mailbox configured (no token is read). */
+export const teamHasMailbox = (db: DB, t: number) => !!db.prepare("SELECT 1 FROM team_email WHERE tenant_id = ?").get(t);
+
 export function teamEmailStatus(db: DB, u: U): TeamEmailStatus {
   const r = row(db, u.tenantId);
   return { email: r ? { address: r.address, tier: r.tier, displayName: r.display_name, setAt: r.set_at, setBy: r.set_by } : null, canEdit: canManageTeamEmail(db, u) };

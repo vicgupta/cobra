@@ -12,8 +12,11 @@ import { relativeTime } from "@/lib/runs-table";
 /** A skill a task can run, shown by name. */
 export type TaskSkillOption = { ref: string; name: string };
 export type TaskAgentOption = { name: string; skillRef: string | null };
+export type TaskMember = { email: string; name: string };
+export type NotifyOn = "off" | "success" | "failure" | "both";
 export type TaskView = { id: number; name: string; agent: string; skillRef: string | null; cron: string | null; enabled: boolean; mode: "simulated" | "real";
-  repo: string | null; instructions: string | null; createdByEmail: string | null; canEdit: boolean; lastRun?: { id: string; status: string; startedAt: number } | null };
+  repo: string | null; instructions: string | null; createdByEmail: string | null; canEdit: boolean; lastRun?: { id: string; status: string; startedAt: number } | null;
+  notifyOn?: NotifyOn; notifyEmail?: boolean; notifyInApp?: boolean; notifyEmails?: string[] };
 
 const RUN_TYPES: Array<["simulated" | "real", string]> = [["simulated", "Test run"], ["real", "Real run"]];
 export const runTypeLabel = (m: string) => (m === "real" ? "Real run" : "Test run");
@@ -30,7 +33,9 @@ function CronHelp({ id }: { id: string }) {
   );
 }
 
-function TaskForm({ initial, agents, skills, repos, onDone }: { initial?: TaskView; agents: TaskAgentOption[]; skills: TaskSkillOption[]; repos: string[]; onDone: () => void }) {
+const NOTIFY_WHEN: Array<[NotifyOn, string]> = [["off", "Off"], ["success", "On success"], ["failure", "On failure"], ["both", "On success or failure"]];
+
+function TaskForm({ initial, agents, skills, repos, members, hasTeamEmail, onDone }: { initial?: TaskView; agents: TaskAgentOption[]; skills: TaskSkillOption[]; repos: string[]; members: TaskMember[]; hasTeamEmail: boolean; onDone: () => void }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [agent, setAgent] = useState(initial?.agent ?? (agents.length === 1 ? agents[0].name : ""));
   const [skillRef, setSkillRef] = useState(initial?.skillRef ?? "");
@@ -39,6 +44,10 @@ function TaskForm({ initial, agents, skills, repos, onDone }: { initial?: TaskVi
   const [mode, setMode] = useState<"simulated" | "real">(initial?.mode ?? "simulated");
   const [repo, setRepo] = useState(initial?.repo ?? "");
   const [instructions, setInstructions] = useState(initial?.instructions ?? "");
+  const [notifyOn, setNotifyOn] = useState<NotifyOn>(initial?.notifyOn ?? "off");
+  const [notifyInApp, setNotifyInApp] = useState(initial?.notifyInApp ?? false);
+  const [notifyEmail, setNotifyEmail] = useState(!!hasTeamEmail && (initial?.notifyEmail ?? false));
+  const [notifyEmails, setNotifyEmails] = useState<string[]>(initial?.notifyEmails ?? []);
   const [error, setError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -54,7 +63,8 @@ function TaskForm({ initial, agents, skills, repos, onDone }: { initial?: TaskVi
       e.preventDefault(); setTried(true);
       if (!name || nameProblem(name) || !agent || schedErr) return;
       setBusy(true);
-      const body = { name, agent, skillRef: skillRef || null, cron: cron || null, enabled: enabled && !!cron, mode, repo: repo || null, instructions: instructions.trim() || null };
+      const body = { name, agent, skillRef: skillRef || null, cron: cron || null, enabled: enabled && !!cron, mode, repo: repo || null, instructions: instructions.trim() || null,
+        notifyOn, notifyInApp, notifyEmail: hasTeamEmail && notifyEmail, notifyEmails: hasTeamEmail && notifyEmail ? notifyEmails : [] };
       const r = initial ? await call(`/api/tasks/${initial.id}`, "PATCH", body) : await call("/api/tasks", "POST", body);
       setBusy(false);
       if (!r.ok) return setError(sentence(r.data.error ?? "Couldn't save the task"));
@@ -102,6 +112,28 @@ function TaskForm({ initial, agents, skills, repos, onDone }: { initial?: TaskVi
       </fieldset>
       <Segmented name={`${idp}-mode`} label="Run type" value={mode} options={RUN_TYPES} onChange={setMode} />
       <p className="-mt-3 text-xs text-subtle">{mode === "real" ? "Real runs use the agent for real and can push branches and open pull requests." : "Test runs record what would happen without changing anything."}</p>
+      <fieldset className="space-y-3 rounded-lg border border-border p-4" data-task-delivery>
+        <legend className="px-1 text-sm font-medium text-fg-soft">When it finishes</legend>
+        <Segmented name={`${idp}-notify-on`} label="Send a result" value={notifyOn} options={NOTIFY_WHEN} onChange={setNotifyOn} />
+        <p className="-mt-1 text-xs text-subtle">A short summary (status, duration, links) after a scheduled run or when you click Run.</p>
+        {notifyOn !== "off" && <>
+          <label className="flex items-center gap-2 text-sm text-fg-soft"><Switch checked={notifyInApp} onChange={setNotifyInApp} label="In-app notification" /> In-app notification (bell in the header)</label>
+          <label className={`flex items-center gap-2 text-sm ${hasTeamEmail ? "text-fg-soft" : "text-subtle"}`}>
+            <Switch checked={hasTeamEmail && notifyEmail} onChange={setNotifyEmail} label="Email" disabled={!hasTeamEmail} /> Email
+          </label>
+          {!hasTeamEmail && <p className="text-xs text-subtle" data-email-hint>Set up a team mailbox in Settings → Email first. Email delivery stays off until then.</p>}
+          {hasTeamEmail && notifyEmail && <div className="space-y-1 pl-1" data-email-recipients>
+            <p className="text-xs text-subtle">Send to these team members:</p>
+            {members.length === 0 ? <p className="text-xs text-subtle">No team members to email.</p> : members.map((m) => (
+              <label key={m.email} className="flex items-center gap-2 text-sm text-fg-soft">
+                <input type="checkbox" className="rounded border-border" checked={notifyEmails.includes(m.email)}
+                  onChange={(e) => setNotifyEmails((cur) => e.target.checked ? [...cur, m.email] : cur.filter((x) => x !== m.email))} />
+                {m.name ? `${m.name} (${m.email})` : m.email}
+              </label>
+            ))}
+          </div>}
+        </>}
+      </fieldset>
       <details className="rounded-lg border border-border px-4 py-3" open={!!(initial?.repo || initial?.instructions) || undefined}>
         <summary className="cursor-pointer text-sm font-medium text-fg-soft">More options</summary>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -124,7 +156,7 @@ function TaskForm({ initial, agents, skills, repos, onDone }: { initial?: TaskVi
   );
 }
 
-export function TaskManager({ tasks, agents, skills, repos, now }: { tasks: TaskView[]; agents: TaskAgentOption[]; skills: TaskSkillOption[]; repos: string[]; now: number }) {
+export function TaskManager({ tasks, agents, skills, repos, now, members, hasTeamEmail }: { tasks: TaskView[]; agents: TaskAgentOption[]; skills: TaskSkillOption[]; repos: string[]; now: number; members: TaskMember[]; hasTeamEmail: boolean }) {
   const [editing, setEditing] = useState<number | "new" | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -136,7 +168,7 @@ export function TaskManager({ tasks, agents, skills, repos, now }: { tasks: Task
     const s = skillName(t.skillRef) ?? skillName(agents.find((a) => a.name === t.agent)?.skillRef ?? null);
     return <><span className="font-medium text-fg">{t.agent}</span>{s ? <span className="text-subtle"> · {s}</span> : <span className="text-subtle"> · prompt</span>}</>;
   };
-  const props = { agents, skills, repos };
+  const props = { agents, skills, repos, members, hasTeamEmail };
   if (!agents.length) return <EmptyState title="Create an agent first" body="A task runs one of your agents on a schedule or when you click Run." action={<Link href="/agents" className={button}>Go to Agents</Link>} />;
   if (editing === "new") return <section className="rounded-xl border border-border bg-surface/60 p-5 shadow-sm" aria-labelledby="new-task-h"><h2 id="new-task-h" className="mb-4 text-base font-semibold">New task</h2><TaskForm {...props} onDone={() => setEditing(null)} /></section>;
   const editingTask = tasks.find((t) => t.id === editing);

@@ -18,7 +18,7 @@ const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : unde
 export const scheduleActor = (tenantId: number): Actor => ({ id: 0, email: "schedule", role: "member", tenantId });
 
 /** Options: scheduled (no user; triggered_by = triggeredBy ?? 'schedule'), skillRef (a task's skill override). */
-export type RunOpts = { scheduled?: boolean; skillRef?: string | null; triggeredBy?: string; task?: string };
+export type RunOpts = { scheduled?: boolean; skillRef?: string | null; triggeredBy?: string; task?: string; taskId?: number };
 
 export function runTeamAgent(db: DB, user: Actor, name: string, body: TeamAgentRunBody | null, deps: RunDeps, o: RunOpts = {}): Res {
   const a = getAgent(db, user.tenantId, name);
@@ -30,7 +30,7 @@ export function runTeamAgent(db: DB, user: Actor, name: string, body: TeamAgentR
     if (b.instructions !== undefined && typeof b.instructions !== "string") return err(400, "instructions must be text");
     const prompt = finalPrompt(a.prompt, b.instructions);
     return runDirect(db, user, { agent: a.name, engine: a.engine, model: a.model, prompt, hash: a.contentHash, repo: str(b.repo) ?? a.defaultRepo ?? undefined, mode: b.mode, email: a.emailEnabled,
-      purpose: o.task ? `Task ${o.task} · agent ${a.name}` : undefined, scheduled: o.scheduled, triggeredBy: o.triggeredBy }, deps);
+      purpose: o.task ? `Task ${o.task} · agent ${a.name}` : undefined, scheduled: o.scheduled, triggeredBy: o.triggeredBy, taskId: o.taskId }, deps);
   }
   return runSkillAgent(db, user, { ...a, skillRef: ref }, body ?? {}, deps, o);
 }
@@ -53,7 +53,7 @@ function runSkillAgent(db: DB, user: Actor, a: TeamAgent, b: TeamAgentRunBody, d
   try {
     const who = o.scheduled ? { tenantId: user.tenantId, userId: null, email: o.triggeredBy ?? "schedule" } : { tenantId: user.tenantId, userId: user.id, email: user.email };
     const picked = selectLessons(db, user.tenantId, repo, `${a.name} ${s.name} ${o.task ?? ""} ${extra}`);
-    const r = startSkillRun(db, who, s, inputs, deps, { mode, repo: repo ?? "", parent: o.task ? `task ${o.task} · agent ${a.name}` : `agent ${a.name}`, lessons: picked.block || undefined });
+    const r = startSkillRun(db, who, s, inputs, deps, { mode, repo: repo ?? "", parent: o.task ? `task ${o.task} · agent ${a.name}` : `agent ${a.name}`, lessons: picked.block || undefined, taskId: o.taskId });
     recordInjected(db, r.id, picked.ids);
     void r.done;
     return { status: 201, body: { id: r.id, url: `/runs/${r.id}`, agent: a.name, skill: `sop:${s.id}`, mode } };

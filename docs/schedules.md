@@ -45,3 +45,21 @@ All times are Eastern (ET).
 | `0 0 1 * *` | Midnight on the 1st of each month |
 | `0 12 * * 0` | Every Sunday at noon |
 | `0 8-18 * * 1-5` | Every hour 8:00–18:00 on weekdays |
+
+## Result delivery
+
+When a task finishes — on its schedule or when someone clicks **Run** — Cobra can send a short summary:
+
+- Task name, agent and skill, status (ok or failed), duration
+- Pull request and issue links when the run produced them
+- A link to the run page on nova (`https://nova.kantsy.com/runs/<id>`)
+
+Set this on the task form under **When it finishes**:
+
+- **Send a result:** Off, On success, On failure, or On success or failure
+- **In-app notification:** a bell in the header (unread list, team-scoped, per user)
+- **Email:** sent from the team's kantsy.com mailbox (Settings → Email) to the team members you tick. If the team has no mailbox yet, Email is disabled and the form explains why.
+
+Delivery problems (a failed send, or the mailbox hitting the 60 messages/hour cap) are logged and never fail the run. Extra emails past the cap are skipped with a log line.
+
+Existing tasks stay off until you turn delivery on.

@@ -37,7 +37,7 @@ const fakeKantsy = (token: string, status = 201): typeof fetch => (async (url: s
 
 test("migration 37: tables and the agent column exist; agents default to no email", () => {
   const { db, leadA } = setup();
-  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 37);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 38);
   const a = createAgent(db, leadA, { name: "mailer", engine: "claude-code", prompt: "hi" });
   assert.equal(a.emailEnabled, false);
   assert.equal(updateAgent(db, leadA, "mailer", { emailEnabled: true }).emailEnabled, true);
