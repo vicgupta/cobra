@@ -6,23 +6,19 @@ import { parseCron } from "./cron";
 import { describeCron } from "./schedule";
 import type { NotifyOn } from "./tasks";
 
+/** Pill order on Tasks → Templates. Add a row here to introduce a new category. */
 export const TEMPLATE_CATEGORIES = [
-  { slug: "code-review", label: "Code review" },
-  { slug: "ci-cd", label: "CI/CD" },
-  { slug: "issues-triage", label: "Issues & triage" },
-  { slug: "pull-requests", label: "Pull requests" },
-  { slug: "releases", label: "Releases" },
-  { slug: "dependencies", label: "Dependencies" },
-  { slug: "security", label: "Security" },
-  { slug: "testing", label: "Testing" },
-  { slug: "docs", label: "Docs" },
-  { slug: "repo-health", label: "Repo health" },
-  { slug: "performance", label: "Performance" },
-  { slug: "onboarding", label: "Onboarding" },
+  { slug: "engineering", label: "Engineering" },
+  { slug: "finance", label: "Finance" },
+  { slug: "human-resources", label: "Human Resources" },
+  { slug: "productivity", label: "Productivity" },
 ] as const;
 
 export type TemplateCategorySlug = (typeof TEMPLATE_CATEGORIES)[number]["slug"];
 export type TemplateCategory = (typeof TEMPLATE_CATEGORIES)[number];
+
+/** Used when a stored category is missing or no longer in TEMPLATE_CATEGORIES. */
+export const DEFAULT_TEMPLATE_CATEGORY: TemplateCategorySlug = "engineering";
 
 const SLUGS = new Set<string>(TEMPLATE_CATEGORIES.map((c) => c.slug));
 const LABEL_TO_SLUG = new Map<string, TemplateCategorySlug>([
@@ -81,7 +77,7 @@ export function categoryLabel(slug: string): string {
 export const SEED_TEMPLATES: Array<Omit<TaskTemplate, 'id'>> = [
   {
     slug: "morning-brief",
-    category: "issues-triage",
+    category: "engineering",
     createdAt: SEED_CREATED_AT,
     name: "Morning PR & issue brief",
     description: "A weekday morning summary of open pull requests and issues in the repo.",
@@ -107,7 +103,7 @@ Return only the brief. Don't open, comment on, or close anything.`,
   },
   {
     slug: "stale-prs",
-    category: "pull-requests",
+    category: "engineering",
     createdAt: SEED_CREATED_AT,
     name: "Stale PR reminder",
     description: "Find pull requests with no update for a week and remind the team.",
@@ -133,7 +129,7 @@ Return a list of stale PRs and the drafted reminders.`,
   },
   {
     slug: "ci-digest",
-    category: "ci-cd",
+    category: "engineering",
     createdAt: SEED_CREATED_AT,
     name: "CI failure digest",
     description: "Collect recent CI failures on the default branch and group them.",
@@ -159,7 +155,7 @@ Return a short digest. Don't rerun workflows or push fixes unless the task instr
   },
   {
     slug: "review-follow-up",
-    category: "code-review",
+    category: "engineering",
     createdAt: SEED_CREATED_AT,
     name: "Unanswered review follow-up",
     description: "Find review comments and change requests that haven't been answered.",
@@ -185,7 +181,7 @@ Return the list and the drafted follow-ups.`,
   },
   {
     slug: "weekly-health",
-    category: "repo-health",
+    category: "engineering",
     createdAt: SEED_CREATED_AT,
     name: "Weekly repo health",
     description: "A Monday snapshot of PR cycle time, issue backlog, and stale work.",
@@ -344,6 +340,15 @@ const UPDATE = `UPDATE task_templates SET name = ?, category = ?, description = 
 
 function bind(t: Omit<TaskTemplate, "id">) {
   return [t.slug, t.name, t.category, t.description, t.skillName, t.skillDescription, t.skillBody, t.taskName, t.cron, t.scheduleLabel, t.notifyOn, t.notifyInApp ? 1 : 0, t.notifyEmail ? 1 : 0, t.mode, t.createdAt];
+}
+
+
+/** Move rows whose category is not in TEMPLATE_CATEGORIES to Engineering. Safe to re-run. */
+export function remapTemplateCategories(db: DB, fallback: TemplateCategorySlug = DEFAULT_TEMPLATE_CATEGORY): number {
+  const known = TEMPLATE_CATEGORIES.map((c) => c.slug);
+  const ph = known.map(() => "?").join(", ");
+  const r = db.prepare(`UPDATE task_templates SET category = ? WHERE category NOT IN (${ph})`).run(fallback, ...known);
+  return Number(r.changes);
 }
 
 /** Seed the original five packs. INSERT OR IGNORE so a re-run never overwrites daily additions. */

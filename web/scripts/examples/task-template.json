@@ -1,7 +1,7 @@
 {
   "slug": "dependency-advisories",
   "name": "Dependency advisory digest",
-  "category": "dependencies",
+  "category": "engineering",
   "description": "A weekday look at known-vulnerable or outdated dependencies in the repo.",
   "skillName": "dependency-advisory-digest",
   "skillDescription": "Summarise dependency advisories and outdated packages.",

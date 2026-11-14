@@ -9,19 +9,19 @@ import { DatabaseSync } from "node:sqlite";
 import { migrate, openDb } from "../lib/db";
 import {
   addTaskTemplate, getTaskTemplate, isNewTemplate, listTaskTemplates, NEW_TEMPLATE_MS,
-  parseTemplateCategory, SEED_CREATED_AT, SEED_TEMPLATES, TEMPLATE_CATEGORIES, TemplateError,
-  templateCountsByCategory,
+  DEFAULT_TEMPLATE_CATEGORY, parseTemplateCategory, remapTemplateCategories, SEED_CREATED_AT,
+  SEED_TEMPLATES, TEMPLATE_CATEGORIES, TemplateError, templateCountsByCategory,
 } from "../lib/task-templates";
 
 const read = (f: string) => readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
 
-test("there are at least 10 engineering template categories", () => {
-  assert.ok(TEMPLATE_CATEGORIES.length >= 10);
-  assert.deepEqual(TEMPLATE_CATEGORIES.map((c) => c.slug), [
-    "code-review", "ci-cd", "issues-triage", "pull-requests", "releases", "dependencies",
-    "security", "testing", "docs", "repo-health", "performance", "onboarding",
-  ]);
-  assert.equal(parseTemplateCategory("security"), "security");
+test("categories are Engineering, Finance, Human Resources, Productivity (easy to extend)", () => {
+  assert.deepEqual(TEMPLATE_CATEGORIES.map((c) => c.slug), ["engineering", "finance", "human-resources", "productivity"]);
+  assert.deepEqual(TEMPLATE_CATEGORIES.map((c) => c.label), ["Engineering", "Finance", "Human Resources", "Productivity"]);
+  assert.equal(DEFAULT_TEMPLATE_CATEGORY, "engineering");
+  assert.equal(parseTemplateCategory("engineering"), "engineering");
+  assert.equal(parseTemplateCategory("human-resources"), "human-resources");
+  assert.equal(parseTemplateCategory("security"), undefined);
   assert.equal(parseTemplateCategory("Templates"), undefined);
   assert.equal(parseTemplateCategory(undefined), undefined);
 });
@@ -38,37 +38,54 @@ test("migration 39: user_version 39, five global seed packs, no tenant column", 
   assert.ok(cols.includes("slug") && cols.includes("category") && cols.includes("skill_body") && cols.includes("cron") && cols.includes("created_at"));
   const rows = listTaskTemplates(db);
   assert.deepEqual(rows.map((t) => t.slug).sort(), ["ci-digest", "morning-brief", "review-follow-up", "stale-prs", "weekly-health"]);
-  assert.equal(getTaskTemplate(db, "morning-brief")?.category, "issues-triage");
-  assert.equal(getTaskTemplate(db, "stale-prs")?.category, "pull-requests");
-  assert.equal(getTaskTemplate(db, "ci-digest")?.category, "ci-cd");
-  assert.equal(getTaskTemplate(db, "review-follow-up")?.category, "code-review");
-  assert.equal(getTaskTemplate(db, "weekly-health")?.category, "repo-health");
+  // After 39 the seed may already be engineering; migration 40 is tested below for remapping.
+  for (const slug of ["morning-brief", "stale-prs", "ci-digest", "review-follow-up", "weekly-health"]) {
+    assert.ok(getTaskTemplate(db, slug), slug);
+  }
   assert.equal(getTaskTemplate(db, "morning-brief")?.cron, "0 9 * * 1-5");
   assert.equal(rows.length, SEED_TEMPLATES.length);
   for (const t of rows) assert.equal(t.createdAt, SEED_CREATED_AT);
 });
 
-test("openDb seeds templates and reports user_version 39", () => {
+test("openDb seeds templates and reports user_version 40, all in Engineering", () => {
   const db = openDb(":memory:");
-  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 39);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 40);
   assert.equal(listTaskTemplates(db).length, 5);
-  assert.equal(listTaskTemplates(db, { category: "ci-cd" }).map((t) => t.slug).join(), "ci-digest");
-  assert.equal(listTaskTemplates(db, { category: "security" }).length, 0);
+  assert.deepEqual(listTaskTemplates(db, { category: "engineering" }).map((t) => t.slug).sort(),
+    ["ci-digest", "morning-brief", "review-follow-up", "stale-prs", "weekly-health"]);
+  assert.equal(listTaskTemplates(db, { category: "finance" }).length, 0);
   assert.equal(templateCountsByCategory(db).all, 5);
-  assert.equal(templateCountsByCategory(db)["ci-cd"], 1);
-  assert.equal(templateCountsByCategory(db).security, 0);
+  assert.equal(templateCountsByCategory(db).engineering, 5);
+  assert.equal(templateCountsByCategory(db).finance, 0);
+  assert.equal(templateCountsByCategory(db)["human-resources"], 0);
+  assert.equal(templateCountsByCategory(db).productivity, 0);
+});
+
+test("migration 40 moves legacy and unknown categories to Engineering, leaves valid ones", () => {
+  const db = new DatabaseSync(":memory:");
+  migrate(db, 39);
+  db.prepare("UPDATE task_templates SET category = 'code-review' WHERE slug = 'review-follow-up'").run();
+  db.prepare("UPDATE task_templates SET category = 'not-a-category' WHERE slug = 'ci-digest'").run();
+  db.prepare("UPDATE task_templates SET category = 'finance' WHERE slug = 'weekly-health'").run();
+  migrate(db, 40);
+  assert.equal((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version, 40);
+  assert.equal(getTaskTemplate(db, "review-follow-up")?.category, "engineering");
+  assert.equal(getTaskTemplate(db, "ci-digest")?.category, "engineering");
+  assert.equal(getTaskTemplate(db, "weekly-health")?.category, "finance", "already-valid slugs stay");
+  assert.equal(getTaskTemplate(db, "morning-brief")?.category, "engineering");
+  assert.equal(remapTemplateCategories(db), 0, "idempotent");
 });
 
 test("addTaskTemplate is idempotent by slug; --update replaces different content", () => {
   const db = openDb(":memory:");
   const input = {
-    slug: "secret-scan", name: "Weekly secret scan", category: "security",
+    slug: "secret-scan", name: "Weekly secret scan", category: "engineering",
     description: "Look for committed secrets.", skillBody: "# Scan\n\n## Look\nSearch for secrets. Don't change files.\n\n## Report\nReturn the list.",
     cron: "0 9 * * 1", notifyOn: "both", notifyInApp: true, notifyEmail: false, mode: "simulated",
   };
   const a = addTaskTemplate(db, input, { now: Date.UTC(2026, 10, 14) });
   assert.equal(a.action, "inserted");
-  assert.equal(a.template.category, "security");
+  assert.equal(a.template.category, "engineering");
   assert.equal(a.template.taskName, "secret-scan");
   const b = addTaskTemplate(db, input, { now: Date.UTC(2026, 10, 15) });
   assert.equal(b.action, "unchanged");
@@ -80,6 +97,10 @@ test("addTaskTemplate is idempotent by slug; --update replaces different content
   assert.equal(c.template.createdAt, a.template.createdAt, "update keeps created_at");
   assert.throws(() => addTaskTemplate(db, { ...input, slug: "Bad Name" }), TemplateError);
   assert.throws(() => addTaskTemplate(db, { ...input, slug: "ok", category: "cooking" }), TemplateError);
+  const hr = addTaskTemplate(db, { ...input, slug: "pto-reminder", name: "PTO reminder", category: "Human Resources",
+    description: "Remind the team about upcoming time off.", skillBody: "# PTO\n\n## Look\nList upcoming PTO.\n\n## Report\nReturn the list.",
+    cron: "0 9 * * 1" });
+  assert.equal(hr.template.category, "human-resources");
 });
 
 test("New badge: only templates created in the last 7 days", () => {
@@ -95,7 +116,7 @@ test("CLI template:add inserts from a file against a given database", () => {
   const dbFile = join(dir, "cobra.db");
   const json = join(dir, "t.json");
   writeFileSync(json, JSON.stringify({
-    slug: "docs-gap", name: "Docs gap report", category: "docs",
+    slug: "docs-gap", name: "Docs gap report", category: "engineering",
     description: "Find undocumented public APIs.", skillBody: "# Docs\n\n## Look\nList undocumented exports.\n\n## Report\nReturn the list.",
     cron: "0 10 * * 1",
   }));
@@ -103,12 +124,12 @@ test("CLI template:add inserts from a file against a given database", () => {
   const run = () => spawnSync("npx", ["tsx", "scripts/template-add.mts", "--file", json], { cwd: new URL("..", import.meta.url), encoding: "utf8", env });
   const first = run();
   assert.equal(first.status, 0, first.stderr);
-  assert.match(first.stdout, /Inserted template 'docs-gap' \(docs\)/);
+  assert.match(first.stdout, /Inserted template 'docs-gap' \(engineering\)/);
   const second = run();
   assert.equal(second.status, 0, second.stderr);
   assert.match(second.stdout, /already present/);
   const db = openDb(dbFile);
-  assert.equal(getTaskTemplate(db, "docs-gap")?.category, "docs");
+  assert.equal(getTaskTemplate(db, "docs-gap")?.category, "engineering");
 });
 
 test("Templates tab has All + category pills, URL-addressable, New badge hook", () => {
@@ -123,5 +144,5 @@ test("Templates tab has All + category pills, URL-addressable, New badge hook", 
   assert.match(pills, /rounded-full/);
   assert.match(lib, /data-new/);
   assert.match(lib, /isNew/);
-  assert.ok(TEMPLATE_CATEGORIES.length >= 10);
+  assert.equal(TEMPLATE_CATEGORIES.length, 4);
 });

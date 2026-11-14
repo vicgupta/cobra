@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { seedTemplates } from "./workflows/store";
-import { seedTaskTemplates } from "./task-templates";
+import { remapTemplateCategories, seedTaskTemplates } from "./task-templates";
 
 export type DB = DatabaseSync;
 
@@ -986,6 +986,10 @@ const MIGRATIONS: Array<(db: DB) => void> = [
     `);
     seedTaskTemplates(db);
   },
+  // 40 (Template categories v2): replace the 12 fine-grained engineering pills with four
+  // extendable categories (Engineering, Finance, Human Resources, Productivity). Existing
+  // packs and any unknown category move to Engineering; already-valid slugs are left alone.
+  (db) => { remapTemplateCategories(db); },
 ];
 
 /** Runs pending migrations (up to `target`, for tests). */
