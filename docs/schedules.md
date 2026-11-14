@@ -64,4 +64,4 @@ Delivery problems (a failed send, or the mailbox hitting the 60 messages/hour ca
 
 Existing tasks stay off until you turn delivery on.
 
-The Tasks page also has an [automation library](automation-library.md) of ready-made engineering schedules you can edit and turn on.
+The Tasks page's Templates tab has an [automation library](automation-library.md) of ready-made engineering schedules you can edit and turn on. Current (the default tab) lists the tasks you already have.

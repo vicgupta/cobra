@@ -145,7 +145,9 @@ function LibraryForm({ pack, agents, repos, members, hasTeamEmail, onDone }: { p
           const r = await call("/api/automation-library", "POST", body());
           setBusy(false);
           if (!r.ok) { setConfirm(false); return setError(sentence(r.data.error ?? "Couldn't turn this on")); }
-          setConfirm(false); onDone(); router.refresh();
+          setConfirm(false);
+          const id = Number((r.data as { task?: { id?: unknown } }).task?.id);
+          router.push(Number.isInteger(id) && id > 0 ? `/tasks?tab=current&task=${id}` : "/tasks");
         }} />}
     </section>
   );

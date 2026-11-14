@@ -1,6 +1,6 @@
 # Automation library
 
-The Tasks page includes an **Automation library**: five ready-made engineering packs. Each pack is a starting point — a prefilled skill, a suggested Eastern-time schedule, and suggested result delivery. You pick the repo and the agent, you can edit everything, and a confirm step creates the skill and the task.
+The Tasks page has two tabs: **Current** (your tasks, the default) and **Templates** (the **automation library**). Templates lists five ready-made engineering packs. Each pack is a starting point — a prefilled skill, a suggested Eastern-time schedule, and suggested result delivery. You pick the repo and the agent, you can edit everything, and a confirm step creates the skill and the task. After you confirm, Cobra takes you back to Current and highlights the new task (`/tasks?tab=current&task=<id>`).
 
 Packs:
 

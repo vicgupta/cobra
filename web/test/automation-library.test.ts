@@ -102,5 +102,6 @@ test("library UI is a confirm-then-create form, editable, no JSON dumps", () => 
   assert.doesNotMatch(src, /<pre/);
   const page = readFileSync("app/tasks/page.tsx", "utf8");
   assert.match(page, /AutomationLibrary/);
+  assert.match(page, /tab === "templates"/);
   assert.doesNotMatch(page, /JSON\.stringify/);
 });

@@ -3,7 +3,7 @@
 // Tasks: an agent (+ optional one skill) on a friendly schedule; list, create, edit, delete, Run.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StatusPill } from "./recent-runs-table";
 import { button, call, ConfirmDialog, danger, EmptyState, Field, ghost, input, nameProblem, Segmented, sentence, slug, Switch, td, th } from "./form-ui";
 import { CRON_HELP, DAYS, describeCron, fromCron, PRESETS, scheduleProblem, toCron, type Preset, type Schedule } from "@/lib/schedule";
@@ -156,13 +156,17 @@ function TaskForm({ initial, agents, skills, repos, members, hasTeamEmail, onDon
   );
 }
 
-export function TaskManager({ tasks, agents, skills, repos, now, members, hasTeamEmail }: { tasks: TaskView[]; agents: TaskAgentOption[]; skills: TaskSkillOption[]; repos: string[]; now: number; members: TaskMember[]; hasTeamEmail: boolean }) {
+export function TaskManager({ tasks, agents, skills, repos, now, members, hasTeamEmail, highlightTaskId }: { tasks: TaskView[]; agents: TaskAgentOption[]; skills: TaskSkillOption[]; repos: string[]; now: number; members: TaskMember[]; hasTeamEmail: boolean; highlightTaskId?: number }) {
   const [editing, setEditing] = useState<number | "new" | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<TaskView | null>(null);
   const [deleting, setDeleting] = useState(false);
   const router = useRouter();
+  useEffect(() => {
+    if (!highlightTaskId) return;
+    document.getElementById(`task-${highlightTaskId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightTaskId]);
   const skillName = (ref: string | null) => (ref ? skills.find((o) => o.ref === ref)?.name ?? "missing skill" : null);
   const runs = (t: TaskView) => {
     const s = skillName(t.skillRef) ?? skillName(agents.find((a) => a.name === t.agent)?.skillRef ?? null);
@@ -181,7 +185,7 @@ export function TaskManager({ tasks, agents, skills, repos, now, members, hasTea
           <table className="w-full min-w-[760px] text-sm">
             <thead className="border-b border-border"><tr><th scope="col" className={th}>Task</th><th scope="col" className={th}>Runs</th><th scope="col" className={th}>Schedule</th><th scope="col" className={th}>On</th><th scope="col" className={th}>Last run</th><th scope="col" className={th}><span className="sr-only">Actions</span></th></tr></thead>
             <tbody className="divide-y divide-border">{tasks.map((t) => (
-              <tr key={t.id} data-task={t.name}>
+              <tr key={t.id} id={`task-${t.id}`} data-task={t.name} data-highlight={highlightTaskId === t.id ? "true" : undefined} className={highlightTaskId === t.id ? "bg-surface-2" : undefined}>
                 <td className={td}><div className="font-medium text-fg">{t.name}</div><div className="text-xs text-subtle">{runTypeLabel(t.mode)}{t.repo ? ` · ${t.repo}` : ""}</div></td>
                 <td className={td}>{runs(t)}</td>
                 <td className={`${td} text-fg-soft`} data-schedule>{t.cron ? describeCron(t.cron).replace(/^Runs /, "").replace(/^./, (c) => c.toUpperCase()) : <span className="text-subtle">Manual only</span>}</td>

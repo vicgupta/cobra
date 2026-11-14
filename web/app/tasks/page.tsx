@@ -2,6 +2,8 @@ import { Suspense } from "react";
 import { AuthGate } from "@/components/auth-gate";
 import { TaskManager, type TaskSkillOption } from "@/components/tasks";
 import { AutomationLibrary } from "@/components/automation-library";
+import { TasksTabs } from "@/components/tasks-tabs";
+import { parseTasksTab } from "@/lib/tasks-tabs";
 import { LIBRARY_PACKS } from "@/lib/automation-library";
 import { list } from "@/lib/skills/service";
 import { listAgents } from "@/lib/agents";
@@ -17,7 +19,9 @@ const requestTime = () => Date.now();
 
 export const metadata = { title: "Tasks · Cobra" };
 
-function Tasks({ user }: { user: SessionUser }) {
+type TasksSearch = Promise<{ tab?: string; task?: string }>;
+
+function Tasks({ user, tab, highlightTaskId }: { user: SessionUser; tab: "current" | "templates"; highlightTaskId?: number }) {
   const u = actor(user), db = getDb();
   const tasks = listTasks(db, u.tenantId).map((t) => ({ ...t, canEdit: canEditTask(u, t, db) }));
   const sop = ((list(db, u).body as { skills?: Array<{ id: number; name: string; tenantId: number }> }).skills ?? []).filter((s) => s.tenantId === u.tenantId);
@@ -26,20 +30,30 @@ function Tasks({ user }: { user: SessionUser }) {
   const repos = listTeamRepos(db, u.tenantId).map((r) => r.repo);
   const members = displayTeamMembers(db, u.tenantId).map((m) => ({ email: m.email, name: m.name }));
   const hasTeamEmail = teamHasMailbox(db, u.tenantId);
+  const shared = { agents, repos, members, hasTeamEmail };
+  return tab === "templates"
+    ? <AutomationLibrary packs={LIBRARY_PACKS} {...shared} />
+    : <TaskManager tasks={tasks} skills={skills} now={requestTime()} highlightTaskId={highlightTaskId} {...shared} />;
+}
+
+async function Body({ user, searchParams }: { user: SessionUser; searchParams: TasksSearch }) {
+  const sp = await searchParams;
+  const tab = parseTasksTab(sp.tab);
+  const highlightTaskId = Number(sp.task) || undefined;
   return (
-    <div className="space-y-8">
-      <AutomationLibrary packs={LIBRARY_PACKS} agents={agents} repos={repos} members={members} hasTeamEmail={hasTeamEmail} />
-      <TaskManager tasks={tasks} agents={agents} skills={skills} repos={repos} now={requestTime()} members={members} hasTeamEmail={hasTeamEmail} />
-    </div>
+    <>
+      <TasksTabs active={tab} />
+      <Tasks user={user} tab={tab} highlightTaskId={tab === "current" ? highlightTaskId : undefined} />
+    </>
   );
 }
 
-export default function TasksPage() {
+export default function TasksPage({ searchParams }: { searchParams: TasksSearch }) {
   return (
     <div className="space-y-6">
       <header><h1 className="text-2xl font-semibold tracking-tight">Tasks</h1>
         <p className="mt-1 text-sm text-muted">Run an agent on a schedule or on demand. Times are Eastern (ET).</p></header>
-      <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><AuthGate>{(u) => <Tasks user={u} />}</AuthGate></Suspense>
+      <Suspense fallback={<p className="text-sm text-subtle">Loading…</p>}><AuthGate>{(u) => <Body user={u} searchParams={searchParams} />}</AuthGate></Suspense>
     </div>
   );
 }
